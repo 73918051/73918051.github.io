@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>C 语言逐步执行模拟器（终极修复版）</title>
+<style>
+*{box-sizing:border-box}
+:root{--bg:#1e1e1e;--panel:#252526;--border:#3b3b3b;--text:#d4d4d4;--blue:#007acc;--yellow:#f6e58d}
+body{margin:0;height:100vh;overflow:hidden;background:var(--bg);color:var(--text);font-family:"Segoe UI",sans-serif}
+.app{height:100vh;display:grid;grid-template-rows:46px minmax(0,1fr) 190px 62px}
+.topbar{display:flex;align-items:center;gap:14px;padding:0 16px;background:#181818;border-bottom:1px solid var(--border)}
+.logo{font-weight:700;color:#4fc1ff}.status{font-size:12px;color:#858585}.status.running{color:#4ec9b0}.status.done{color:#b5cea8}
+.main{min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 360px}
+.editor-panel,.watch-panel{min-height:0;background:var(--bg)}
+.editor-panel{border-right:1px solid var(--border);display:flex;flex-direction:column}
+.panel-head{height:38px;flex:none;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 12px;font-size:13px;color:#9cdcfe}
+.editor-wrap{min-height:0;flex:1;display:grid;grid-template-columns:54px minmax(0,1fr);overflow:auto}
+.lines{background:#181818;color:#858585;text-align:right;padding-top:10px;user-select:none}
+.line-no{height:23px;line-height:23px;padding-right:12px;font:13px/23px Consolas,monospace}
+.line-no.active{background:#5a5000;color:#fff}
+.editor-stage{position:relative;overflow:hidden;background:#1e1e1e}
+.highlight-layer{position:absolute;inset:0;margin:0;padding:10px 14px;font:14px/23px Consolas,monospace;tab-size:4;white-space:pre;overflow:hidden;color:transparent;pointer-events:none}
+.hl-line{height:23px;line-height:23px;white-space:pre}
+.hl-line.active{background:var(--yellow);box-shadow:inset 3px 0 #ffd700}
+.editor{position:absolute;inset:0;width:100%;height:100%;min-height:100%;resize:none;border:0;outline:0;padding:10px 14px;background:transparent;color:#d4d4d4;font:14px/23px Consolas,monospace;tab-size:4;white-space:pre;overflow:auto}
+.editor::selection{background:#264f78}
+.watch-panel{display:flex;flex-direction:column;background:#252526}
+.watch-body{overflow:auto;flex:1}
+table{width:100%;border-collapse:collapse;font:13px Consolas,monospace}
+th{position:sticky;top:0;background:#333;color:#9cdcfe;font-weight:600;z-index:1}
+td,th{padding:8px 10px;border-bottom:1px solid #3b3b3b;text-align:left}
+td:nth-child(2){color:#ce9178} td:nth-child(3){color:#4ec9b0}
+.changed{animation:flash .65s ease}
+@keyframes flash{0%{background:#7f3030}100%{background:transparent}}
+.console{min-height:0;background:#0d0d0d;border-top:1px solid var(--border);padding:10px 14px;overflow:auto;font:13px/21px Consolas,monospace}
+.console-line{white-space:pre-wrap}.out{color:#d4d4d4}.err{color:#f48771}
+.controls{display:flex;align-items:center;gap:10px;padding:10px 14px;background:#252526;border-top:1px solid var(--border)}
+button{border:1px solid #555;background:#333;color:#eee;padding:8px 18px;border-radius:4px;cursor:pointer}
+button.primary{background:var(--blue);border-color:var(--blue)}
+button:hover{filter:brightness(1.15)}button:disabled{opacity:.45;cursor:not-allowed}
+.speed{display:flex;align-items:center;gap:8px;margin-left:auto;font-size:12px;color:#aaa}
+input[type=range]{width:170px}
+.tip{font-size:11px;color:#777}
+@media(max-width:800px){.main{grid-template-columns:1fr}.watch-panel{display:none}}
+</style>
+</head>
+<body>
+<div class="app">
+<header class="topbar">
+  <div class="logo">C Debugger Pro</div>
+  <div id="status" class="status">就绪</div>
+  <div class="tip">支持 if(...) stmt; 和 { stmt; } 同一行</div>
+</header>
+
+<main class="main">
+<section class="editor-panel">
+  <div class="panel-head">SOURCE CODE</div>
+  <div class="editor-wrap">
+    <div id="lines" class="lines"></div>
+    <div class="editor-stage">
+      <pre id="highlightLayer" class="highlight-layer"></pre>
+      <textarea id="editor" class="editor" spellcheck="false"></textarea>
+    </div>
+  </div>
+</section>
+
+<section class="watch-panel">
+  <div class="panel-head">VARIABLES WATCH</div>
+  <div class="watch-body">
+    <table>
+      <thead><tr><th>名称</th><th>当前值</th><th>类型</th></tr></thead>
+      <tbody id="variables"></tbody>
+    </table>
+  </div>
+</section>
+</main>
+
+<section id="console" class="console"></section>
+
+<footer class="controls">
+  <button id="stepBtn" class="primary">下一步</button>
+  <button id="runBtn" class="primary">运行</button>
+  <button id="resetBtn">重置</button>
+  <button id="stopBtn">停止</button>
+  <div class="speed">速度 <input id="speed" type="range" min="50" max="1200" value="350"><span id="speedText">350ms</span></div>
+</footer>
+
+<script>
+"use strict";
+
+const DEFAULT_CODE = `#include <stdio.h>
+int main()
+{
+    int sum = 0;
+    int i = 1;
+    while(i <= 10)
+    {
+        sum = sum + i;
+        i = i + 1;
+    }
+    printf("sum=%d\\n", sum);
+    return 0;
+}`;
+
+const editor = document.getElementById("editor");
+const linesEl = document.getElementById("lines");
+const highlightLayer = document.getElementById("highlightLayer");
+const varsEl = document.getElementById("variables");
+const consoleEl = document.getElementById("console");
+const statusEl = document.getElementById("status");
+const speedEl = document.getElementById("speed");
+const speedText = document.getElementById("speedText");
+const stepBtn = document.getElementById("stepBtn");
+const runBtn = document.getElementById("runBtn");
+const resetBtn = document.getElementById("resetBtn");
+const stopBtn = document.getElementById("stopBtn");
+
+editor.value = DEFAULT_CODE;
+
+const state = {
+  lines: [],
+  pc: 0,
+  vars: Object.create(null),
+  running: false,
+  finished: false,
+  timer: null,
+  loopGuard: Object.create(null),
+  blocks: [],
+  whileMap: new Map(),
+  forMap: new Map(),
+  ifMap: new Map(),
+  braceToControl: new Map(),
+  changed: null
+};
+
+function log(text, cls="out"){
+  const d=document.createElement("div");
+  d.className="console-line "+cls;
+  d.textContent=text;
+  consoleEl.appendChild(d);
+  consoleEl.scrollTop=consoleEl.scrollHeight;
+}
+function clearLog(){consoleEl.innerHTML=""}
+function setStatus(text, cls=""){
+  statusEl.textContent=text;
+  statusEl.className="status "+cls;
+}
+function syncLineNumbers(){
+  const arr=editor.value.split("\n");
+  linesEl.innerHTML="";
+  highlightLayer.innerHTML="";
+  arr.forEach((line,i)=>{
+    const n=document.createElement("div");
+    n.className="line-no"+(i===state.pc?" active":"");
+    n.textContent=i+1;
+    linesEl.appendChild(n);
+    const h=document.createElement("div");
+    h.className="hl-line"+(i===state.pc?" active":"");
+    h.textContent=line||" ";
+    highlightLayer.appendChild(h);
+  });
+  highlightLayer.scrollTop=editor.scrollTop;
+}
+function highlight(){
+  [...linesEl.children].forEach((x,i)=>x.classList.toggle("active",i===state.pc));
+  [...highlightLayer.children].forEach((x,i)=>x.classList.toggle("active",i===state.pc));
+  const lineH=23;
+  const target=state.pc*lineH;
+  if(target<editor.scrollTop || target>editor.scrollTop+editor.clientHeight-lineH)
+    editor.scrollTop=Math.max(0,target-editor.clientHeight/2);
+  highlightLayer.scrollTop=editor.scrollTop;
+}
+editor.addEventListener("scroll",()=>{
+  linesEl.scrollTop=editor.scrollTop;
+  highlightLayer.scrollTop=editor.scrollTop;
+});
+editor.addEventListener("input",()=>{ if(!state.running) syncLineNumbers(); });
+editor.addEventListener("keydown",e=>{
+  if(e.key==="Tab"){ e.preventDefault(); const s=editor.selectionStart; editor.setRangeText("    ",s,editor.selectionEnd,"end"); }
+});
+speedEl.addEventListener("input",()=>speedText.textContent=speedEl.value+"ms");
+
+function stripComments(s){ return s.replace(/\/\*[\s\S]*?\*\//g,"").replace(/\/\/.*$/gm,""); }
+
+function resetState(){
+  stopRun();
+  const code=stripComments(editor.value);
+  state.lines=code.split(/\r?\n/);
+  state.pc=0;
+  state.vars=Object.create(null);
+  state.finished=false;
+  state.loopGuard=Object.create(null);
+  state.blocks=[];
+  state.whileMap=new Map();
+  state.forMap=new Map();
+  state.ifMap=new Map();
+  state.braceToControl=new Map();
+  clearLog();
+  buildControlFlow();
+  renderVars();
+  syncLineNumbers();
+  setStatus("已重置");
+  highlight();
+}
+
+function cleanLine(i){ return state.lines[i].trim(); }
+
+function buildControlFlow(){
+  const stack=[];
+  const pending=[];
+  for(let i=0;i<state.lines.length;i++){
+    const line=cleanLine(i);
+    if(/^(while|for|if)\s*\(/.test(line)) pending.push(i);
+    if(line.includes("{")){
+      let ctrl=-1;
+      for(let k=pending.length-1;k>=0;k--){
+        if(pending[k]<i){ ctrl=pending[k]; pending.splice(k,1); break; }
+      }
+      stack.push({open:i, control:ctrl});
+    }
+    if(line.includes("}")){
+      const b=stack.pop();
+      if(b){
+        state.blocks.push({open:b.open, close:i, control:b.control});
+        if(b.control>=0) state.braceToControl.set(i,b.control);
+      }
+    }
+  }
+  for(const b of state.blocks){
+    const line=cleanLine(b.control);
+    if(/^while\s*\(/.test(line)) state.whileMap.set(b.control,b);
+    else if(/^for\s*\(/.test(line)) state.forMap.set(b.control,b);
+    else if(/^if\s*\(/.test(line)) state.ifMap.set(b.control,b);
+  }
+}
+
+function findMatchingParen(s,start){
+  let depth=0, quote=false;
+  for(let i=start;i<s.length;i++){
+    const c=s[i];
+    if(c==='"' && s[i-1]!=="\\") quote=!quote;
+    if(quote) continue;
+    if(c==="(") depth++;
+    if(c===")" && --depth===0) return i;
+  }
+  return -1;
+}
+
+function tokenize(expr){
+  const t=[]; let i=0;
+  while(i<expr.length){
+    const c=expr[i];
+    if(/\s/.test(c)){ i++; continue; }
+    if(c==="'" && expr[i+2]==="'"){ t.push({type:"num",value:expr.charCodeAt(i+1)}); i+=3; continue; }
+    if(c==='"'){
+      let j=i+1,s="";
+      while(j<expr.length && expr[j]!=='"'){ s+=expr[j++]; }
+      t.push({type:"str",value:s}); i=j+1; continue;
+    }
+    if(/[0-9.]/.test(c)){
+      let j=i+1; while(j<expr.length && /[0-9.]/.test(expr[j])) j++;
+      t.push({type:"num",value:Number(expr.slice(i,j))}); i=j; continue;
+    }
+    if(/[A-Za-z_]/.test(c)){
+      let j=i+1; while(j<expr.length && /[A-Za-z0-9_]/.test(expr[j])) j++;
+      t.push({type:"id",value:expr.slice(i,j)}); i=j; continue;
+    }
+    const two=expr.slice(i,i+2);
+    if(["<=",">=","==","!=","&&","||","++","--"].includes(two)){ t.push({type:"op",value:two}); i+=2; continue; }
+    if("+-*/%()<>!".includes(c)){ t.push({type:"op",value:c}); i++; continue; }
+    i++;
+  }
+  return t;
+}
+
+function evalExpr(expr){
+  const tokens=tokenize(expr); let p=0;
+  function peek(){ return tokens[p]; }
+  function eat(v){ if(peek() && peek().value===v){ p++; return true; } return false; }
+  function primary(){
+    const x=peek();
+    if(!x) return 0;
+    if(eat("(")){ const v=or(); eat(")"); return v; }
+    p++;
+    if(x.type==="num") return x.value;
+    if(x.type==="id") return state.vars[x.value] ? state.vars[x.value].value : 0;
+    return 0;
+  }
+  function unary(){
+    if(eat("!")) return !unary();
+    if(eat("-")) return -unary();
+    if(eat("+")) return +unary();
+    return primary();
+  }
+  function mul(){ let a=unary(); while(peek() && ["*","/","%"].includes(peek().value)){ const op=peek().value; p++; const b=unary(); a=op==="*"?a*b:op==="/"?a/b:a%b; } return a; }
+  function add(){ let a=mul(); while(peek() && ["+","-"].includes(peek().value)){ const op=peek().value; p++; const b=mul(); a=op==="+"?a+b:a-b; } return a; }
+  function rel(){ let a=add(); while(peek() && ["<",">","<=",">="].includes(peek().value)){ const op=peek().value; p++; const b=add(); a=op==="<"?a<b:op===">"?a>b:op==="<="?a<=b:a>=b; } return a; }
+  function eq(){ let a=rel(); while(peek() && ["==","!="].includes(peek().value)){ const op=peek().value; p++; const b=rel(); a=op==="=="?a==b:a!=b; } return a; }
+  function and(){ let a=eq(); while(eat("&&")) a=Boolean(a) && Boolean(eq()); return a; }
+  function or(){ let a=and(); while(eat("||")) a=Boolean(a) || Boolean(and()); return a; }
+  return or();
+}
+
+function cast(v,type){ if(type==="int") return Math.trunc(Number(v)||0); if(type==="float") return Number(v)||0; return Math.trunc(Number(v)||0); }
+
+// ----- 声明 -----
+function declare(line){
+  const m=line.match(/^(int|float|char)\s+(.+?);$/);
+  if(!m) return false;
+  const type=m[1];
+  const parts=m[2].split(',').map(s=>s.trim());
+  for(let part of parts){
+    const assignMatch=part.match(/^([A-Za-z_]\w*)\s*(?:=\s*(.+))?$/);
+    if(!assignMatch) continue;
+    const name=assignMatch[1];
+    let value=0;
+    if(assignMatch[2]!==undefined){
+      const raw=assignMatch[2].trim();
+      if(/^'.'$/.test(raw)) value=raw.charCodeAt(1);
+      else value=evalExpr(raw);
+    }
+    state.vars[name]={type:type, value:cast(value,type)};
+  }
+  return true;
+}
+
+// ----- 赋值（支持复合）-----
+function assign(line){
+  let s=line.replace(/;\s*$/, '');
+  // 前缀
+  let pre=s.match(/^(?:\+\+|--)\s*([A-Za-z_]\w*)$/);
+  if(pre){ const name=pre[1]; if(!state.vars[name]) return false; if(s.startsWith('++')) state.vars[name].value++; else state.vars[name].value--; state.changed=name; return true; }
+  // 后缀
+  let post=s.match(/^([A-Za-z_]\w*)\s*(?:\+\+|--)$/);
+  if(post){ const name=post[1]; if(!state.vars[name]) return false; if(s.endsWith('++')) state.vars[name].value++; else state.vars[name].value--; state.changed=name; return true; }
+  // 复合赋值
+  let comp=s.match(/^([A-Za-z_]\w*)\s*([+\-*/%])=(.+)$/);
+  if(comp){ const name=comp[1]; const op=comp[2]; const rhs=comp[3].trim(); if(!state.vars[name]) return false; const val=evalExpr(rhs); switch(op){ case '+': state.vars[name].value+=val; break; case '-': state.vars[name].value-=val; break; case '*': state.vars[name].value*=val; break; case '/': state.vars[name].value/=val; break; case '%': state.vars[name].value%=val; break; } state.vars[name].value=cast(state.vars[name].value, state.vars[name].type); state.changed=name; return true; }
+  // 普通赋值
+  let simple=s.match(/^([A-Za-z_]\w*)\s*=(.+)$/);
+  if(simple){ const name=simple[1]; if(!state.vars[name]) return false; const val=evalExpr(simple[2].trim()); state.vars[name].value=cast(val, state.vars[name].type); state.changed=name; return true; }
+  return false;
+}
+
+// ----- 解析 for 三部分 -----
+function parseForParts(line){
+  const m=line.match(/^for\s*\(([^;]*);([^;]*);([^;]*)\)$/);
+  if(!m) return null;
+  return { init:m[1].trim(), cond:m[2].trim(), iter:m[3].trim() };
+}
+
+function splitArgs(s){
+  const a=[]; let cur="", depth=0, quote=false;
+  for(let i=0;i<s.length;i++){
+    const c=s[i];
+    if(c==='"' && s[i-1]!=="\\") quote=!quote;
+    if(!quote){ if(c==="(") depth++; if(c===")") depth--; if(c==="," && depth===0){ a.push(cur.trim()); cur=""; continue; } }
+    cur+=c;
+  }
+  if(cur.trim()) a.push(cur.trim());
+  return a;
+}
+
+function printf(line){
+  // 允许行尾有空格
+  const m=line.match(/^printf\s*\(([\s\S]*)\)\s*;$/);
+  if(!m) return false;
+  const args=splitArgs(m[1]);
+  if(!args.length) return true;
+  let fmt=args[0].replace(/^"|"$/g,"").replace(/\\n/g,"\n").replace(/\\t/g,"\t");
+  let ai=1;
+  fmt=fmt.replace(/%([\d.]*)([dfc])/g, (match, width, spec)=>{
+    const v=ai<args.length ? evalExpr(args[ai++]) : 0;
+    let num=(spec==='d') ? Math.trunc(v) : v;
+    if(spec==='f'){
+      if(width && width.includes('.')){ const prec=parseInt(width.split('.')[1],10)||6; return Number(num).toFixed(prec); }
+      else return Number(num).toFixed(6);
+    }
+    if(spec==='c') return String.fromCharCode(Math.trunc(v));
+    return num;
+  });
+  log(fmt);
+  return true;
+}
+
+function scanf(line){
+  const m=line.match(/^scanf\s*\(\s*"([^"]*)"\s*,\s*(.*?)\s*\)\s*;$/);
+  if(!m) return false;
+  const format=m[1];
+  const vars=m[2].split(",").map(s=>s.trim().replace(/^&/,"")).filter(Boolean);
+  const specs=[...format.matchAll(/%[dfc]/g)].map(x=>x[0]);
+  if(!specs.length){ log("错误：scanf 格式符缺失","err"); return true; }
+  for(let i=0;i<specs.length;i++){
+    const name=vars[i];
+    if(!name || !state.vars[name]){ log("错误：变量不存在 "+name,"err"); continue; }
+    const input=prompt("请输入 "+name+" ("+specs[i]+")：","");
+    if(input===null){ log("scanf 已取消。","info"); continue; }
+    let value;
+    if(specs[i]==="%c"){ value=input.length ? input.charCodeAt(0) : 0; }
+    else { value=Number(input); if(Number.isNaN(value)){ log("输入错误："+input,"err"); continue; } }
+    state.vars[name].value=cast(value, state.vars[name].type);
+    state.changed=name;
+    renderVars();
+  }
+  return true;
+}
+
+function conditionOf(line){
+  const a=line.indexOf("("), b=findMatchingParen(line,a);
+  return b>=0 ? line.slice(a+1,b) : "0";
+}
+
+function guard(i){
+  state.loopGuard[i]=(state.loopGuard[i]||0)+1;
+  if(state.loopGuard[i]>1000){ log("错误：循环超过1000次，已停止。","err"); finish(); return false; }
+  return true;
+}
+
+function nextNonEmpty(i){
+  for(let x=i+1; x<state.lines.length; x++) if(cleanLine(x)!=="") return x;
+  return state.lines.length;
+}
+
+// ---------- 核心执行器（全面增强）----------
+function executeOne(){
+  if(state.finished) return;
+  if(state.pc>=state.lines.length){ finish(); return; }
+  const i=state.pc;
+  let line=cleanLine(i);
+  state.changed=null;
+  highlight();
+
+  // 1. 跳过空行、预处理、函数定义（无等号）
+  if(!line || line.startsWith("#") || /^[A-Za-z_]\w*\s+[A-Za-z_]\w*\s*\(/.test(line) && !line.includes("=")){
+    state.pc++; renderVars(); return;
+  }
+
+  // 2. 单独 {
+  if(line==="{"){
+    state.pc++; renderVars(); return;
+  }
+
+  // 3. 单独 }（处理循环迭代）
+  if(line==="}"){
+    const ctrl=state.braceToControl.get(i);
+    if(ctrl!==undefined){
+      const c=cleanLine(ctrl);
+      if(state.whileMap.has(ctrl)){ state.pc=ctrl; renderVars(); return; }
+      if(state.forMap.has(ctrl)){
+        const parts=parseForParts(c);
+        if(parts && parts.iter){ assign(parts.iter+';'); }
+        state.pc=ctrl; // 回到 for 行
+        renderVars(); return;
+      }
+      state.pc=i+1; renderVars(); return;
+    }
+    state.pc++; renderVars(); return;
+  }
+
+  // 4. return
+  if(/^return\b/.test(line)){ finish(); return; }
+
+  // 5. 声明
+  if(declare(line)){ state.pc++; renderVars(); return; }
+
+  // 6. printf / scanf（必须放在前面，优先匹配）
+  if(printf(line)){ state.pc++; renderVars(); return; }
+  if(scanf(line)){ state.pc++; renderVars(); return; }
+
+  // 7. while（依赖 whileMap）
+  if(state.whileMap.has(i)){
+    if(!guard(i)) return;
+    if(evalExpr(conditionOf(line))){
+      state.pc=nextNonEmpty(i);
+    } else {
+      state.pc=state.whileMap.get(i).close+1;
+    }
+    renderVars(); return;
+  }
+
+  // 8. for（依赖 forMap）
+  if(state.forMap.has(i)){
+    const parts=parseForParts(line);
+    if(!parts){ log("无法解析 for: "+line,"err"); state.pc++; renderVars(); return; }
+    if(!state.loopGuard["forinit"+i]){
+      if(parts.init){
+        let init=parts.init+';';
+        if(!declare(init)){ // 尝试声明
+          if(!assign(init)) log("无法执行 for 初始化: "+init,"err");
+        }
+      }
+      state.loopGuard["forinit"+i]=1;
+    }
+    if(!guard(i)) return;
+    if(parts.cond && evalExpr(parts.cond)){
+      state.pc=nextNonEmpty(i);
+    } else {
+      state.pc=state.forMap.get(i).close+1;
+    }
+    renderVars(); return;
+  }
+
+  // 9. if（优先直接匹配单行，再匹配 ifMap 处理块）
+  if(/^if\s*\(/.test(line)){
+    // 提取条件
+    const condVal = evalExpr(conditionOf(line));
+    // 提取 if 之后的剩余部分（可能有语句）
+    let rest = line.replace(/^if\s*\([^)]*\)\s*/, '').trim();
+    if(rest && rest !== '{' && !rest.startsWith('{')) {
+      // 单行 if：条件成立则执行 rest
+      if(condVal){
+        executeInlineStatement(rest);
+      }
+      state.pc++;
+      renderVars(); return;
+    } else {
+      // 多行 if（有块），依赖 ifMap
+      if(state.ifMap.has(i)){
+        if(condVal){
+          state.pc=nextNonEmpty(i);
+        } else {
+          const b=state.ifMap.get(i);
+          const next=b.close+1;
+          const n=nextNonEmpty(next-1);
+          if(/^else\b/.test(cleanLine(n))) state.pc=n;
+          else state.pc=next;
+        }
+        renderVars(); return;
+      } else {
+        // 如果没有映射，则当做普通行跳过
+        log("if 语句未正确解析: "+line,"err");
+        state.pc++;
+        renderVars(); return;
+      }
+    }
+  }
+
+  // 10. else
+  if(/^else\b/.test(line)){
+    state.pc=nextNonEmpty(i);
+    renderVars(); return;
+  }
+
+  // 11. 内联块 { stmt; stmt; }
+  if(line.startsWith('{') && line.endsWith('}')){
+    const inner = line.slice(1, -1).trim();
+    if(inner){
+      const stmts = inner.split(';').map(s=>s.trim()).filter(s=>s);
+      for(const stmt of stmts){
+        executeInlineStatement(stmt+';');
+      }
+    }
+    state.pc++;
+    renderVars(); return;
+  }
+
+  // 12. 普通赋值（包括复合赋值）
+  if(assign(line)){ state.pc++; renderVars(); return; }
+
+  // 13. 未知语句：跳过并警告
+  log("跳过未识别语句: "+line,"err");
+  state.pc++;
+  renderVars();
+}
+
+// 辅助：执行内联语句（用于单行 if、内联块等）
+function executeInlineStatement(stmt){
+  stmt = stmt.trim();
+  if(!stmt) return;
+  if(declare(stmt)) return;
+  if(printf(stmt)) return;
+  if(scanf(stmt)) return;
+  if(assign(stmt)) return;
+  // 尝试直接匹配 printf/scanf（可能不带分号？但我们已经加上了）
+  if(/^printf\s*\(/.test(stmt)){ printf(stmt); return; }
+  if(/^scanf\s*\(/.test(stmt)){ scanf(stmt); return; }
+  // 否则忽略，但不报错（可能为空）
+}
+
+function renderVars(){
+  const old=state.changed;
+  varsEl.innerHTML="";
+  for(const [name,v] of Object.entries(state.vars)){
+    const tr=document.createElement("tr");
+    if(name===old) tr.className="changed";
+    let val=v.type==="char"?String.fromCharCode(v.value):v.type==="float"?Number(v.value).toFixed(6):v.value;
+    tr.innerHTML="<td>"+name+"</td><td>"+escapeHtml(String(val))+"</td><td>"+v.type+"</td>";
+    varsEl.appendChild(tr);
+  }
+  state.changed=null;
+}
+
+function escapeHtml(s){ return s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+function finish(){
+  stopRun(false);
+  state.finished=true;
+  setStatus("程序执行结束","done");
+}
+
+function step(){
+  if(state.running) return;
+  if(state.finished) resetState();
+  setStatus("单步执行");
+  executeOne();
+}
+
+function run(){
+  if(state.finished) resetState();
+  if(state.running) return;
+  state.running=true;
+  setStatus("运行中…","running");
+  const tick=()=>{
+    if(!state.running || state.finished) return;
+    executeOne();
+    if(!state.finished) state.timer=setTimeout(tick, Number(speedEl.value));
+  };
+  tick();
+}
+
+function stopRun(show=true){
+  if(state.timer) clearTimeout(state.timer);
+  state.timer=null;
+  state.running=false;
+  if(show && !state.finished) setStatus("已暂停");
+}
+
+stepBtn.onclick=step;
+runBtn.onclick=run;
+stopBtn.onclick=()=>stopRun(true);
+resetBtn.onclick=resetState;
+
+resetState();
+</script>
+</div>
+</body>
+</html>
