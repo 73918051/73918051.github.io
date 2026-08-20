@@ -147,10 +147,11 @@
         .slide-chapter .ch-sub { font-size: clamp(30px, 3.6vh, 48px); color: #b8d0e8; margin-top: 1vh; }
         .slide-chapter .ch-desc { font-size: clamp(28px, 3.2vh, 44px); color: #d0dce8; margin-top: 1.5vh; max-width: 80%; line-height: 1.6; }
 
+        /* 点击区域：左右翻页，中间穿透 */
         .click-area { position: fixed; top: 0; height: 100vh; z-index: 100; cursor: pointer; }
         #clickLeft { left: 0; width: 33.33vw; }
-        #clickRight { right: 12px; width: calc(33.33vw - 12px); }
-        #clickCenter { left: 33.33vw; width: calc(33.33vw - 12px); cursor: default; }
+        #clickRight { right: 0; width: 33.33vw; }
+        #clickCenter { left: 33.33vw; width: 33.33vw; pointer-events: none; cursor: default; }
 
         .chart-placeholder {
             background: #f0f6fe; border: 3px dashed #8aa9d0;
@@ -173,8 +174,110 @@
             .slide-cover .sub-title { font-size: clamp(28px, 3.4vh, 40px); }
             .slide-chapter .ch-title { font-size: clamp(36px, 4.5vh, 52px); }
             .slide-end .end-title { font-size: clamp(48px, 6vh, 68px); }
-            #clickRight { right: 8px; width: calc(33.33vw - 8px); }
+            #clickRight { right: 0; width: 33.33vw; }
             .styled-table { font-size: clamp(18px, 2vh, 26px); }
+        }
+
+        /* ----- 课后小练习 样式 (复用info-block风格) ----- */
+        .exercise-section {
+            margin-top: 1.2vh;
+            padding-top: 0.6vh;
+            border-top: 3px solid #e88934;
+            position: relative;
+            z-index: 101;
+        }
+        .exercise-section .exercise-title {
+            font-size: clamp(30px, 3.4vh, 44px);
+            font-weight: 700;
+            color: #0a2a4a;
+            margin-bottom: 0.4vh;
+            display: flex;
+            align-items: center;
+            gap: 0.8vw;
+        }
+        .exercise-section .exercise-title::before {
+            content: "📝";
+            font-size: clamp(32px, 3.6vh, 48px);
+        }
+        .exercise-item {
+            background: #f8fafc;
+            padding: 0.8vh 1.5vw;
+            border-radius: 12px;
+            border: 1px solid #e9edf4;
+            margin-bottom: 0.8vh;
+            font-size: clamp(24px, 2.6vh, 34px);
+            position: relative;
+            z-index: 102;
+        }
+        .exercise-item .q {
+            font-weight: 600;
+            color: #0a2a4a;
+            margin-bottom: 0.2vh;
+        }
+        .exercise-item .opts {
+            color: #1f2e44;
+            margin: 0.2vh 0 0.2vh 1vw;
+            display: block;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: clamp(20px, 2.2vh, 30px);
+            line-height: 1.6;
+        }
+        .exercise-item .opts .opt-line {
+            display: block;
+            padding-left: 0.5vw;
+        }
+        .exercise-item .code-block {
+            margin: 0.4vh 0;
+            font-size: clamp(18px, 2vh, 26px);
+            padding: 0.8vh 1.5vw;
+        }
+        .exercise-item .ans-area {
+            color: #e88934;
+            font-weight: 600;
+            margin: 0.3vh 0 0 0;
+            display: none;
+            font-size: clamp(22px, 2.4vh, 30px);
+        }
+        .exercise-item .ans-area.show {
+            display: block;
+        }
+        .exercise-item .btn-answer {
+            display: block;
+            margin: 0.4vh auto 0.2vh auto;
+            padding: 0.2vh 2vw;
+            background: #0a2a4a;
+            color: #fff;
+            border: none;
+            border-radius: 30px;
+            font-size: clamp(20px, 2.2vh, 28px);
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: inherit;
+            width: fit-content;
+            pointer-events: auto;
+            position: relative;
+            z-index: 103;
+        }
+        .exercise-item .btn-answer:hover {
+            background: #e88934;
+        }
+        .exercise-item .btn-answer:active {
+            transform: scale(0.95);
+        }
+        .btn-wrapper {
+            text-align: center;
+            width: 100%;
+            position: relative;
+            z-index: 103;
+            pointer-events: auto;
+        }
+        .slide .exercise-section {
+            position: relative;
+            z-index: 101;
+        }
+        .slide .exercise-item {
+            position: relative;
+            z-index: 102;
         }
     </style>
 </head>
@@ -186,7 +289,7 @@
 
     <script>
         // ============================================================
-        // 辅助函数
+        // 辅助函数（与原课件一致）
         // ============================================================
         function codeBlock(code, label = '') {
             return `<div style="margin-top:0.2vh;">
@@ -229,7 +332,61 @@
         }
 
         // ============================================================
-        // 幻灯片数据
+        // 练习构建函数（支持代码块、选项换行）
+        // ============================================================
+        function buildExercises(exList) {
+            if (!exList || exList.length === 0) return '';
+            let html = `<div class="exercise-section"><div class="exercise-title">课后小练习</div>`;
+            exList.forEach((ex, idx) => {
+                let qHtml = ex.q || '';
+                let codeHtml = '';
+                if (ex.code) {
+                    codeHtml = `<div class="code-block">${ex.code}</div>`;
+                }
+                let optsHtml = '';
+                if (ex.opts) {
+                    const lines = ex.opts.split('\n').filter(s => s.trim());
+                    if (lines.length > 1) {
+                        optsHtml = `<span class="opts">${lines.map(line => `<span class="opt-line">${line.trim()}</span>`).join('')}</span>`;
+                    } else {
+                        optsHtml = `<span class="opts">${ex.opts}</span>`;
+                    }
+                }
+                const ansText = ex.ans ? `✅ 答案：${ex.ans}` : '';
+                html += `<div class="exercise-item" data-exidx="${idx}">
+                    <div class="q">${idx+1}. ${qHtml}</div>
+                    ${codeHtml}
+                    ${optsHtml}
+                    <div class="ans-area" id="ans-${idx}">${ansText}</div>
+                    <div class="btn-wrapper">
+                        <button class="btn-answer" onclick="toggleAnswer(this, ${idx})">显示答案</button>
+                    </div>
+                </div>`;
+            });
+            html += `</div>`;
+            return html;
+        }
+
+        // 全局切换答案
+        function toggleAnswer(btn, idx) {
+            const item = btn.closest('.exercise-item');
+            if (!item) return;
+            const ansArea = item.querySelector('.ans-area');
+            if (!ansArea) return;
+            const isHidden = ansArea.style.display === 'none' || ansArea.style.display === '';
+            if (isHidden) {
+                ansArea.style.display = 'block';
+                ansArea.classList.add('show');
+                btn.textContent = '隐藏答案';
+            } else {
+                ansArea.style.display = 'none';
+                ansArea.classList.remove('show');
+                btn.textContent = '显示答案';
+            }
+        }
+
+        // ============================================================
+        // 幻灯片数据（完全保留原课件所有内容）
         // ============================================================
         const slides = [];
 
@@ -928,7 +1085,151 @@
         });
 
         // ============================================================
-        // 渲染引擎
+        // 注入课后练习（根据标题匹配）
+        // ============================================================
+        // 习题库（从PDF提取，完美匹配知识点）
+        const exLib = {
+            // 文件基本概念
+            file_concept: [
+                {
+                    q: '根据数据的组织形式，C中将文件分为 和两种类型。',
+                    opts: 'A. 文本文件和二进制文件\nB. 普通文件和设备文件\nC. 只读文件和读写文件\nD. 顺序文件和随机文件',
+                    ans: 'A'
+                },
+                {
+                    q: '以下叙述中错误的是（  ）',
+                    opts: 'A. C语言中对二进制文件的访问速度比文本文件快\nB. C语言中随机文件以二进制代码形式存储数据\nC. 语句 FILE fp; 定义了一个名为 fp 的文件指针\nD. C语言中的文本文件以ASCII码形式存储数据',
+                    ans: 'C'
+                }
+            ],
+            // 文件指针
+            file_ptr: [
+                {
+                    q: '以下可以作为文件打开函数 fopen 中的第一个参数的正确格式是（  ）',
+                    opts: 'A. "file1.txt"\nB. file1.txt\nC. file1.txt,w\nD. "file1.txt,w"',
+                    ans: 'A'
+                }
+            ],
+            // fopen/fclose 使用方式
+            fopen_use: [
+                {
+                    q: '若要打开 A 盘上 user 子目录下名为 abc.txt 的文本文件进行读、写操作，下面符合此要求的函数调用是（  ）',
+                    opts: 'A. fopen("A:\\user\\abc.txt", "r")\nB. fopen("A:\\user\\abc.txt", "r+")\nC. fopen("A:\\user\\abc.txt", "rb")\nD. fopen("A:\\user\\abc.txt", "w")',
+                    ans: 'B'
+                },
+                {
+                    q: '当已经存在一个 file1.txt 文件，执行函数 fopen("file1.txt", "r+") 的功能是（  ）',
+                    opts: 'A. 打开file1.txt文件，清除原有的内容\nB. 打开file1.txt文件，只能写入新的内容\nC. 打开file1.txt文件，只能读取原有内容\nD. 打开file1.txt文件，可以读取和写入新的内容',
+                    ans: 'D'
+                }
+            ],
+            // fgetc/fputc/rewind
+            fgetc_fputc: [
+                {
+                    q: 'getc 函数的作用是从指定文件读入一个字符，该文件的打开方式必须是（  ）',
+                    opts: 'A. 只写\nB. 追加\nC. 读或读写\nD. 答案B和C都正确',
+                    ans: 'C'
+                },
+                {
+                    q: '下面程序执行后，文件 test 中的内容是（  ）\nvoid fun(char *fname, char *st) { FILE *myf; int i; myf=fopen(fname,"w"); for(i=0;i<strlen(st);i++) fputc(st[i],myf); fclose(myf); }\nmain() { fun("test","new world"); fun("test","hello,"); }',
+                    opts: 'A. hello,\nB. new worldhello,\nC. new world\nD. hello,rd',
+                    ans: 'A'
+                }
+            ],
+            // fgets/fputs
+            fgets_fputs: [
+                {
+                    q: '以下程序的功能是（  ）\nmain() { FILE *fp; char str[]="Beijing 2008"; fp=fopen("file2","w"); fputs(str,fp); fclose(fp); }',
+                    opts: 'A. 在屏幕上显示"Beijing 2008"\nB. 把"Beijing 2008"存入file2文件中\nC. 在打印机上打印出"Beijing 2008"\nD. 以上都不对',
+                    ans: 'B'
+                }
+            ],
+            // fprintf/fscanf
+            fprintf_fscanf: [
+                {
+                    q: 'fscanf 函数的正确调用形式是（  ）',
+                    opts: 'A. fscanf(fp, 格式字符串, 输出表列)\nB. fscanf(格式字符串, 输出表列, fp)\nC. fscanf(格式字符串, 文件指针, 输出表列)\nD. fscanf(文件指针, 格式字符串, 输入表列)',
+                    ans: 'D'
+                },
+                {
+                    q: '有以下程序，程序运行后的输出结果是（  ）\n#include <stdio.h>\nmain() { FILE *fp; int i=20,j=30,k,n; fp=fopen("d1.dat","w"); fprintf(fp,"%d\\n",i); fprintf(fp,"%d\\n",j); fclose(fp); fp=fopen("d1.dat","r"); fscanf(fp,"%d%d",&k,&n); printf("%d%d\\n",k,n); fclose(fp); }',
+                    opts: 'A. 20 30\nB. 20 50\nC. 30 50\nD. 30 20',
+                    ans: 'A'
+                }
+            ],
+            // fseek/feof/ftell
+            fseek_feof: [
+                {
+                    q: '若 fp 已正确定义并指向某个文件，当未遇到该文件结束标志时函数 feof(fp) 的值为（  ）',
+                    opts: 'A. 0\nB. 1\nC. -1\nD. 一个非0值',
+                    ans: 'A'
+                },
+                {
+                    q: '函数调用语句：fseek(fp, -10L, 2); 的含义是（  ）',
+                    opts: 'A. 将文件位置指针从文件末尾处向文件头的方向移动10个字节\nB. 将文件位置指针从当前位置向文件头的方向移动10个字节\nC. 将文件位置指针从当前位置向文件末尾方向移动10个字节\nD. 将文件位置指针移到距离文件头10个字节处',
+                    ans: 'A'
+                },
+                {
+                    q: '函数 rewind 的作用是（  ）',
+                    opts: 'A. 使位置指针重新返回文件的开头\nB. 将位置指针指向文件中所要求的特定位置\nC. 使位置指针指向文件的末尾\nD. 返回位置指针的当前位置',
+                    ans: 'A'
+                }
+            ],
+            // fread/fwrite
+            fread_fwrite: [
+                {
+                    q: 'fread(buf, 64, 2, fp) 的功能是（  ）',
+                    opts: 'A. 从fp所指向的文件中，读出整数64，并存放在buf中\nB. 从fp所指向的文件中，读出整数64和2，并存放在buf中\nC. 从fp所指向的文件中，读出64个字节的字符，读两次，并存放在buf地址中\nD. 从fp所指向的文件中，读出64个字节的字符，并存放在buf中',
+                    ans: 'C'
+                },
+                {
+                    q: '已知函数的调用形式：fread(buf, size, count, fp)，参数 buf 的含义是（  ）',
+                    opts: 'A. 一个整型变量，代表要读入的数据项总数\nB. 一个文件指针，指向要读的文件\nC. 一个指针，指向要读入数据的存放地址\nD. 一个存储区，存放要读的数据项',
+                    ans: 'C'
+                }
+            ],
+            // ferror/clearerr
+            ferror: [
+                {
+                    q: '检查由 fp 指定的文件在读写时是否出错的函数是（  ）',
+                    opts: 'A. feof()\nB. ferror()\nC. clearerr(fp)\nD. ferror(fp)',
+                    ans: 'D'
+                }
+            ],
+            // 文件分隔符（无直接习题）
+            // argc/argv
+            argc_argv: [
+                // 课件中无直接习题，可跳过
+            ]
+        };
+
+        // 匹配标题并添加练习
+        slides.forEach((slide, index) => {
+            if (slide.type === 'cover' || slide.type === 'end' || slide.title === '📋 课程目录') return;
+            const title = slide.title || '';
+            if (title.includes('12.1 文件的基本概念') || title.includes('12.1.1 普通文件') || title.includes('12.1.1 设备文件') || title.includes('12.1.2 ASCII码文件') || title.includes('12.1.2 二进制码文件')) {
+                slide.exercises = exLib.file_concept;
+            } else if (title.includes('12.2 文件指针')) {
+                slide.exercises = exLib.file_ptr;
+            } else if (title.includes('表12-1 文件使用方式')) {
+                slide.exercises = exLib.fopen_use;
+            } else if (title.includes('12.3.1 fopen / fclose / fgetc / fputc / rewind')) {
+                slide.exercises = exLib.fgetc_fputc;
+            } else if (title.includes('12.3.2 fgets() / fputs()')) {
+                slide.exercises = exLib.fgets_fputs;
+            } else if (title.includes('12.3.3 fprintf / fscanf / fseek / feof / ftell')) {
+                slide.exercises = exLib.fprintf_fscanf.concat(exLib.fseek_feof);
+            } else if (title.includes('表12-2 起始点名称代码')) {
+                slide.exercises = exLib.fseek_feof;
+            } else if (title.includes('12.3.4 fread / fwrite / ferror / clearerr')) {
+                slide.exercises = exLib.fread_fwrite.concat(exLib.ferror);
+            } else if (title.includes('12.4 argc 和 argv 命令行参数')) {
+                // 无合适习题，跳过
+            }
+        });
+
+        // ============================================================
+        // 渲染引擎（修改以支持练习）
         // ============================================================
         const container = document.getElementById('slidesContainer');
 
@@ -999,15 +1300,22 @@
                 }
             }
 
+            // 追加练习
+            let exerciseHtml = '';
+            if (data.exercises && data.exercises.length > 0) {
+                exerciseHtml = buildExercises(data.exercises);
+            }
+
             section.innerHTML = meta + `
                 <div class="slide-title">${data.title}</div>
                 <div class="slide-sub">${data.subtitle}</div>
                 ${content}
+                ${exerciseHtml}
             `;
             return section;
         }
 
-        // 处理特殊页面
+        // 处理特殊页面（chapter 引导页）
         slides.forEach((data) => {
             let el;
             if (data.type === 'cover') {

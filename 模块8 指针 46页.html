@@ -147,10 +147,11 @@
         .slide-chapter .ch-sub { font-size: clamp(30px, 3.6vh, 48px); color: #b8d0e8; margin-top: 1vh; }
         .slide-chapter .ch-desc { font-size: clamp(28px, 3.2vh, 44px); color: #d0dce8; margin-top: 1.5vh; max-width: 80%; line-height: 1.6; }
 
+        /* 点击区域：左右翻页，中间穿透 */
         .click-area { position: fixed; top: 0; height: 100vh; z-index: 100; cursor: pointer; }
         #clickLeft { left: 0; width: 33.33vw; }
-        #clickRight { right: 12px; width: calc(33.33vw - 12px); }
-        #clickCenter { left: 33.33vw; width: calc(33.33vw - 12px); cursor: default; }
+        #clickRight { right: 0; width: 33.33vw; }
+        #clickCenter { left: 33.33vw; width: 33.33vw; pointer-events: none; cursor: default; }
 
         .chart-placeholder {
             background: #f0f6fe; border: 3px dashed #8aa9d0;
@@ -173,8 +174,110 @@
             .slide-cover .sub-title { font-size: clamp(28px, 3.4vh, 40px); }
             .slide-chapter .ch-title { font-size: clamp(36px, 4.5vh, 52px); }
             .slide-end .end-title { font-size: clamp(48px, 6vh, 68px); }
-            #clickRight { right: 8px; width: calc(33.33vw - 8px); }
+            #clickRight { right: 0; width: 33.33vw; }
             .styled-table { font-size: clamp(18px, 2vh, 26px); }
+        }
+
+        /* ----- 课后小练习 样式 (复用info-block风格) ----- */
+        .exercise-section {
+            margin-top: 1.2vh;
+            padding-top: 0.6vh;
+            border-top: 3px solid #e88934;
+            position: relative;
+            z-index: 101;
+        }
+        .exercise-section .exercise-title {
+            font-size: clamp(30px, 3.4vh, 44px);
+            font-weight: 700;
+            color: #0a2a4a;
+            margin-bottom: 0.4vh;
+            display: flex;
+            align-items: center;
+            gap: 0.8vw;
+        }
+        .exercise-section .exercise-title::before {
+            content: "📝";
+            font-size: clamp(32px, 3.6vh, 48px);
+        }
+        .exercise-item {
+            background: #f8fafc;
+            padding: 0.8vh 1.5vw;
+            border-radius: 12px;
+            border: 1px solid #e9edf4;
+            margin-bottom: 0.8vh;
+            font-size: clamp(24px, 2.6vh, 34px);
+            position: relative;
+            z-index: 102;
+        }
+        .exercise-item .q {
+            font-weight: 600;
+            color: #0a2a4a;
+            margin-bottom: 0.2vh;
+        }
+        .exercise-item .opts {
+            color: #1f2e44;
+            margin: 0.2vh 0 0.2vh 1vw;
+            display: block;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: clamp(20px, 2.2vh, 30px);
+            line-height: 1.6;
+        }
+        .exercise-item .opts .opt-line {
+            display: block;
+            padding-left: 0.5vw;
+        }
+        .exercise-item .code-block {
+            margin: 0.4vh 0;
+            font-size: clamp(18px, 2vh, 26px);
+            padding: 0.8vh 1.5vw;
+        }
+        .exercise-item .ans-area {
+            color: #e88934;
+            font-weight: 600;
+            margin: 0.3vh 0 0 0;
+            display: none;
+            font-size: clamp(22px, 2.4vh, 30px);
+        }
+        .exercise-item .ans-area.show {
+            display: block;
+        }
+        .exercise-item .btn-answer {
+            display: block;
+            margin: 0.4vh auto 0.2vh auto;
+            padding: 0.2vh 2vw;
+            background: #0a2a4a;
+            color: #fff;
+            border: none;
+            border-radius: 30px;
+            font-size: clamp(20px, 2.2vh, 28px);
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: inherit;
+            width: fit-content;
+            pointer-events: auto;
+            position: relative;
+            z-index: 103;
+        }
+        .exercise-item .btn-answer:hover {
+            background: #e88934;
+        }
+        .exercise-item .btn-answer:active {
+            transform: scale(0.95);
+        }
+        .btn-wrapper {
+            text-align: center;
+            width: 100%;
+            position: relative;
+            z-index: 103;
+            pointer-events: auto;
+        }
+        .slide .exercise-section {
+            position: relative;
+            z-index: 101;
+        }
+        .slide .exercise-item {
+            position: relative;
+            z-index: 102;
         }
     </style>
 </head>
@@ -186,7 +289,7 @@
 
     <script>
         // ============================================================
-        // 辅助函数
+        // 辅助函数（与原课件一致）
         // ============================================================
         function codeBlock(code, label = '') {
             return `<div style="margin-top:0.2vh;">
@@ -229,7 +332,61 @@
         }
 
         // ============================================================
-        // 幻灯片数据
+        // 练习构建函数（支持代码块、选项换行）
+        // ============================================================
+        function buildExercises(exList) {
+            if (!exList || exList.length === 0) return '';
+            let html = `<div class="exercise-section"><div class="exercise-title">课后小练习</div>`;
+            exList.forEach((ex, idx) => {
+                let qHtml = ex.q || '';
+                let codeHtml = '';
+                if (ex.code) {
+                    codeHtml = `<div class="code-block">${ex.code}</div>`;
+                }
+                let optsHtml = '';
+                if (ex.opts) {
+                    const lines = ex.opts.split('\n').filter(s => s.trim());
+                    if (lines.length > 1) {
+                        optsHtml = `<span class="opts">${lines.map(line => `<span class="opt-line">${line.trim()}</span>`).join('')}</span>`;
+                    } else {
+                        optsHtml = `<span class="opts">${ex.opts}</span>`;
+                    }
+                }
+                const ansText = ex.ans ? `✅ 答案：${ex.ans}` : '';
+                html += `<div class="exercise-item" data-exidx="${idx}">
+                    <div class="q">${idx+1}. ${qHtml}</div>
+                    ${codeHtml}
+                    ${optsHtml}
+                    <div class="ans-area" id="ans-${idx}">${ansText}</div>
+                    <div class="btn-wrapper">
+                        <button class="btn-answer" onclick="toggleAnswer(this, ${idx})">显示答案</button>
+                    </div>
+                </div>`;
+            });
+            html += `</div>`;
+            return html;
+        }
+
+        // 全局切换答案
+        function toggleAnswer(btn, idx) {
+            const item = btn.closest('.exercise-item');
+            if (!item) return;
+            const ansArea = item.querySelector('.ans-area');
+            if (!ansArea) return;
+            const isHidden = ansArea.style.display === 'none' || ansArea.style.display === '';
+            if (isHidden) {
+                ansArea.style.display = 'block';
+                ansArea.classList.add('show');
+                btn.textContent = '隐藏答案';
+            } else {
+                ansArea.style.display = 'none';
+                ansArea.classList.remove('show');
+                btn.textContent = '显示答案';
+            }
+        }
+
+        // ============================================================
+        // 幻灯片数据（完全保留原课件所有内容）
         // ============================================================
         const slides = [];
 
@@ -1166,7 +1323,175 @@
         });
 
         // ============================================================
-        // 渲染引擎
+        // 注入课后练习（根据标题匹配）
+        // ============================================================
+        // 习题库（从PDF提取，完美匹配知识点）
+        const exLib = {
+            // 指针基本概念
+            basic_concept: [
+                {
+                    q: '变量的指针，其含义是指该变量的（  ）',
+                    opts: 'A. 值\nB. 地址\nC. 名\nD. 一个标志',
+                    ans: 'B'
+                },
+                {
+                    q: '若有定义：int x=0, *p=&x; 则语句 printf("%d\\n", *p); 的输出结果是（  ）',
+                    opts: 'A. 随机值\nB. 0\nC. x的地址\nD. p的地址',
+                    ans: 'B'
+                }
+            ],
+            // 一般指针定义与初始化
+            normal_ptr: [
+                {
+                    q: '设有定义：int n1=0, n2, *p=&n2, *q=&n1，以下赋值语句中与 n2=n1; 语句等价的是（  ）',
+                    opts: 'A. *p = *q\nB. p = q\nC. *p = &n1\nD. p = *q',
+                    ans: 'A'
+                },
+                {
+                    q: '设有定义：int a, *pa=&a; 以下 scanf 语句中能正确为变量 a 读入数据的是（  ）',
+                    opts: 'A. scanf("%d", pa);\nB. scanf("%d", a);\nC. scanf("%d", &pa);\nD. scanf("%d", *pa);',
+                    ans: 'A'
+                }
+            ],
+            // 一维数组指针
+            array_ptr_1d: [
+                {
+                    q: '若有定义：int a[5], *p=a；则对 a 数组元素的正确引用是（  ）',
+                    opts: 'A. *&a[5]\nB. a+2\nC. *(p+5)\nD. *(a+2)',
+                    ans: 'D'
+                },
+                {
+                    q: '若有定义：int a[5], *p=a；则对 a 数组元素的正确引用是（  ）',
+                    opts: 'A. p+5\nB. *a+1\nC. &a+1\nD. &a[0]',
+                    ans: 'D'
+                }
+            ],
+            // 二维数组指针
+            array_ptr_2d: [
+                {
+                    q: '若有定义: int a[2][3]; 则对 a 数组的第 i 行第 j 列元素值的正确引用是（  ）',
+                    opts: 'A. *(*(a+i)+j)\nB. (a+i)[j]\nC. *(a+i+j)\nD. *(a+i)+j',
+                    ans: 'A'
+                },
+                {
+                    q: '若有定义: int a[2][3]; 则对 a 数组的第 i 行第 j 列元素地址的正确引用是（  ）',
+                    opts: 'A. *(a[i]+j)\nB. (a+i)\nC. *(a+j)\nD. a[i]+j',
+                    ans: 'D'
+                }
+            ],
+            // 数组指针 vs 指针数组
+            ptr_vs_array: [
+                {
+                    q: '下列选项中声明了一个指针数组的是（  ）\n1. int *p[2];\n2. int (*p)[2];\n3. typedef int* intPtr; intPtr p[2];',
+                    opts: 'A. 1和2\nB. 1和3\nC. 2和3\nD. 1、2和3',
+                    ans: 'B'
+                }
+            ],
+            // 字符串指针
+            string_ptr: [
+                {
+                    q: '以下语句或语句组中，能正确进行字符串赋值的是（  ）',
+                    opts: 'A. char *sp; *sp="right!";\nB. char s[10]; s="right!";\nC. char s[10]; *s="right!";\nD. char *sp="right!";',
+                    ans: 'D'
+                },
+                {
+                    q: '设 char *s="ta101bc"; 则指针变量 s 指向的字符串所占的字节数是（  ）',
+                    opts: 'A. 9\nB. 5\nC. 6\nD. 7',
+                    ans: 'D'
+                }
+            ],
+            // 指针数学运算
+            ptr_math: [
+                {
+                    q: '在16位编译系统上，若有定义 int a[]={10,20,30}, *p=a;，当执行 p++; 后，下列说法错误的是（  ）',
+                    opts: 'A. p向高地址移了一个字节\nB. p向高地址移了一个存储单元\nC. p向高地址移了两个字节\nD. p与a+1等价',
+                    ans: 'A'
+                },
+                {
+                    q: '运行下列程序的输出结果是（  ）\nmain(){int a[]={1,2,3,4,5},i,*p=a+2; printf("%d",p[1]-p[-1]);}',
+                    opts: 'A. 出错，因下标不能为负值\nB. 2\nC. 1\nD. 3',
+                    ans: 'B'
+                }
+            ],
+            // 二级指针
+            double_ptr: [
+                {
+                    q: '设有定义: int n=0, *p=&n, **q=&p; 则以下选项中，正确的赋值语句是（  ）',
+                    opts: 'A. p=1;\nB. *q=2;\nC. q=p;\nD. *p=5;',
+                    ans: 'D'
+                },
+                {
+                    q: '有以下程序段片段：main(){int a=5, *b, **c; c=&b; b=&a;} 表达式 **c 的值是（  ）',
+                    opts: 'A. 变量a的地址\nB. 变量b中的值\nC. 变量a中的值\nD. 变量b的地址',
+                    ans: 'C'
+                }
+            ],
+            // 函数指针
+            func_ptr: [
+                {
+                    q: '下面选项属于函数指针的是（  ）',
+                    opts: 'A. (int *)p(int,int)\nB. int *p(int,int)\nC. 两者都是\nD. 两者都不是',
+                    ans: 'A'
+                },
+                {
+                    q: '若有函数 max(a,b)，并且已使函数指针变量 p 指向函数 max，当调用该函数时，正确的调用方法是（  ）',
+                    opts: 'A. (*p)max(a,b);\nB. *pmax(a,b);\nC. (*p)(a,b);\nD. *p(a,b);',
+                    ans: 'C'
+                }
+            ],
+            // 地址传递（函数参数）
+            addr_pass: [
+                {
+                    q: '有以下程序片段：\nvoid fun(char *a,char *b){a=b;(*a)++;}\nmain(){char c1=\'A\',c2=\'a\',*p1,*p2; p1=&c1; p2=&c2; fun(p1,p2); printf("%c%c\\n",c1,c2);}\n输出结果是（  ）',
+                    opts: 'A. Ab\nB. aa\nC. Aa\nD. Bb',
+                    ans: 'A'
+                },
+                {
+                    q: '已有变量定义和函数调用语句：int a=25; print_value(&a); 下面函数的输出结果是（  ）\nvoid print_value(int *x){printf("%d\\n",++*x);}',
+                    opts: 'A. 23\nB. 24\nC. 25\nD. 26',
+                    ans: 'D'
+                }
+            ]
+        };
+
+        // 匹配标题并添加练习
+        slides.forEach((slide, index) => {
+            if (slide.type === 'cover' || slide.type === 'end' || slide.title === '📋 课程目录') return;
+            const title = slide.title || '';
+            if (title.includes('8.1 指针的基本概念')) {
+                slide.exercises = exLib.basic_concept;
+            } else if (title.includes('一般指针变量的定义与初始化')) {
+                slide.exercises = exLib.normal_ptr;
+            } else if (title.includes('一维数组指针变量的定义与初始化')) {
+                slide.exercises = exLib.array_ptr_1d;
+            } else if (title.includes('二维数组指针变量的定义与初始化')) {
+                slide.exercises = exLib.array_ptr_2d;
+            } else if (title.includes('数组指针 vs 指针数组')) {
+                slide.exercises = exLib.ptr_vs_array;
+            } else if (title.includes('字符串指针变量的定义与初始化')) {
+                slide.exercises = exLib.string_ptr;
+            } else if (title.includes('& 取地址 与 * 取内容')) {
+                // 复用 basic_concept 中的题目
+                slide.exercises = [
+                    {
+                        q: '若有定义：int x=0, *p=&x; 则语句 printf("%d\\n", *p); 的输出结果是（  ）',
+                        opts: 'A. 随机值\nB. 0\nC. x的地址\nD. p的地址',
+                        ans: 'B'
+                    }
+                ];
+            } else if (title.includes('指针的数学运算 — 加减')) {
+                slide.exercises = exLib.ptr_math;
+            } else if (title.includes('二级指针的概念')) {
+                slide.exercises = exLib.double_ptr;
+            } else if (title.includes('函数指针的定义与初始化')) {
+                slide.exercises = exLib.func_ptr;
+            } else if (title.includes('地址传递 — 4种交换方式')) {
+                slide.exercises = exLib.addr_pass;
+            }
+        });
+
+        // ============================================================
+        // 渲染引擎（修改以支持练习）
         // ============================================================
         const container = document.getElementById('slidesContainer');
 
@@ -1237,15 +1562,22 @@
                 }
             }
 
+            // 追加练习
+            let exerciseHtml = '';
+            if (data.exercises && data.exercises.length > 0) {
+                exerciseHtml = buildExercises(data.exercises);
+            }
+
             section.innerHTML = meta + `
                 <div class="slide-title">${data.title}</div>
                 <div class="slide-sub">${data.subtitle}</div>
                 ${content}
+                ${exerciseHtml}
             `;
             return section;
         }
 
-        // 处理特殊页面
+        // 处理特殊页面（chapter 引导页）
         slides.forEach((data) => {
             let el;
             if (data.type === 'cover') {
