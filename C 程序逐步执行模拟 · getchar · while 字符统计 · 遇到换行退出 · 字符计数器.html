@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · getchar · while 字符统计 · 遇到换行退出 · 字符计数器</title>
+<style>
+  :root{
+    --bg:#070e1a; --border:#1e2f49; --text:#dce8f8; --muted:#7d93b3;
+    --accent:#38bdf8; --green:#4ade80; --amber:#fbbf24;
+    --pink:#f472b6; --purple:#c084fc; --teal:#2dd4bf; --orange:#fb923c;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:radial-gradient(1100px 640px at 12% -8%,#152743 0%,var(--bg) 62%);
+    color:var(--text);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+
+  /* ===== 顶栏 ===== */
+  .topbar{
+    flex:0 0 auto;display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .9rem;
+    padding:.55rem .9rem;background:linear-gradient(180deg,#122036,#0c1626);
+    border-bottom:1px solid var(--border);z-index:5;
+  }
+  .title{display:flex;align-items:baseline;gap:.6rem;min-width:0;}
+  .title h1{margin:0;font-size:1.02rem;letter-spacing:.03em;white-space:nowrap;}
+  .title .sub{font-size:.78rem;color:var(--muted);white-space:nowrap;}
+  .controls{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-left:auto;}
+  button{
+    font:inherit;font-size:.9rem;padding:.42rem .85rem;border-radius:.55rem;
+    border:1px solid var(--border);background:#182741;color:var(--text);
+    cursor:pointer;transition:background .15s,border-color .15s,transform .1s;
+    white-space:nowrap;
+  }
+  button:hover:not(:disabled){background:#213352;border-color:#33507d;}
+  button:active:not(:disabled){transform:translateY(1px);}
+  button:disabled{opacity:.32;cursor:not-allowed;}
+  button.primary{
+    background:linear-gradient(180deg,#0ea5e9,#0284c7);
+    border-color:#38bdf8;color:#04121f;font-weight:700;
+  }
+  button.primary.playing{
+    background:linear-gradient(180deg,#f59e0b,#d97706);
+    border-color:#fbbf24;color:#1a1200;
+  }
+  .speed{display:flex;align-items:center;gap:.45rem;font-size:.82rem;color:var(--muted);}
+  .speed input{width:6.5rem;accent-color:var(--accent);cursor:pointer;}
+  .speed b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:2.8rem;display:inline-block;}
+
+  /* ===== 主区域 ===== */
+  .main{
+    flex:1 1 auto;min-height:0;display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1.12fr);
+    gap:.75rem;padding:.75rem;overflow:hidden;
+  }
+  .panel{
+    background:linear-gradient(180deg,#111d31,#0e1728);
+    border:1px solid var(--border);border-radius:.8rem;
+    display:flex;flex-direction:column;min-height:0;min-width:0;
+    overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.4);
+  }
+  .panel-head{
+    flex:0 0 auto;display:flex;align-items:center;gap:.6rem;
+    padding:.5rem .8rem;font-size:.8rem;letter-spacing:.06em;
+    color:var(--muted);background:#16233a;border-bottom:1px solid var(--border);
+    text-transform:uppercase;
+  }
+  .panel-head .right{margin-left:auto;letter-spacing:0;text-transform:none;color:#5f7796;font-size:.76rem;}
+  .dots{display:flex;gap:.28rem;}
+  .dots i{width:.55rem;height:.55rem;border-radius:50%;display:block;}
+  .dots i:nth-child(1){background:#ef4444;}
+  .dots i:nth-child(2){background:#eab308;}
+  .dots i:nth-child(3){background:#22c55e;}
+
+  /* ===== 代码区 ===== */
+  .code-scroll{
+    position:relative;flex:1 1 auto;min-height:0;overflow:auto;padding:.7rem 0;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:clamp(.74rem,.26vw + .56vh,1.06rem);
+    line-height:1.95;scrollbar-width:thin;scrollbar-color:#334155 transparent;
+    scroll-behavior:smooth;
+  }
+  .code-scroll::-webkit-scrollbar{width:9px;height:9px;}
+  .code-scroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:9px;}
+  .code-scroll::-webkit-scrollbar-track{background:transparent;}
+
+  .code-line{
+    display:flex;align-items:flex-start;gap:.85rem;
+    padding:.12rem 1rem .12rem .45rem;
+    border-left:4px solid transparent;white-space:pre;
+    transition:background .3s,border-color .3s,opacity .3s;
+  }
+  .code-line .ln{
+    flex:0 0 auto;width:2.6ch;text-align:right;color:#3f5a7d;
+    user-select:none;font-variant-numeric:tabular-nums;
+  }
+  .code-line .src{flex:1 1 auto;}
+  /* 循环体高亮（写在 .active 之前，会被覆盖） */
+  .code-line.hit{
+    background:linear-gradient(90deg,rgba(74,222,128,.16),rgba(74,222,128,0));
+    border-left-color:var(--green);
+  }
+  .code-line.hit .ln{color:var(--green);}
+  /* 跳过 */
+  .code-line.skip{opacity:.24;}
+  .code-line.skip .ln{color:#4d5f78;}
+  /* 当前行（优先级最高） */
+  .code-line.active{
+    background:linear-gradient(90deg,rgba(56,189,248,.2),rgba(56,189,248,0));
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 1px rgba(56,189,248,.16);
+    opacity:1;
+  }
+  .code-line.active .ln{color:var(--accent);font-weight:700;}
+  .code-line.active .src{color:#ffffff;}
+
+  /* 语法着色 */
+  .pp{color:var(--purple);font-weight:600;}
+  .str{color:var(--green);}
+  .cmt{color:#5b6f8c;font-style:italic;}
+  .fn{color:var(--accent);}
+  .kw{color:var(--pink);font-weight:600;}
+  .num{color:var(--amber);}
+  .op{color:var(--orange);font-weight:700;}
+
+  /* ===== 说明区 ===== */
+  .explain{
+    flex:0 0 auto;padding:.62rem .9rem;font-size:.88rem;line-height:1.6;
+    color:#b8c9e0;background:#0b1424;border-top:1px solid var(--border);
+    max-height:12rem;overflow:auto;
+  }
+  .explain .ex-line{
+    display:inline-block;margin-right:.5rem;padding:.05rem .5rem;
+    border-radius:.4rem;background:rgba(56,189,248,.16);
+    color:var(--accent);font-weight:700;font-size:.78rem;vertical-align:middle;
+  }
+  .explain .ex-line.hit{background:rgba(74,222,128,.18);color:var(--green);}
+  .explain strong{color:#eaf3ff;}
+  .explain code{
+    font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.15);border-radius:.3rem;
+    padding:0 .32rem;color:#e2e8f0;
+  }
+  .explain .tip{
+    display:block;margin-top:.4rem;padding:.35rem .55rem;border-radius:.4rem;
+    background:rgba(45,212,191,.1);border-left:3px solid var(--teal);color:#bff5ec;
+    font-size:.85rem;
+  }
+  .explain .warn{
+    display:block;margin-top:.4rem;padding:.35rem .55rem;border-radius:.4rem;
+    background:rgba(251,191,36,.12);border-left:3px solid var(--amber);color:#ffe6b0;
+    font-size:.85rem;
+  }
+
+  /* ===== 右侧 ===== */
+  .side{display:flex;flex-direction:column;gap:.75rem;min-height:0;min-width:0;}
+  .vars-panel{flex:0 0 auto;max-height:80%;}
+  .var-table{padding:.45rem .65rem .6rem;display:flex;flex-direction:column;gap:.2rem;overflow:auto;}
+  .var-row{
+    display:flex;justify-content:space-between;align-items:center;gap:.6rem;
+    padding:.28rem .65rem;border-radius:.5rem;
+    background:#0d1728;border:1px solid #1b293f;
+    font-size:.83rem;transition:background .3s,border-color .3s;
+  }
+  .var-row.k-ctx{background:#122844;border-color:#26456b;}
+  .var-row.k-main{border-left:3px solid rgba(34,211,238,.55);}
+  .var-row.k-sub{border-left:3px solid rgba(56,189,248,.85);}
+  .var-row.k-val{border-left:3px solid rgba(244,114,182,.85);}
+  .var-row.k-sw{border-left:3px solid rgba(45,212,191,.9);}
+  .var-row.k-money{border-left:3px solid rgba(251,191,36,.9);}
+  .var-row.k-note{border-left:3px solid rgba(45,212,191,.75);}
+  .var-row.k-ret{border-left:3px solid rgba(251,191,36,.45);}
+  .var-row.k-char{border-left:3px solid rgba(192,132,252,.85);}
+  .var-row.k-buf{border-left:3px dashed rgba(125,147,179,.7);}
+  .var-row.changed{border-color:rgba(56,189,248,.85);background:rgba(56,189,248,.12);}
+  .var-name{color:var(--muted);white-space:nowrap;font-size:.78rem;}
+  .var-value{
+    font-family:ui-monospace,Consolas,monospace;font-weight:700;
+    color:var(--accent);font-variant-numeric:tabular-nums;
+    white-space:nowrap;text-align:right;overflow:hidden;text-overflow:ellipsis;
+  }
+  .var-value.dim{color:#5f7796;font-weight:500;}
+  .var-row.k-sub   .var-value{color:var(--accent);}
+  .var-row.k-val   .var-value{color:var(--pink);}
+  .var-row.k-sw    .var-value{color:var(--teal);}
+  .var-row.k-money .var-value{color:var(--amber);}
+  .var-row.k-main  .var-value{color:var(--green);}
+  .var-row.k-char  .var-value{color:var(--purple);}
+  .var-row.k-buf   .var-value{color:#8aa3c2;font-weight:600;font-size:.78rem;}
+  .var-row.k-note  .var-value{color:var(--teal);font-weight:600;font-size:.77rem;}
+  @keyframes flash{
+    0%{transform:scale(1);}
+    35%{transform:scale(1.28);color:#fff;text-shadow:0 0 14px var(--accent);}
+    100%{transform:scale(1);}
+  }
+  .var-value.flash{animation:flash .55s ease-out;}
+
+  /* ===== 输出区 ===== */
+  .out-panel{flex:1 1 auto;min-height:0;}
+  .console{
+    flex:1 1 auto;min-height:0;overflow:auto;
+    margin:.55rem .7rem .7rem;padding:.65rem .9rem;
+    background:#050c17;border:1px solid #16233a;border-radius:.55rem;
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:clamp(.88rem,.38vw + .66vh,1.18rem);
+    line-height:1.9;color:#e8f2ff;
+    scrollbar-width:thin;scrollbar-color:#334155 transparent;
+  }
+  .console::-webkit-scrollbar{width:9px;}
+  .console::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:9px;}
+  .console:empty::before{content:"（等待程序输出…）";color:#3d5474;}
+  .out-line{white-space:pre;animation:slideIn .35s ease-out;}
+  .seg-out{color:#e8f2ff;}
+  .seg-in{color:var(--teal);font-weight:700;}
+  .seg-money{color:var(--amber);font-weight:700;}
+  @keyframes slideIn{
+    from{opacity:0;transform:translateX(-.7rem);}
+    to{opacity:1;transform:none;}
+  }
+
+  /* ===== 窄屏 / 放大屏幕 ===== */
+  @media (max-width:960px){
+    body{overflow:auto;height:auto;min-height:100vh;}
+    .main{grid-template-columns:1fr;grid-template-rows:auto auto;overflow:visible;}
+    .code-panel{height:58vh;min-height:280px;}
+    .side{height:auto;}
+    .vars-panel{max-height:none;}
+    .out-panel{height:34vh;min-height:180px;}
+    .title .sub{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="title">
+    <h1>C 程序逐步执行模拟</h1>
+    <span class="sub">while 循环 · getchar 逐字符读取 · ch != '\n' · 统计一行字符数</span>
+  </div>
+  <div class="controls">
+    <button id="btnReset">⟲ 重置</button>
+    <button id="btnPrev">◀ 上一步</button>
+    <button id="btnPlay" class="primary">▶ 自动播放</button>
+    <button id="btnNext">下一步 ▶</button>
+    <label class="speed">速度
+      <input type="range" id="speed" min="200" max="2000" step="50" value="500">
+      <b id="speedLabel">0.50s</b>
+    </label>
+  </div>
+</header>
+
+<main class="main">
+  <!-- ============ 源代码 ============ -->
+  <section class="panel code-panel">
+    <div class="panel-head">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span>源代码 · count_chars.c</span>
+      <span class="right" id="stepCounter">步骤 — / —</span>
+    </div>
+
+    <div class="code-scroll" id="codeScroll">
+      <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+      <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span></span></div>
+      <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">int</span> i<span class="op">=</span><span class="num">0</span>;                           <span class="cmt">// 统计变量，初始化为0</span></span></div>
+      <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">char</span> ch;                           <span class="cmt">// 定义字符变量</span></span></div>
+      <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    ch <span class="op">=</span> <span class="fn">getchar</span>();                    <span class="cmt">// 先输入一个字符</span></span></div>
+      <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    <span class="kw">while</span> (ch <span class="op">!=</span> <span class="str">'\n'</span>) {              <span class="cmt">// 当字符不是换行符时循环</span></span></div>
+      <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">        i<span class="op">++</span>;                           <span class="cmt">// 统计变量加1</span></span></div>
+      <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">        ch <span class="op">=</span> <span class="fn">getchar</span>();                <span class="cmt">// 继续输入下一个字符</span></span></div>
+      <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">    }</span></div>
+      <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">    <span class="fn">printf</span>(<span class="str">"i=%d"</span>, i);                  <span class="cmt">// 输出字符总数</span></span></div>
+      <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回0，程序结束</span></span></div>
+      <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">}</span></div>
+    </div>
+
+    <div class="explain" id="explain"></div>
+  </section>
+
+  <!-- ============ 变量 / 输出 ============ -->
+  <aside class="side">
+    <section class="panel vars-panel">
+      <div class="panel-head">变量 · 循环条件 · 当前字符 · 输入缓冲区 · 状态表</div>
+      <div class="var-table" id="varTable"></div>
+    </section>
+
+    <section class="panel out-panel">
+      <div class="panel-head">程序运行结果（屏幕输出）</div>
+      <div class="console" id="consoleBody"></div>
+    </section>
+  </aside>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+     1. 模拟输入
+        —— 本次演示输入：用户在键盘输入 "hello" 后按回车
+        —— 于是输入流（缓冲区）里依次排队：h e l l o \n
+        —— 程序从第 5 行的 getchar() 开始，每次吃掉一个字符，
+           当 ch 变成 '\n'（换行符）时循环条件为假，循环结束。
+        —— 最终 i = 5（只统计了可见字符，不含回车换行）。
+     ========================================================= */
+  var INPUT_STR = 'hello';
+
+  /* =========================================================
+     2. 逐步执行轨迹（程序化生成）
+     ========================================================= */
+  function buildSteps() {
+    var st = [];
+
+    /* —— 输入缓冲区：把字符串拆成字符数组，末尾追加换行符 —— */
+    var buffer = INPUT_STR.split('').concat(['\n']);
+
+    var i    = 0;      /* int 型计数器，初值 0        */
+    var ch   = null;   /* char 型当前字符，尚未赋值   */
+    var idx  = 0;      /* 缓冲区中"下一个待读取字符"的位置 */
+    var iter = 0;      /* 循环体已执行次数            */
+    var LOOP_LINES = [6, 7, 8];
+
+    /* —— 格式化工具 —— */
+    function fmtCh(c) {
+      if (c === null || c === undefined) return '未初始化（不定值）';
+      if (c === '\n') return "'\\n'  （换行符）";
+      return "'" + c + "'";
+    }
+    function fmtBuf() {
+      var rest = buffer.slice(idx);
+      if (rest.length === 0) return '（空）';
+      return rest.map(function (c) {
+        return c === '\n' ? '\\n' : c;
+      }).join(' ');
+    }
+
+    function push(line, ctx, over, out, hit, skip, title, desc) {
+      var v = {
+        i:     String(i),
+        ch:    fmtCh(ch),
+        buf:   fmtBuf(),
+        cond:  '—',
+        subExpr: '—', subVal: '—', note: '—',
+        loops: iter, prints: 0, ret: '—'
+      };
+      for (var k in over) {
+        if (Object.prototype.hasOwnProperty.call(over, k)) v[k] = over[k];
+      }
+      st.push({
+        line: line, ctx: ctx, vars: v,
+        out: out || null,
+        hit: hit || [], skip: skip || [],
+        title: title, desc: desc
+      });
+    }
+
+    /* ---------- 第 1 行 ---------- */
+    push(1, '预处理阶段',
+      { i:'—', ch:'—', buf:'—' },
+      null, [], [],
+      '预处理指令 #include &lt;stdio.h&gt;',
+      '预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容引入源文件，让 <code>printf</code> 和 <code>getchar</code> 都获得正确的函数声明。<br>注意：这一行<b>不是 C 语句</b>，在<b>编译之前</b>就已被预处理器处理完了，不占运行时间，也不产生任何屏幕输出。'
+    );
+
+    /* ---------- 第 2 行 ---------- */
+    push(2, 'main · 程序入口',
+      { i:'—', ch:'—', buf:'—' },
+      null, [], [],
+      'int main() {  程序从这里开始',
+      '操作系统把控制权交给 <code>main</code>，程序正式开始执行。系统为 main 建立<b>栈帧</b>，接下来声明的 i、ch 都存放在这个栈帧里，函数结束时随栈帧一起销毁。'
+    );
+
+    /* ---------- 第 3 行 ---------- */
+    push(3, 'main · 初始化计数器 i',
+      { i:'0', ch:'—', buf:'—',
+        subExpr:'int i=0;', subVal:'i = 0',
+        note:'计数器必须从 0 开始' },
+      null, [], [],
+      'int i=0;  统计变量初始化为 0',
+      '声明 <b>int</b> 型统计变量 i 并初始化为 <b>0</b>。<br>为什么初值必须是 0？因为 <code>i++</code> 是"先取当前值再加 1"，如果 i 初值不为 0，就会凭空多出几个字符的计数。计数器从 0 开始，每读到一个非换行字符就加 1，循环结束时 i 恰好就是字符总数。'
+    );
+
+    /* ---------- 第 4 行 ---------- */
+    push(4, 'main · 声明字符变量 ch',
+      { i:'0', ch:'未初始化（不定值）', buf:'—',
+        subExpr:'char ch;', subVal:'ch 未初始化',
+        note:'char 占 1 个字节，存 1 个字符' },
+      null, [], [],
+      'char ch;  声明字符变量 ch，尚未赋值',
+      '声明一个 <b>char</b> 型变量 ch，用来存放"当前读到的那个字符"。它只占 <b>1 个字节</b>。<br>此刻 ch 尚未赋值，它的存储单元里是不确定的值。不过下一行就会被 <code>getchar()</code> 的返回值覆盖，所以不用担心里面的垃圾值。<span class="tip"><b>为什么用 char 而不是 int？</b>getchar() 的返回值类型其实是 int（便于用 EOF 判断），但把它赋给 char 变量也是常见写法，因为本程序只关心"是不是换行符"，不需要 EOF 判断。</span>'
+    );
+
+    /* ---------- 第 5 行：首次 getchar 等待输入 ---------- */
+    push(5, 'main · getchar 等待输入',
+      { i:'0', ch:'未初始化（不定值）',
+        subExpr:'ch = getchar()',
+        subVal:'（等待输入…）',
+        note:'getchar 从键盘读取 1 个字符' },
+      null, [], [],
+      'ch = getchar();  阻塞等待，准备读第 1 个字符',
+      '<code>getchar()</code> 的作用是<b>从标准输入（键盘）读取一个字符</b>，并把它作为返回值返回。<br>此刻还没有任何输入，程序会<b>阻塞</b>在这里等待——用户在键盘上敲入 <code>hello</code> 后按回车，<code>hello\\n</code> 这 6 个字符会先进入系统的<b>输入缓冲区</b>排队，然后 getchar() 才会一个个把它们取出来。<br><span class="tip"><b>输入缓冲区：</b>右侧变量表中的"输入缓冲区（剩余）"显示的就是还没被 getchar 取走的字符。此时队列里是 <code>h e l l o \\n</code>。</span>'
+    );
+
+    /* ---------- 第 5 行：首次 getchar 返回 'h' ---------- */
+    ch = buffer[idx]; idx += 1;
+    push(5, 'main · getchar 返回第 1 个字符',
+      { i:'0', ch:fmtCh(ch),
+        subExpr:'（输入完成）',
+        subVal:"ch = 'h'",
+        note:'char 型变量只能用 %c 输出' },
+      null, [], [],
+      "ch = getchar();  第 1 个字符 'h' 被读入 ch",
+      '用户在键盘上敲完 <code>hello</code> 并按回车后，getchar() 取走缓冲区的第 1 个字符 <b>\'h\'</b>，把它赋给 ch。<br>现在 <b>ch = \'h\'</b>，缓冲区里还剩 <code>e l l o \\n</code>。<br>程序继续执行到第 6 行，判断这个 ch 是不是换行符。'
+    );
+
+    /* ================= 循环 ================= */
+    while (ch !== '\n') {
+      iter += 1;
+
+      /* ---------- 第 6 行：条件判断（真） ---------- */
+      push(6, 'main · while 条件判断（第 ' + iter + ' 次）',
+        { i:String(i), ch:fmtCh(ch),
+          cond: fmtCh(ch) + " != '\\n' → 真",
+          subExpr: "ch != '\\n'  →  " + fmtCh(ch) + " != '\\n'",
+          subVal: '真（非 0）',
+          note: '!= 是不等于：字符相同则结果为假',
+          loops: iter - 1 },
+        null, [], [],
+        'while (' + fmtCh(ch) + " != '\\n')  为真，进入循环体",
+        '进入 <code>while</code> 语句，判断循环条件 <code>ch != \'\\n\'</code>，即"当前字符不是换行符"。<br>此刻 ch = <b>' + fmtCh(ch) + '</b>，它不是 <code>\\n</code>，所以条件为<b>真</b>，进入循环体。<br>循环节奏：<b>判断条件 → 为真则 i++ 并读下一个字符 → 回到条件重新判断</b>，如此往复，直到读到换行符为止。<span class="tip"><b>用 \"不等于\" 做哨兵判断：</b>用一个特殊字符（这里是 <code>\\n</code>）作为"停止标志"，这种循环模式叫做<b>哨兵循环</b>。它不需要事先知道字符个数，读到标志就停。</span>'
+      );
+
+      /* ---------- 第 7 行：i++ ---------- */
+      var oldI = i;
+      i = i + 1;
+      push(7, 'main · 循环体 · 计数器加 1（第 ' + iter + ' 次）',
+        { i:String(i), ch:fmtCh(ch),
+          cond: fmtCh(ch) + " != '\\n' → 真",
+          subExpr: 'i++',
+          subVal: 'i = ' + oldI + ' + 1 = ' + i,
+          note: '统计到一个非换行字符',
+          loops: iter },
+        null, [7, 8], [],
+        '第 ' + iter + ' 次统计：i 由 ' + oldI + ' 变为 ' + i,
+        '<code>i++;</code> 把计数器加 1，由 <b>' + oldI + '</b> 变成 <b>' + i + '</b>。<br>含义：又读到一个<b>非换行字符</b>（' + fmtCh(ch) + '），把它计入总数。<br>注意：<b>先判断后统计</b>——只有当第 6 行确认 ch 不是换行符时才会执行这一句，所以换行符永远不会被计入。'
+      );
+
+      /* ---------- 第 8 行：读下一个字符 ---------- */
+      ch = buffer[idx]; idx += 1;
+      push(8, 'main · 循环体 · 读取下一个字符（第 ' + iter + ' 次）',
+        { i:String(i), ch:fmtCh(ch),
+          cond: '—',
+          subExpr: 'ch = getchar()',
+          subVal: 'ch = ' + fmtCh(ch),
+          note: '从缓冲区取下一个字符；若队列空则阻塞等待',
+          loops: iter },
+        null, [7, 8], [],
+        '第 ' + iter + ' 次读取：ch 变为 ' + fmtCh(ch),
+        '<code>ch = getchar();</code> 从输入缓冲区取出<b>下一个字符</b>，赋给 ch。此刻 ch 变为 <b>' + fmtCh(ch) + '</b>。<br>' + (ch === '\n'
+          ? '<b>读到的正是换行符！</b>它是用户按回车时产生的。下一步回到第 6 行判断时，条件会变成<b>假</b>，循环随之结束。'
+          : '它不是换行符，所以下一次回到第 6 行时条件仍然为真，会继续进入循环体。') +
+        '<br>循环体执行完毕，程序自动回到第 6 行<b>重新判断条件</b>。'
+      );
+    }
+
+    /* ---------- 第 6 行：条件判断（假） ---------- */
+    push(6, 'main · while 条件判断（最后一次，假）',
+      { i:String(i), ch:fmtCh(ch),
+        cond: fmtCh(ch) + " != '\\n' → 假",
+        subExpr: "ch != '\\n'  →  " + fmtCh(ch) + " != '\\n'",
+        subVal: '假（0）',
+        note: '条件为假 → 跳出循环，执行 while 之后的语句',
+        loops: iter },
+      null, [], [7, 8, 9],
+      'while (' + fmtCh(ch) + " != '\\n')  为假，循环结束",
+      '此刻 ch = <b>' + fmtCh(ch) + '</b>，它与 <code>\\n</code> 相等，所以 <code>ch != \'\\n\'</code> 不成立，结果为<b>假（0）</b>。循环条件不再满足，<b>不再进入循环体</b>，程序跳到 while 之后（第 10 行）继续执行。<br><b>循环总账：</b>循环体一共执行了 <b>' + iter + ' 次</b>，每次都读取一个字符并计数（除了最后的换行符），i 最终停在 <b>' + i + '</b>。这就是"用户输入的可见字符个数"。<br><span class="tip"><b>为什么读换行符时不计数？</b>因为循环条件是"ch 不等于换行符"。读换行符这一动作发生在第 8 行，之后回到第 6 行判断时就为假，直接退出，<b>从来没有机会执行第 7 行的 i++</b>。这是"先判断、后处理"的经典结构。</span>'
+    );
+
+    /* ---------- 第 10 行：printf ---------- */
+    push(10, 'main · printf 输出结果',
+      { i:String(i), ch:fmtCh(ch),
+        cond: "ch != '\\n' → 假（已退出）",
+        subExpr: 'printf 的格式化输出',
+        subVal: '"i=%d"  +  i = ' + i,
+        note: '%d 输出 int；格式串无 \\n，不换行',
+        loops: iter, prints: 1 },
+      [[{ t: INPUT_STR, c: 'in' }],
+       [{ t: 'i=', c: 'out' }, { t: String(i), c: 'money' }]],
+      [], [],
+      'printf("i=%d", i);  输出 i=' + i,
+      '<code>printf("i=%d", i);</code> 按 <code>%d</code> 输出 int 变量 i。屏幕上出现 <b>i=' + i + '</b>，意思是用户输入的字符总数是 <b>' + i + '</b>。<br>格式串里<b>没有</b> <code>\\n</code>，所以输出后光标停在行尾，<b>不换行</b>。<br><span class="tip"><b>屏幕整体观感：</b>用户先输入 <code>' + INPUT_STR + '</code> 并按回车，终端会把它回显在第一行；随后程序打印 <b>i=' + i + '</b>，出现在第二行。所以屏幕最终显示两行内容。</span>'
+    );
+
+    /* ---------- 第 11 行 ---------- */
+    push(11, 'main · return',
+      { i:String(i), ch:fmtCh(ch),
+        cond:'—', subExpr:'—', subVal:'—', note:'—',
+        loops: iter, prints: 1, ret: '0' },
+      null, [], [],
+      'return 0;  结束 main 函数',
+      '<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。约定返回 0 表示程序<b>正常结束</b>，返回非 0 通常表示出错。这条语句不产生屏幕输出。'
+    );
+
+    /* ---------- 第 12 行 ---------- */
+    push(12, '程序结束',
+      { i:String(i), ch:fmtCh(ch),
+        cond:'—', subExpr:'—', subVal:'—', note:'—',
+        loops: iter, prints: 1, ret: '0' },
+      null, [], [],
+      'main 函数体结束 }',
+      '函数体收尾，main 的栈帧被销毁，变量 i、ch 随栈帧一起释放，控制权交还操作系统。<br>程序调用 <b>getchar 共 6 次</b>（第 5 行 1 次 + 第 8 行 5 次），循环体执行 <b>5 次</b>，调用 1 次 <b>printf</b>，屏幕输出 <b>i=' + i + '</b>，返回值 0。<span class="tip"><b>本程序要点总结：</b><br>① 用 <b>while</b> 配合"哨兵字符"<code>\\n</code> 实现不定长输入的读取；<br>② <b>先判断后计数</b>：只有确认 ch 不是换行符时，才执行 <code>i++</code>；<br>③ <b>读写一体的循环结构</b>：第 5 行负责"第一次读"，第 8 行负责"后续每次读"，两者配合保证读次数与判断次数对齐；<br>④ <b>getchar 从缓冲区读</b>：用户按回车后整行一起进入缓冲区，getchar 每次取一个，队列空时阻塞等待；<br>⑤ i 初值为 <b>0</b>，每读到一个非换行字符加 1，最终就是可见字符个数。<br><b>常见错误：</b>如果第 5 行的 getchar 漏写，ch 就是垃圾值，循环条件可能一上来就假或真，结果不可预测；如果把 while 写成"ch != EOF"而输入没给文件结束符，程序会一直等下去，直到按 Ctrl+Z / Ctrl+D。</span>'
+    );
+
+    return st;
+  }
+
+  var STEPS = buildSteps();
+
+  /* =========================================================
+     3. DOM 引用
+     ========================================================= */
+  var codeScroll  = document.getElementById('codeScroll');
+  var codeLines   = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+  var varTable    = document.getElementById('varTable');
+  var consoleBody = document.getElementById('consoleBody');
+  var explainEl   = document.getElementById('explain');
+  var stepCounter = document.getElementById('stepCounter');
+  var btnPlay     = document.getElementById('btnPlay');
+  var btnPrev     = document.getElementById('btnPrev');
+  var btnNext     = document.getElementById('btnNext');
+  var btnReset    = document.getElementById('btnReset');
+  var speedInput  = document.getElementById('speed');
+  var speedLabel  = document.getElementById('speedLabel');
+
+  /* =========================================================
+     4. 变量表行定义
+     ========================================================= */
+  var VAR_ROWS = [
+    { key:'ctx',     name:'当前执行位置',              kind:'k-ctx'   },
+    { key:'i',       name:'i  (int) 字符计数器',        kind:'k-main'  },
+    { key:'ch',      name:'ch (char) 当前字符',         kind:'k-char'  },
+    { key:'buf',     name:'输入缓冲区（剩余）',         kind:'k-buf'   },
+    { key:'cond',    name:"循环条件 ch != '\\n'",      kind:'k-sw'    },
+    { key:'subExpr', name:'正在求值的子表达式',          kind:'k-sub'   },
+    { key:'subVal',  name:'子表达式结果',               kind:'k-val'   },
+    { key:'note',    name:'关键规则提示',               kind:'k-note'  },
+    { key:'loops',   name:'循环体已执行次数',            kind:'k-ctx'   },
+    { key:'prints',  name:'printf 调用次数',            kind:'k-ctx'   },
+    { key:'ret',     name:'main 返回值',                kind:'k-ret'   }
+  ];
+
+  /* =========================================================
+     5. 运行状态
+     ========================================================= */
+  var current    = -1;
+  var playing    = false;
+  var timer      = null;
+  var speed      = Number(speedInput.value);
+  var lastOutSig = '';
+
+  /* =========================================================
+     6. 构建变量表骨架
+     ========================================================= */
+  function buildVarTable() {
+    varTable.innerHTML = VAR_ROWS.map(function (r) {
+      return '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+               '<span class="var-name">' + r.name + '</span>' +
+               '<span class="var-value dim">—</span>' +
+             '</div>';
+    }).join('');
+  }
+
+  function valueOf(step, key) {
+    if (!step) return '—';
+    if (key === 'ctx') return step.ctx;
+    return step.vars[key];
+  }
+
+  function updateVars(step, prevStep) {
+    VAR_ROWS.forEach(function (r) {
+      var row   = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+      var valEl = row.querySelector('.var-value');
+      var val   = String(valueOf(step, r.key));
+      var old   = String(valueOf(prevStep, r.key));
+
+      if (valEl.textContent !== val) {
+        valEl.textContent = val;
+        valEl.classList.toggle('dim', val === '—');
+        valEl.title = val;
+        valEl.classList.remove('flash');
+        void valEl.offsetWidth;                 /* 触发重排，重放动画 */
+        valEl.classList.add('flash');
+        if (prevStep && old !== val) {
+          row.classList.add('changed');
+          window.setTimeout(function () { row.classList.remove('changed'); }, 700);
+        }
+      }
+    });
+  }
+
+  /* =========================================================
+     7. 代码高亮 + 自动滑动居中
+     ========================================================= */
+  function centerActiveLine() {
+    var el = codeScroll.querySelector('.code-line.active');
+    if (!el) return;
+    window.requestAnimationFrame(function () {
+      var er = el.getBoundingClientRect();
+      var cr = codeScroll.getBoundingClientRect();
+      var delta = (er.top + er.height / 2) - (cr.top + cr.height / 2);
+      if (Math.abs(delta) > 4) {
+        codeScroll.scrollTo({
+          top: Math.max(0, codeScroll.scrollTop + delta),
+          behavior: 'smooth'
+        });
+      }
+    });
+  }
+
+  function updateCode(step) {
+    var activeLine = step ? step.line : null;
+    var hitLines   = (step && step.hit)  || [];
+    var skipLines  = (step && step.skip) || [];
+
+    codeLines.forEach(function (el) {
+      var n = Number(el.dataset.line);
+      el.classList.toggle('active', activeLine !== null && n === activeLine);
+      el.classList.toggle('hit',    hitLines.indexOf(n)  !== -1);
+      el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+    });
+    centerActiveLine();
+  }
+
+  /* =========================================================
+     8. 输出区（按快照重建）
+     ========================================================= */
+  function resolveOut(upto) {
+    for (var k = upto; k >= 0; k--) {
+      if (STEPS[k] && STEPS[k].out) return STEPS[k].out;
+    }
+    return null;
+  }
+
+  function updateOutput(upto) {
+    var lines = resolveOut(upto);
+    var sig   = lines ? JSON.stringify(lines) : '';
+
+    if (sig === lastOutSig) return;             /* 内容未变则跳过 */
+    lastOutSig = sig;
+
+    consoleBody.innerHTML = '';
+    if (!lines) return;
+
+    lines.forEach(function (segs) {
+      var div = document.createElement('div');
+      div.className = 'out-line';
+      segs.forEach(function (seg) {
+        var span = document.createElement('span');
+        span.className = 'seg-' + (seg.c || 'out');
+        span.textContent = seg.t;
+        div.appendChild(span);
+      });
+      consoleBody.appendChild(div);
+    });
+
+    consoleBody.scrollTop = consoleBody.scrollHeight;
+  }
+
+  /* =========================================================
+     9. 总渲染
+     ========================================================= */
+  function render() {
+    var step = current >= 0 ? STEPS[current] : null;
+    var prev = current > 0 ? STEPS[current - 1] : null;
+
+    updateCode(step);
+    updateVars(step, prev);
+    updateOutput(current);
+
+    if (step) {
+      var isHit = step.hit && step.hit.length > 0;
+      explainEl.innerHTML =
+        '<span class="ex-line' + (isHit ? ' hit' : '') + '">第 ' + step.line + ' 行</span>' +
+        '<strong>' + step.title + '</strong> —— ' + step.desc;
+      stepCounter.textContent = '步骤 ' + (current + 1) + ' / ' + STEPS.length;
+    } else {
+      explainEl.innerHTML =
+        '<em>点击「自动播放」或「下一步」，开始逐条执行程序。本次演示输入：<b>' + INPUT_STR + '</b>（5 个可见字符 + 回车）。</em>';
+      stepCounter.textContent = '步骤 — / ' + STEPS.length;
+    }
+
+    btnPrev.disabled = current < 0;
+    btnNext.disabled = current >= STEPS.length - 1;
+  }
+
+  /* =========================================================
+     10. 播放控制
+     ========================================================= */
+  function updatePlayBtn() {
+    btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+    btnPlay.classList.toggle('playing', playing);
+  }
+
+  function tick() {
+    if (current >= STEPS.length - 1) { pause(); return; }
+    current += 1;
+    render();
+    if (current >= STEPS.length - 1) pause();   /* 最后一步自动停止 */
+  }
+
+  function play() {
+    if (playing) return;
+    if (current >= STEPS.length - 1) { current = -1; render(); }
+    playing = true;
+    updatePlayBtn();
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+    tick();                                     /* 立即走第一步 */
+  }
+
+  function pause() {
+    playing = false;
+    window.clearInterval(timer);
+    timer = null;
+    updatePlayBtn();
+  }
+
+  function nextStep() {
+    pause();
+    if (current < STEPS.length - 1) { current += 1; render(); }
+  }
+
+  function prevStep() {
+    pause();
+    if (current > -1) { current -= 1; render(); }
+  }
+
+  function resetAll() {
+    pause();
+    current = -1;
+    lastOutSig = '';
+    consoleBody.innerHTML = '';
+    render();
+  }
+
+  /* =========================================================
+     11. 事件绑定
+     ========================================================= */
+  btnPlay.addEventListener('click', function () { playing ? pause() : play(); });
+  btnNext.addEventListener('click', nextStep);
+  btnPrev.addEventListener('click', prevStep);
+  btnReset.addEventListener('click', resetAll);
+
+  speedInput.addEventListener('input', function () {
+    speed = Number(speedInput.value);
+    speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+    if (playing) {
+      window.clearInterval(timer);
+      timer = window.setInterval(tick, speed);
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space')            { e.preventDefault(); playing ? pause() : play(); }
+    else if (e.code === 'ArrowRight')  { nextStep(); }
+    else if (e.code === 'ArrowLeft')   { prevStep(); }
+    else if (e.code === 'KeyR')        { resetAll(); }
+  });
+
+  /* =========================================================
+     12. 初始化
+     ========================================================= */
+  buildVarTable();
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  render();
+})();
+</script>
+</body>
+</html>

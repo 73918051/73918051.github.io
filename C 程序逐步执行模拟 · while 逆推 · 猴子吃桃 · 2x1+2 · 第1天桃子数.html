@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · while 逆推 · 猴子吃桃 · 2*x1+2 · 第1天桃子数</title>
+<style>
+  :root{
+    --bg:#070e1a; --border:#1e2f49; --text:#dce8f8; --muted:#7d93b3;
+    --accent:#38bdf8; --green:#4ade80; --amber:#fbbf24;
+    --pink:#f472b6; --purple:#c084fc; --teal:#2dd4bf; --orange:#fb923c;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:radial-gradient(1100px 640px at 12% -8%,#152743 0%,var(--bg) 62%);
+    color:var(--text);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+
+  /* ===== 顶栏 ===== */
+  .topbar{
+    flex:0 0 auto;display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .9rem;
+    padding:.55rem .9rem;background:linear-gradient(180deg,#122036,#0c1626);
+    border-bottom:1px solid var(--border);z-index:5;
+  }
+  .title{display:flex;align-items:baseline;gap:.6rem;min-width:0;}
+  .title h1{margin:0;font-size:1.02rem;letter-spacing:.03em;white-space:nowrap;}
+  .title .sub{font-size:.78rem;color:var(--muted);white-space:nowrap;}
+  .controls{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-left:auto;}
+  button{
+    font:inherit;font-size:.9rem;padding:.42rem .85rem;border-radius:.55rem;
+    border:1px solid var(--border);background:#182741;color:var(--text);
+    cursor:pointer;transition:background .15s,border-color .15s,transform .1s;
+    white-space:nowrap;
+  }
+  button:hover:not(:disabled){background:#213352;border-color:#33507d;}
+  button:active:not(:disabled){transform:translateY(1px);}
+  button:disabled{opacity:.32;cursor:not-allowed;}
+  button.primary{
+    background:linear-gradient(180deg,#0ea5e9,#0284c7);
+    border-color:#38bdf8;color:#04121f;font-weight:700;
+  }
+  button.primary.playing{
+    background:linear-gradient(180deg,#f59e0b,#d97706);
+    border-color:#fbbf24;color:#1a1200;
+  }
+  .speed{display:flex;align-items:center;gap:.45rem;font-size:.82rem;color:var(--muted);}
+  .speed input{width:6.5rem;accent-color:var(--accent);cursor:pointer;}
+  .speed b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:2.8rem;display:inline-block;}
+
+  /* ===== 主区域 ===== */
+  .main{
+    flex:1 1 auto;min-height:0;display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1.12fr);
+    gap:.75rem;padding:.75rem;overflow:hidden;
+  }
+  .panel{
+    background:linear-gradient(180deg,#111d31,#0e1728);
+    border:1px solid var(--border);border-radius:.8rem;
+    display:flex;flex-direction:column;min-height:0;min-width:0;
+    overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.4);
+  }
+  .panel-head{
+    flex:0 0 auto;display:flex;align-items:center;gap:.6rem;
+    padding:.5rem .8rem;font-size:.8rem;letter-spacing:.06em;
+    color:var(--muted);background:#16233a;border-bottom:1px solid var(--border);
+    text-transform:uppercase;
+  }
+  .panel-head .right{margin-left:auto;letter-spacing:0;text-transform:none;color:#5f7796;font-size:.76rem;}
+  .dots{display:flex;gap:.28rem;}
+  .dots i{width:.55rem;height:.55rem;border-radius:50%;display:block;}
+  .dots i:nth-child(1){background:#ef4444;}
+  .dots i:nth-child(2){background:#eab308;}
+  .dots i:nth-child(3){background:#22c55e;}
+
+  /* ===== 代码区 ===== */
+  .code-scroll{
+    position:relative;flex:1 1 auto;min-height:0;overflow:auto;padding:.7rem 0;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:clamp(.74rem,.26vw + .56vh,1.06rem);
+    line-height:1.95;scrollbar-width:thin;scrollbar-color:#334155 transparent;
+    scroll-behavior:smooth;
+  }
+  .code-scroll::-webkit-scrollbar{width:9px;height:9px;}
+  .code-scroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:9px;}
+  .code-scroll::-webkit-scrollbar-track{background:transparent;}
+
+  .code-line{
+    display:flex;align-items:flex-start;gap:.85rem;
+    padding:.12rem 1rem .12rem .45rem;
+    border-left:4px solid transparent;white-space:pre;
+    transition:background .3s,border-color .3s,opacity .3s;
+  }
+  .code-line .ln{
+    flex:0 0 auto;width:2.6ch;text-align:right;color:#3f5a7d;
+    user-select:none;font-variant-numeric:tabular-nums;
+  }
+  .code-line .src{flex:1 1 auto;}
+  /* 循环体高亮（写在 .active 之前，会被覆盖） */
+  .code-line.hit{
+    background:linear-gradient(90deg,rgba(74,222,128,.16),rgba(74,222,128,0));
+    border-left-color:var(--green);
+  }
+  .code-line.hit .ln{color:var(--green);}
+  /* 跳过 */
+  .code-line.skip{opacity:.24;}
+  .code-line.skip .ln{color:#4d5f78;}
+  /* 当前行（优先级最高） */
+  .code-line.active{
+    background:linear-gradient(90deg,rgba(56,189,248,.2),rgba(56,189,248,0));
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 1px rgba(56,189,248,.16);
+    opacity:1;
+  }
+  .code-line.active .ln{color:var(--accent);font-weight:700;}
+  .code-line.active .src{color:#ffffff;}
+
+  /* 语法着色 */
+  .pp{color:var(--purple);font-weight:600;}
+  .str{color:var(--green);}
+  .cmt{color:#5b6f8c;font-style:italic;}
+  .fn{color:var(--accent);}
+  .kw{color:var(--pink);font-weight:600;}
+  .num{color:var(--amber);}
+  .op{color:var(--orange);font-weight:700;}
+
+  /* ===== 说明区 ===== */
+  .explain{
+    flex:0 0 auto;padding:.62rem .9rem;font-size:.88rem;line-height:1.6;
+    color:#b8c9e0;background:#0b1424;border-top:1px solid var(--border);
+    max-height:12rem;overflow:auto;
+  }
+  .explain .ex-line{
+    display:inline-block;margin-right:.5rem;padding:.05rem .5rem;
+    border-radius:.4rem;background:rgba(56,189,248,.16);
+    color:var(--accent);font-weight:700;font-size:.78rem;vertical-align:middle;
+  }
+  .explain .ex-line.hit{background:rgba(74,222,128,.18);color:var(--green);}
+  .explain strong{color:#eaf3ff;}
+  .explain code{
+    font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.15);border-radius:.3rem;
+    padding:0 .32rem;color:#e2e8f0;
+  }
+  .explain .tip{
+    display:block;margin-top:.4rem;padding:.35rem .55rem;border-radius:.4rem;
+    background:rgba(45,212,191,.1);border-left:3px solid var(--teal);color:#bff5ec;
+    font-size:.85rem;
+  }
+  .explain .warn{
+    display:block;margin-top:.4rem;padding:.35rem .55rem;border-radius:.4rem;
+    background:rgba(251,191,36,.12);border-left:3px solid var(--amber);color:#ffe6b0;
+    font-size:.85rem;
+  }
+
+  /* ===== 右侧 ===== */
+  .side{display:flex;flex-direction:column;gap:.75rem;min-height:0;min-width:0;}
+  .vars-panel{flex:0 0 auto;max-height:80%;}
+  .var-table{padding:.45rem .65rem .6rem;display:flex;flex-direction:column;gap:.2rem;overflow:auto;}
+  .var-row{
+    display:flex;justify-content:space-between;align-items:center;gap:.6rem;
+    padding:.28rem .65rem;border-radius:.5rem;
+    background:#0d1728;border:1px solid #1b293f;
+    font-size:.83rem;transition:background .3s,border-color .3s;
+  }
+  .var-row.k-ctx{background:#122844;border-color:#26456b;}
+  .var-row.k-main{border-left:3px solid rgba(34,211,238,.55);}
+  .var-row.k-sub{border-left:3px solid rgba(56,189,248,.85);}
+  .var-row.k-val{border-left:3px solid rgba(244,114,182,.85);}
+  .var-row.k-sw{border-left:3px solid rgba(45,212,191,.9);}
+  .var-row.k-money{border-left:3px solid rgba(251,191,36,.9);}
+  .var-row.k-note{border-left:3px solid rgba(45,212,191,.75);}
+  .var-row.k-ret{border-left:3px solid rgba(251,191,36,.45);}
+  .var-row.changed{border-color:rgba(56,189,248,.85);background:rgba(56,189,248,.12);}
+  .var-name{color:var(--muted);white-space:nowrap;font-size:.78rem;}
+  .var-value{
+    font-family:ui-monospace,Consolas,monospace;font-weight:700;
+    color:var(--accent);font-variant-numeric:tabular-nums;
+    white-space:nowrap;text-align:right;
+  }
+  .var-value.dim{color:#5f7796;font-weight:500;}
+  .var-row.k-sub   .var-value{color:var(--accent);}
+  .var-row.k-val   .var-value{color:var(--pink);}
+  .var-row.k-sw    .var-value{color:var(--teal);}
+  .var-row.k-money .var-value{color:var(--amber);}
+  .var-row.k-main  .var-value{color:var(--green);}
+  .var-row.k-note  .var-value{color:var(--teal);font-weight:600;font-size:.77rem;}
+  @keyframes flash{
+    0%{transform:scale(1);}
+    35%{transform:scale(1.28);color:#fff;text-shadow:0 0 14px var(--accent);}
+    100%{transform:scale(1);}
+  }
+  .var-value.flash{animation:flash .55s ease-out;}
+
+  /* ===== 输出区 ===== */
+  .out-panel{flex:1 1 auto;min-height:0;}
+  .console{
+    flex:1 1 auto;min-height:0;overflow:auto;
+    margin:.55rem .7rem .7rem;padding:.65rem .9rem;
+    background:#050c17;border:1px solid #16233a;border-radius:.55rem;
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:clamp(.88rem,.38vw + .66vh,1.18rem);
+    line-height:1.9;color:#e8f2ff;
+    scrollbar-width:thin;scrollbar-color:#334155 transparent;
+  }
+  .console::-webkit-scrollbar{width:9px;}
+  .console::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:9px;}
+  .console:empty::before{content:"（等待程序输出…）";color:#3d5474;}
+  .out-line{white-space:pre;animation:slideIn .35s ease-out;}
+  .seg-out{color:#e8f2ff;}
+  .seg-in{color:var(--teal);font-weight:700;}
+  .seg-money{color:var(--amber);font-weight:700;}
+  @keyframes slideIn{
+    from{opacity:0;transform:translateX(-.7rem);}
+    to{opacity:1;transform:none;}
+  }
+
+  /* ===== 窄屏 / 放大屏幕 ===== */
+  @media (max-width:960px){
+    body{overflow:auto;height:auto;min-height:100vh;}
+    .main{grid-template-columns:1fr;grid-template-rows:auto auto;overflow:visible;}
+    .code-panel{height:58vh;min-height:280px;}
+    .side{height:auto;}
+    .vars-panel{max-height:none;}
+    .out-panel{height:34vh;min-height:180px;}
+    .title .sub{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="title">
+    <h1>C 程序逐步执行模拟</h1>
+    <span class="sub">while 逆推 · 猴子吃桃 · 递推公式 x=2*x1+2 · 从第9天倒推回第1天</span>
+  </div>
+  <div class="controls">
+    <button id="btnReset">⟲ 重置</button>
+    <button id="btnPrev">◀ 上一步</button>
+    <button id="btnPlay" class="primary">▶ 自动播放</button>
+    <button id="btnNext">下一步 ▶</button>
+    <label class="speed">速度
+      <input type="range" id="speed" min="200" max="2000" step="50" value="500">
+      <b id="speedLabel">0.50s</b>
+    </label>
+  </div>
+</header>
+
+<main class="main">
+  <!-- ============ 源代码 ============ -->
+  <section class="panel code-panel">
+    <div class="panel-head">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span>源代码 · peach_while.c</span>
+      <span class="right" id="stepCounter">步骤 — / —</span>
+    </div>
+
+    <div class="code-scroll" id="codeScroll">
+      <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+      <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span></span></div>
+      <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">int</span> i<span class="op">=</span><span class="num">9</span>;                           <span class="cmt">// 循环变量，从第9天开始逆推</span></span></div>
+      <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">int</span> x, x1<span class="op">=</span><span class="num">1</span>;                       <span class="cmt">// x为当天桃子数，x1为下一天桃子数</span></span></div>
+      <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    <span class="kw">while</span> (i <span class="op">&gt;</span> <span class="num">0</span>) {                    <span class="cmt">// 逆推9次</span></span></div>
+      <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">        x <span class="op">=</span> <span class="num">2</span> <span class="op">*</span> x1 <span class="op">+</span> <span class="num">2</span>;                <span class="cmt">// 逆推公式：当天 = 2*下一天 + 2</span></span></div>
+      <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">        x1 <span class="op">=</span> x;                        <span class="cmt">// 更新x1为当天的值</span></span></div>
+      <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">        i<span class="op">--</span>;                           <span class="cmt">// 天数减1</span></span></div>
+      <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">    }</span></div>
+      <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">    <span class="fn">printf</span>(<span class="str">"x=%d"</span>, x);                  <span class="cmt">// 输出第1天摘的桃子数</span></span></div>
+      <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回0，程序结束</span></span></div>
+      <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">}</span></div>
+    </div>
+
+    <div class="explain" id="explain"></div>
+  </section>
+
+  <!-- ============ 变量 / 输出 ============ -->
+  <aside class="side">
+    <section class="panel vars-panel">
+      <div class="panel-head">变量 · 循环条件 · 递推过程 · 状态表</div>
+      <div class="var-table" id="varTable"></div>
+    </section>
+
+    <section class="panel out-panel">
+      <div class="panel-head">程序运行结果（屏幕输出）</div>
+      <div class="console" id="consoleBody"></div>
+    </section>
+  </aside>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+     1. 题目背景
+        猴子第 1 天摘了一堆桃子，此后每天吃掉"剩下的一半再加一个"，
+        到第 10 天早上只剩 1 个。
+        问：第 1 天一共摘了多少个桃子？
+        —— 从第 10 天逆推：
+             设第 k 天早上有 x_k 个，猴子吃掉 x_k/2 + 1 个，
+             剩下 x_k/2 - 1 个，这就是第 k+1 天早上的数量：
+                 x_{k+1} = x_k / 2 - 1
+             反解：  x_k = 2 * x_{k+1} + 2
+        程序就从 x1 = 1（第 10 天早上）开始，逆推 9 次，
+        依次得到第 9、8、…、1 天早上的桃子数。
+        最终 x = 1534。
+     ========================================================= */
+
+  function buildSteps() {
+    var st = [];
+    var i = 9;
+    var x = null;          /* null 表示未初始化 */
+    var x1 = 1;
+    var iter = 0;
+    var LOOP_LINES = [6, 7, 8];
+
+    function push(line, ctx, over, out, hit, skip, title, desc) {
+      var v = {
+        i: String(i),
+        x: (x === null ? '未初始化（不定值）' : String(x)),
+        x1: String(x1),
+        cond: '—', subExpr: '—', subVal: '—', note: '—',
+        loops: iter, prints: 0, ret: '—'
+      };
+      for (var k in over) {
+        if (Object.prototype.hasOwnProperty.call(over, k)) v[k] = over[k];
+      }
+      st.push({
+        line: line, ctx: ctx, vars: v,
+        out: out || null,
+        hit: hit || [], skip: skip || [],
+        title: title, desc: desc
+      });
+    }
+
+    /* ========== 第 1 行 ========== */
+    push(1, '预处理阶段',
+      { i:'—', x:'—', x1:'—' },
+      null, [], [],
+      '预处理指令 #include &lt;stdio.h&gt;',
+      '预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容引入源文件，让 <code>printf</code> 获得正确的函数声明。<br>注意：这一行<b>不是 C 语句</b>，在<b>编译之前</b>就已经被预处理器处理完了，不占运行时间，也不产生任何屏幕输出。'
+    );
+
+    /* ========== 第 2 行 ========== */
+    push(2, 'main · 程序入口',
+      { i:'—', x:'—', x1:'—' },
+      null, [], [],
+      'int main() {  程序从这里开始',
+      '操作系统把控制权交给 <code>main</code>，程序正式开始执行。系统为 main 建立<b>栈帧</b>，接下来声明的 i、x、x1 都存放在这个栈帧里，函数结束时随栈帧一起销毁。'
+    );
+
+    /* ========== 第 3 行 ========== */
+    push(3, 'main · 声明并初始化 i',
+      { i:'9', x:'—', x1:'—',
+        subExpr:'int i=9;', subVal:'i = 9',
+        note:'i 记录"当前要算的是第几天"' },
+      null, [], [],
+      'int i=9;  循环变量从 9 开始',
+      '声明 <b>int</b> 型循环变量 i 并初始化为 <b>9</b>。<br>为什么从 9 开始？因为我们已知的是<b>第 10 天早上剩 1 个桃子</b>，接下来要反推出第 9 天的数量，再推第 8 天……一直推到<b>第 1 天</b>。<br>循环每执行一次，i 就减 1，i 从 9 走到 1，共执行 <b>9 次</b>，恰好把第 9 天到第 1 天全部算完。'
+    );
+
+    /* ========== 第 4 行 ========== */
+    push(4, 'main · 声明 x 与 x1',
+      { i:'9', x:'未初始化（不定值）', x1:'1',
+        subExpr:'int x, x1=1;',
+        subVal:'x1 = 1；x 未初始化',
+        note:'x1 保存"下一天"的桃子数' },
+      null, [], [],
+      'int x, x1=1;  x 未初始化，x1 初值为 1',
+      '声明两个 <b>int</b> 变量，含义截然不同：<br>· <b>x1 = 1</b>：保存<b>"下一天"的桃子数</b>。初值 1 正是题目给的"第 10 天早上只剩 1 个桃子"；<br>· <b>x 未初始化</b>：用来保存<b>"当天"的桃子数</b>。现在是不定值，但循环第一次执行 <code>x = 2*x1+2</code> 时就会被赋值，不会带着垃圾值参与运算。<br>每个 int 占 4 个字节。<span class="tip"><b>递推公式怎么来的？</b>设第 k 天早上有 x_k 个桃子。猴子吃掉一半再加一个：吃掉 <code>x_k/2 + 1</code> 个，剩下 <code>x_k - x_k/2 - 1 = x_k/2 - 1</code> 个。这剩下的就是第 k+1 天早上的数量，即 <code>x_{k+1} = x_k/2 - 1</code>。两边整理反解：<b>x_k = 2 · x_{k+1} + 2</b>，这就是第 6 行要用的公式。</span>'
+    );
+
+    /* ================= 循环 ================= */
+    while (i > 0) {
+      iter++;
+      var dayNow = i;                    /* 本轮要反推的那一天 */
+      var condTxt =
+        '循环条件是 <code>i &gt; 0</code>，此刻 <b>i = ' + i + '</b>，' + i + ' &gt; 0 成立，结果为<b>真</b>，于是进入第 <b>' + iter + '</b> 轮循环，本轮要反推<b>第 ' + dayNow + ' 天</b>的桃子数。';
+      if (iter === 1) {
+        condTxt += '<span class="tip"><b>第 1 轮：</b>已知第 10 天早上剩 1 个（x1 = 1），现在反推第 9 天早上有多少个。</span>';
+      } else if (iter === 9) {
+        condTxt += '<span class="tip"><b>最后一轮：</b>i = 1，本轮算完后得到的就是<b>第 1 天</b>的桃子数，正好是题目要的答案。</span>';
+      }
+
+      /* ① 条件判断 */
+      push(5, 'main · while 条件判断（第 ' + iter + ' 次）',
+        { i:String(i), x:(x === null ? '未初始化（不定值）' : String(x)), x1:String(x1),
+          cond: i + ' > 0 → 真',
+          subExpr: 'i > 0  →  ' + i + ' > 0',
+          subVal: '真（非 0）',
+          note: '关系表达式结果为 int：真为 1，假为 0',
+          loops: iter },
+        null, [], [],
+        'while (' + i + ' &gt; 0)  为真，第 ' + iter + ' 轮开始',
+        condTxt + '<br>循环节奏：<b>判断条件 → 为真则执行循环体 → 回到条件重新判断</b>，如此往复，直到条件为假才退出。'
+      );
+
+      /* ② x = 2 * x1 + 2 */
+      var oldX1 = x1;
+      var newX = 2 * oldX1 + 2;
+      x = newX;
+      push(6, 'main · 循环体 · 逆推当天桃子数（第 ' + iter + ' 次）',
+        { i:String(i), x:String(newX), x1:String(x1),
+          cond: i + ' > 0 → 真',
+          subExpr: 'x = 2 * x1 + 2',
+          subVal: 'x = 2 * ' + oldX1 + ' + 2 = ' + newX,
+          note: '当天 = 2 × 下一天 + 2',
+          loops: iter },
+        null, LOOP_LINES, [],
+        '第 ' + iter + ' 次：x = 2 × ' + oldX1 + ' + 2 = ' + newX,
+        '<code>x = 2 * x1 + 2;</code> 用<b>逆推公式</b>把"下一天"的桃子数还原成"当天"的桃子数。<br>· 已知 x1 = <b>' + oldX1 + '</b>（第 ' + (dayNow + 1) + ' 天早上的数量）；<br>· 所以 x = 2 × ' + oldX1 + ' + 2 = <b>' + newX + '</b>，这就是<b>第 ' + dayNow + ' 天早上</b>的桃子数；<br>· 直觉理解：第 ' + dayNow + ' 天早上先被吃掉一半（少了一半，所以乘 2 还原）又多吃掉 1 个（再加 2 还原，因为同时把"分半"和"减 1"都倒过来）。<span class="tip"><b>为什么用乘 2 加 2 而不是除法？</b>因为正向是"除以 2 再减 1"，逆向就是"加 1 再乘 2"，正好写成 <code>2*(x1+1)</code>，展开即 <code>2*x1+2</code>。整数乘加不会丢精度，比逆向除法稳妥。</span>'
+      );
+
+      /* ③ x1 = x */
+      push(7, 'main · 循环体 · 更新 x1（第 ' + iter + ' 次）',
+        { i:String(i), x:String(newX), x1:String(newX),
+          cond: i + ' > 0 → 真',
+          subExpr: 'x1 = x',
+          subVal: 'x1 = ' + newX,
+          note: '把当天的值保存下来，供下一轮使用',
+          loops: iter },
+        null, LOOP_LINES, [],
+        '第 ' + iter + ' 次：x1 = x，x1 变为 ' + newX,
+        '<code>x1 = x;</code> 把刚算出的"当天"桃子数<b>保存到 x1</b>，这样下一轮循环就会用它作为"下一天"的已知值，继续往前推一天。<br>· 更新前 x1 = ' + oldX1 + '，更新后 x1 = <b>' + newX + '</b>；<br>· 原来的值 ' + oldX1 + ' 被<b>覆盖</b>，不再需要了（它已经完成了使命）。<br><span class="tip"><b>为什么不用两个变量交叉？</b>本题只有"当天"和"下一天"两个时刻，不像斐波那契那样需要保留两项。所以一个 x1 反复被覆盖就足够了——每一次覆盖都让 x1 变成更早一天的桃子数。</span>'
+      );
+
+      /* ④ i-- */
+      var oldI = i;
+      i = i - 1;
+      push(8, 'main · 循环体 · 天数减 1（第 ' + iter + ' 次）',
+        { i:String(i), x:String(newX), x1:String(newX),
+          cond: '—',
+          subExpr: 'i--',
+          subVal: 'i = ' + oldI + ' - 1 = ' + i,
+          note: '每轮天数减 1，是循环能结束的保证',
+          loops: iter },
+        null, LOOP_LINES, [],
+        '第 ' + iter + ' 次：i 由 ' + oldI + ' 变为 ' + i,
+        '<code>i--;</code> 把天数减 1，由 <b>' + oldI + '</b> 变成 <b>' + i + '</b>。循环体执行完毕，程序自动回到第 5 行<b>重新判断条件</b>。<br><span class="warn"><b>如果漏写 i--</b>，i 永远等于 9，<code>9 &gt; 0</code> 永远为真，程序陷入<b>死循环</b>，永远打印不出结果。</span>'
+      );
+    }
+
+    /* ========== 条件为假：退出循环 ========== */
+    push(5, 'main · while 条件判断（最后一次，假）',
+      { i:String(i), x:String(x), x1:String(x1),
+        cond: i + ' > 0 → 假',
+        subExpr: 'i > 0  →  ' + i + ' > 0',
+        subVal: '假（0）',
+        note: '条件为假 → 跳出循环，执行 while 之后的语句',
+        loops: iter },
+      null, [], LOOP_LINES,
+      'while (' + i + ' &gt; 0)  为假，循环结束',
+      '此时 i 已经变成 <b>' + i + '</b>，<code>' + i + ' &gt; 0</code> 不成立，结果为<b>假（0）</b>。循环条件不再满足，<b>不再进入循环体</b>，程序跳到 while 之后（第 10 行）继续执行。<br><b>循环总账：</b>循环体一共执行了 <b>9 次</b>（i 从 9 走到 1），每次都把"下一天"的桃子数还原成"当天"的桃子数。此刻 <b>x = ' + x + '</b>，正是<b>第 1 天早上</b>的桃子数，也是题目要的答案。<span class="tip"><b>为什么能停下来？</b>因为每轮 i 都减 1，而 0 是固定下界，所以 i 迟早会减到 0，条件变假，循环自然退出。这就是"有限次循环"的保证。</span>'
+    );
+
+    /* ========== printf ========== */
+    push(10, 'main · printf 输出结果',
+      { i:String(i), x:String(x), x1:String(x1),
+        cond: i + ' > 0 → 假（已退出）',
+        subExpr: 'printf 的格式化输出',
+        subVal: '"x=%d"  +  x = ' + x,
+        note: '%d 输出 int；格式串无 \\n，不换行',
+        loops: iter, prints: 1 },
+      [[{ t:'x=', c:'out' }, { t:String(x), c:'money' }]],
+      [], [],
+      'printf("x=%d", x);  输出 x=' + x,
+      '<code>printf("x=%d", x);</code> 按 <code>%d</code> 输出 int 变量 x。屏幕上出现 <b>x=' + x + '</b>，意思是<b>第 1 天一共摘了 ' + x + ' 个桃子</b>。<br>格式串里<b>没有</b> <code>\\n</code>，所以输出后光标停在行尾，<b>不换行</b>。'
+    );
+
+    /* ========== return ========== */
+    push(11, 'main · return',
+      { i:String(i), x:String(x), x1:String(x1),
+        cond:'—', subExpr:'—', subVal:'—', note:'—',
+        loops: iter, prints: 1, ret: '0' },
+      null, [], [],
+      'return 0;  结束 main 函数',
+      '<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。约定返回 0 表示程序<b>正常结束</b>，返回非 0 通常表示出错。这条语句不产生屏幕输出。'
+    );
+
+    /* ========== } ========== */
+    push(12, '程序结束',
+      { i:String(i), x:String(x), x1:String(x1),
+        cond:'—', subExpr:'—', subVal:'—', note:'—',
+        loops: iter, prints: 1, ret: '0' },
+      null, [], [],
+      'main 函数体结束 }',
+      '函数体收尾，main 的栈帧被销毁，变量 i、x、x1 随栈帧一起释放，控制权交还操作系统。<br>程序没有输入，只调用 1 次 <b>printf</b>，循环体执行 <b>9 次</b>，屏幕输出 <b>x=' + x + '</b>，返回值 0。<span class="tip"><b>本程序要点总结：</b><br>① <b>递推方向是"从后往前"</b>：从第 10 天的 1 个倒推回第 1 天；<br>② 用 <b>x1</b> 保存"下一天"的已知值，<b>x</b> 保存"当天"的新值；<br>③ 核心公式 <code>x = 2*x1 + 2</code>，是"吃掉一半再加一个"这一动作的<b>逆运算</b>；<br>④ 算完立刻用 <code>x1 = x</code> 把当天的值"降级"为下一天的已知值，让循环能一轮一轮往前推；<br>⑤ 循环变量 i 从 9 递减到 1，恰好覆盖第 9 天到第 1 天的全部反推。<br><b>完整逆推表：</b>第10天 = 1，第9天 = 4，第8天 = 10，第7天 = 22，第6天 = 46，第5天 = 94，第4天 = 190，第3天 = 382，第2天 = 766，<b>第1天 = 1534</b>。<br><b>常见错误：</b>如果把公式写成 <code>x = x1/2 - 1</code>（用了正向公式），就会一路算错；或者写成 <code>x = 2*(x1+1)</code> 之外的形式但没有正确还原"一半+一个"，也会出错。</span>'
+    );
+
+    return st;
+  }
+
+  var STEPS = buildSteps();
+
+  /* =========================================================
+     DOM 引用
+     ========================================================= */
+  var codeScroll  = document.getElementById('codeScroll');
+  var codeLines   = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+  var varTable    = document.getElementById('varTable');
+  var consoleBody = document.getElementById('consoleBody');
+  var explainEl   = document.getElementById('explain');
+  var stepCounter = document.getElementById('stepCounter');
+  var btnPlay     = document.getElementById('btnPlay');
+  var btnPrev     = document.getElementById('btnPrev');
+  var btnNext     = document.getElementById('btnNext');
+  var btnReset    = document.getElementById('btnReset');
+  var speedInput  = document.getElementById('speed');
+  var speedLabel  = document.getElementById('speedLabel');
+
+  /* =========================================================
+     变量表行定义
+     ========================================================= */
+  var VAR_ROWS = [
+    { key:'ctx',     name:'当前执行位置',              kind:'k-ctx'   },
+    { key:'i',       name:'i  (int) 天数计数器',        kind:'k-main'  },
+    { key:'x1',      name:'x1 (int) 下一天的桃子数',    kind:'k-main'  },
+    { key:'x',       name:'x  (int) 当天的桃子数',      kind:'k-money' },
+    { key:'cond',    name:'循环条件 i > 0',             kind:'k-sw'    },
+    { key:'subExpr', name:'正在求值的子表达式',          kind:'k-sub'   },
+    { key:'subVal',  name:'子表达式结果',               kind:'k-val'   },
+    { key:'note',    name:'关键规则提示',               kind:'k-note'  },
+    { key:'loops',   name:'当前循环轮次',                kind:'k-ctx'   },
+    { key:'prints',  name:'printf 调用次数',            kind:'k-ctx'   },
+    { key:'ret',     name:'main 返回值',                kind:'k-ret'   }
+  ];
+
+  /* =========================================================
+     运行状态
+     ========================================================= */
+  var current    = -1;
+  var playing    = false;
+  var timer      = null;
+  var speed      = Number(speedInput.value);
+  var lastOutSig = '';
+
+  /* =========================================================
+     构建变量表骨架
+     ========================================================= */
+  function buildVarTable() {
+    varTable.innerHTML = VAR_ROWS.map(function (r) {
+      return '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+               '<span class="var-name">' + r.name + '</span>' +
+               '<span class="var-value dim">—</span>' +
+             '</div>';
+    }).join('');
+  }
+
+  function valueOf(step, key) {
+    if (!step) return '—';
+    if (key === 'ctx') return step.ctx;
+    return step.vars[key];
+  }
+
+  function updateVars(step, prevStep) {
+    VAR_ROWS.forEach(function (r) {
+      var row   = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+      var valEl = row.querySelector('.var-value');
+      var val   = String(valueOf(step, r.key));
+      var old   = String(valueOf(prevStep, r.key));
+
+      if (valEl.textContent !== val) {
+        valEl.textContent = val;
+        valEl.classList.toggle('dim', val === '—');
+        valEl.title = val;
+        valEl.classList.remove('flash');
+        void valEl.offsetWidth;                 /* 触发重排，重放动画 */
+        valEl.classList.add('flash');
+        if (prevStep && old !== val) {
+          row.classList.add('changed');
+          window.setTimeout(function () { row.classList.remove('changed'); }, 700);
+        }
+      }
+    });
+  }
+
+  /* =========================================================
+     代码高亮 + 自动滑动居中
+     ========================================================= */
+  function centerActiveLine() {
+    var el = codeScroll.querySelector('.code-line.active');
+    if (!el) return;
+    window.requestAnimationFrame(function () {
+      var er = el.getBoundingClientRect();
+      var cr = codeScroll.getBoundingClientRect();
+      var delta = (er.top + er.height / 2) - (cr.top + cr.height / 2);
+      if (Math.abs(delta) > 4) {
+        codeScroll.scrollTo({
+          top: Math.max(0, codeScroll.scrollTop + delta),
+          behavior: 'smooth'
+        });
+      }
+    });
+  }
+
+  function updateCode(step) {
+    var activeLine = step ? step.line : null;
+    var hitLines   = (step && step.hit)  || [];
+    var skipLines  = (step && step.skip) || [];
+
+    codeLines.forEach(function (el) {
+      var n = Number(el.dataset.line);
+      el.classList.toggle('active', activeLine !== null && n === activeLine);
+      el.classList.toggle('hit',    hitLines.indexOf(n)  !== -1);
+      el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+    });
+    centerActiveLine();
+  }
+
+  /* =========================================================
+     输出区（按快照重建）
+     ========================================================= */
+  function resolveOut(upto) {
+    for (var k = upto; k >= 0; k--) {
+      if (STEPS[k] && STEPS[k].out) return STEPS[k].out;
+    }
+    return null;
+  }
+
+  function updateOutput(upto) {
+    var lines = resolveOut(upto);
+    var sig   = lines ? JSON.stringify(lines) : '';
+
+    if (sig === lastOutSig) return;             /* 内容未变则跳过 */
+    lastOutSig = sig;
+
+    consoleBody.innerHTML = '';
+    if (!lines) return;
+
+    lines.forEach(function (segs) {
+      var div = document.createElement('div');
+      div.className = 'out-line';
+      segs.forEach(function (seg) {
+        var span = document.createElement('span');
+        span.className = 'seg-' + (seg.c || 'out');
+        span.textContent = seg.t;
+        div.appendChild(span);
+      });
+      consoleBody.appendChild(div);
+    });
+
+    consoleBody.scrollTop = consoleBody.scrollHeight;
+  }
+
+  /* =========================================================
+     总渲染
+     ========================================================= */
+  function render() {
+    var step = current >= 0 ? STEPS[current] : null;
+    var prev = current > 0 ? STEPS[current - 1] : null;
+
+    updateCode(step);
+    updateVars(step, prev);
+    updateOutput(current);
+
+    if (step) {
+      var isHit = step.hit && step.hit.length > 0;
+      explainEl.innerHTML =
+        '<span class="ex-line' + (isHit ? ' hit' : '') + '">第 ' + step.line + ' 行</span>' +
+        '<strong>' + step.title + '</strong> —— ' + step.desc;
+      stepCounter.textContent = '步骤 ' + (current + 1) + ' / ' + STEPS.length;
+    } else {
+      explainEl.innerHTML =
+        '<em>点击「自动播放」或「下一步」，开始逐条执行程序。本程序从第 10 天剩 1 个桃子出发，逆推回第 1 天。</em>';
+      stepCounter.textContent = '步骤 — / ' + STEPS.length;
+    }
+
+    btnPrev.disabled = current < 0;
+    btnNext.disabled = current >= STEPS.length - 1;
+  }
+
+  /* =========================================================
+     播放控制
+     ========================================================= */
+  function updatePlayBtn() {
+    btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+    btnPlay.classList.toggle('playing', playing);
+  }
+
+  function tick() {
+    if (current >= STEPS.length - 1) { pause(); return; }
+    current += 1;
+    render();
+    if (current >= STEPS.length - 1) pause();   /* 最后一步自动停止 */
+  }
+
+  function play() {
+    if (playing) return;
+    if (current >= STEPS.length - 1) { current = -1; render(); }
+    playing = true;
+    updatePlayBtn();
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+    tick();                                     /* 立即走第一步 */
+  }
+
+  function pause() {
+    playing = false;
+    window.clearInterval(timer);
+    timer = null;
+    updatePlayBtn();
+  }
+
+  function nextStep() {
+    pause();
+    if (current < STEPS.length - 1) { current += 1; render(); }
+  }
+
+  function prevStep() {
+    pause();
+    if (current > -1) { current -= 1; render(); }
+  }
+
+  function resetAll() {
+    pause();
+    current = -1;
+    lastOutSig = '';
+    consoleBody.innerHTML = '';
+    render();
+  }
+
+  /* =========================================================
+     事件绑定
+     ========================================================= */
+  btnPlay.addEventListener('click', function () { playing ? pause() : play(); });
+  btnNext.addEventListener('click', nextStep);
+  btnPrev.addEventListener('click', prevStep);
+  btnReset.addEventListener('click', resetAll);
+
+  speedInput.addEventListener('input', function () {
+    speed = Number(speedInput.value);
+    speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+    if (playing) {
+      window.clearInterval(timer);
+      timer = window.setInterval(tick, speed);
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space')            { e.preventDefault(); playing ? pause() : play(); }
+    else if (e.code === 'ArrowRight')  { nextStep(); }
+    else if (e.code === 'ArrowLeft')   { prevStep(); }
+    else if (e.code === 'KeyR')        { resetAll(); }
+  });
+
+  /* =========================================================
+     初始化
+     ========================================================= */
+  buildVarTable();
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  render();
+})();
+</script>
+</body>
+</html>

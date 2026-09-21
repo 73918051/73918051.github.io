@@ -1,0 +1,894 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 素数判断 · for 循环 · break 跳出 · sqrt 优化</title>
+<style>
+  :root{
+    --bg:#070e1a; --border:#1e2f49; --text:#dce8f8; --muted:#7d93b3;
+    --accent:#38bdf8; --green:#4ade80; --amber:#fbbf24;
+    --pink:#f472b6; --purple:#c084fc; --teal:#2dd4bf; --orange:#fb923c;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:radial-gradient(1100px 640px at 12% -8%,#152743 0%,var(--bg) 62%);
+    color:var(--text);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+
+  /* ===== 顶栏 ===== */
+  .topbar{
+    flex:0 0 auto;display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .9rem;
+    padding:.55rem .9rem;background:linear-gradient(180deg,#122036,#0c1626);
+    border-bottom:1px solid var(--border);z-index:5;
+  }
+  .title{display:flex;align-items:baseline;gap:.6rem;min-width:0;}
+  .title h1{margin:0;font-size:1.02rem;letter-spacing:.03em;white-space:nowrap;}
+  .title .sub{font-size:.78rem;color:var(--muted);white-space:nowrap;}
+  .controls{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-left:auto;}
+  button{
+    font:inherit;font-size:.9rem;padding:.42rem .85rem;border-radius:.55rem;
+    border:1px solid var(--border);background:#182741;color:var(--text);
+    cursor:pointer;transition:background .15s,border-color .15s,transform .1s;
+    white-space:nowrap;
+  }
+  button:hover:not(:disabled){background:#213352;border-color:#33507d;}
+  button:active:not(:disabled){transform:translateY(1px);}
+  button:disabled{opacity:.32;cursor:not-allowed;}
+  button.primary{
+    background:linear-gradient(180deg,#0ea5e9,#0284c7);
+    border-color:#38bdf8;color:#04121f;font-weight:700;
+  }
+  button.primary.playing{
+    background:linear-gradient(180deg,#f59e0b,#d97706);
+    border-color:#fbbf24;color:#1a1200;
+  }
+  .speed{display:flex;align-items:center;gap:.45rem;font-size:.82rem;color:var(--muted);}
+  .speed input{width:6.5rem;accent-color:var(--accent);cursor:pointer;}
+  .speed b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:2.8rem;display:inline-block;}
+
+  /* ===== 主区域 ===== */
+  .main{
+    flex:1 1 auto;min-height:0;display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1.12fr);
+    gap:.75rem;padding:.75rem;overflow:hidden;
+  }
+  .panel{
+    background:linear-gradient(180deg,#111d31,#0e1728);
+    border:1px solid var(--border);border-radius:.8rem;
+    display:flex;flex-direction:column;min-height:0;min-width:0;
+    overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.4);
+  }
+  .panel-head{
+    flex:0 0 auto;display:flex;align-items:center;gap:.6rem;
+    padding:.5rem .8rem;font-size:.8rem;letter-spacing:.06em;
+    color:var(--muted);background:#16233a;border-bottom:1px solid var(--border);
+    text-transform:uppercase;
+  }
+  .panel-head .right{margin-left:auto;letter-spacing:0;text-transform:none;color:#5f7796;font-size:.76rem;}
+  .dots{display:flex;gap:.28rem;}
+  .dots i{width:.55rem;height:.55rem;border-radius:50%;display:block;}
+  .dots i:nth-child(1){background:#ef4444;}
+  .dots i:nth-child(2){background:#eab308;}
+  .dots i:nth-child(3){background:#22c55e;}
+
+  /* ===== 代码区 ===== */
+  .code-scroll{
+    position:relative;flex:1 1 auto;min-height:0;overflow:auto;padding:.7rem 0;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:clamp(.74rem,.26vw + .56vh,1.06rem);
+    line-height:1.95;scrollbar-width:thin;scrollbar-color:#334155 transparent;
+    scroll-behavior:smooth;
+  }
+  .code-scroll::-webkit-scrollbar{width:9px;height:9px;}
+  .code-scroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:9px;}
+  .code-scroll::-webkit-scrollbar-track{background:transparent;}
+
+  .code-line{
+    display:flex;align-items:flex-start;gap:.85rem;
+    padding:.12rem 1rem .12rem .45rem;
+    border-left:4px solid transparent;white-space:pre;
+    transition:background .3s,border-color .3s,opacity .3s;
+  }
+  .code-line .ln{
+    flex:0 0 auto;width:2.6ch;text-align:right;color:#3f5a7d;
+    user-select:none;font-variant-numeric:tabular-nums;
+  }
+  .code-line .src{flex:1 1 auto;}
+  /* 循环体 / 分支体高亮（写在 .active 之前，会被覆盖） */
+  .code-line.hit{
+    background:linear-gradient(90deg,rgba(74,222,128,.16),rgba(74,222,128,0));
+    border-left-color:var(--green);
+  }
+  .code-line.hit .ln{color:var(--green);}
+  /* 跳过 */
+  .code-line.skip{opacity:.24;}
+  .code-line.skip .ln{color:#4d5f78;}
+  /* 当前行（优先级最高） */
+  .code-line.active{
+    background:linear-gradient(90deg,rgba(56,189,248,.2),rgba(56,189,248,0));
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 1px rgba(56,189,248,.16);
+    opacity:1;
+  }
+  .code-line.active .ln{color:var(--accent);font-weight:700;}
+  .code-line.active .src{color:#ffffff;}
+
+  /* 语法着色 */
+  .pp{color:var(--purple);font-weight:600;}
+  .str{color:var(--green);}
+  .cmt{color:#5b6f8c;font-style:italic;}
+  .fn{color:var(--accent);}
+  .kw{color:var(--pink);font-weight:600;}
+  .num{color:var(--amber);}
+  .op{color:var(--orange);font-weight:700;}
+
+  /* ===== 说明区 ===== */
+  .explain{
+    flex:0 0 auto;padding:.62rem .9rem;font-size:.88rem;line-height:1.6;
+    color:#b8c9e0;background:#0b1424;border-top:1px solid var(--border);
+    max-height:12rem;overflow:auto;
+  }
+  .explain .ex-line{
+    display:inline-block;margin-right:.5rem;padding:.05rem .5rem;
+    border-radius:.4rem;background:rgba(56,189,248,.16);
+    color:var(--accent);font-weight:700;font-size:.78rem;vertical-align:middle;
+  }
+  .explain .ex-line.hit{background:rgba(74,222,128,.18);color:var(--green);}
+  .explain strong{color:#eaf3ff;}
+  .explain code{
+    font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.15);border-radius:.3rem;
+    padding:0 .32rem;color:#e2e8f0;
+  }
+  .explain .tip{
+    display:block;margin-top:.4rem;padding:.35rem .55rem;border-radius:.4rem;
+    background:rgba(45,212,191,.1);border-left:3px solid var(--teal);color:#bff5ec;
+    font-size:.85rem;
+  }
+  .explain .warn{
+    display:block;margin-top:.4rem;padding:.35rem .55rem;border-radius:.4rem;
+    background:rgba(251,191,36,.12);border-left:3px solid var(--amber);color:#ffe6b0;
+    font-size:.85rem;
+  }
+
+  /* ===== 右侧 ===== */
+  .side{display:flex;flex-direction:column;gap:.75rem;min-height:0;min-width:0;}
+  .vars-panel{flex:0 0 auto;max-height:80%;}
+  .var-table{padding:.45rem .65rem .6rem;display:flex;flex-direction:column;gap:.2rem;overflow:auto;}
+  .var-row{
+    display:flex;justify-content:space-between;align-items:center;gap:.6rem;
+    padding:.26rem .65rem;border-radius:.5rem;
+    background:#0d1728;border:1px solid #1b293f;
+    font-size:.83rem;transition:background .3s,border-color .3s;
+  }
+  .var-row.k-ctx{background:#122844;border-color:#26456b;}
+  .var-row.k-main{border-left:3px solid rgba(34,211,238,.55);}
+  .var-row.k-sub{border-left:3px solid rgba(56,189,248,.85);}
+  .var-row.k-val{border-left:3px solid rgba(244,114,182,.85);}
+  .var-row.k-sw{border-left:3px solid rgba(45,212,191,.9);}
+  .var-row.k-money{border-left:3px solid rgba(251,191,36,.9);}
+  .var-row.k-note{border-left:3px solid rgba(45,212,191,.75);}
+  .var-row.k-ret{border-left:3px solid rgba(251,191,36,.45);}
+  .var-row.k-flag{border-left:3px solid rgba(192,132,252,.9);}
+  .var-row.changed{border-color:rgba(56,189,248,.85);background:rgba(56,189,248,.12);}
+  .var-name{color:var(--muted);white-space:nowrap;font-size:.78rem;}
+  .var-value{
+    font-family:ui-monospace,Consolas,monospace;font-weight:700;
+    color:var(--accent);font-variant-numeric:tabular-nums;
+    white-space:nowrap;text-align:right;
+  }
+  .var-value.dim{color:#5f7796;font-weight:500;}
+  .var-row.k-sub   .var-value{color:var(--accent);}
+  .var-row.k-val   .var-value{color:var(--pink);}
+  .var-row.k-sw    .var-value{color:var(--teal);}
+  .var-row.k-money .var-value{color:var(--amber);}
+  .var-row.k-main  .var-value{color:var(--green);}
+  .var-row.k-flag  .var-value{color:var(--purple);}
+  .var-row.k-note  .var-value{color:var(--teal);font-weight:600;font-size:.77rem;}
+  @keyframes flash{
+    0%{transform:scale(1);}
+    35%{transform:scale(1.28);color:#fff;text-shadow:0 0 14px var(--accent);}
+    100%{transform:scale(1);}
+  }
+  .var-value.flash{animation:flash .55s ease-out;}
+
+  /* ===== 输出区 ===== */
+  .out-panel{flex:1 1 auto;min-height:0;}
+  .console{
+    flex:1 1 auto;min-height:0;overflow:auto;
+    margin:.55rem .7rem .7rem;padding:.65rem .9rem;
+    background:#050c17;border:1px solid #16233a;border-radius:.55rem;
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:clamp(.86rem,.36vw + .64vh,1.14rem);
+    line-height:1.85;color:#e8f2ff;
+    scrollbar-width:thin;scrollbar-color:#334155 transparent;
+  }
+  .console::-webkit-scrollbar{width:9px;}
+  .console::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:9px;}
+  .console:empty::before{content:"（等待程序输出…）";color:#3d5474;}
+  .out-line{white-space:pre;animation:slideIn .35s ease-out;}
+  .seg-out{color:#e8f2ff;}
+  .seg-in{color:var(--teal);font-weight:700;}
+  .seg-money{color:var(--amber);font-weight:700;}
+  @keyframes slideIn{
+    from{opacity:0;transform:translateX(-.7rem);}
+    to{opacity:1;transform:none;}
+  }
+
+  /* ===== 窄屏 / 放大屏幕 ===== */
+  @media (max-width:960px){
+    body{overflow:auto;height:auto;min-height:100vh;}
+    .main{grid-template-columns:1fr;grid-template-rows:auto auto;overflow:visible;}
+    .code-panel{height:58vh;min-height:280px;}
+    .side{height:auto;}
+    .vars-panel{max-height:none;}
+    .out-panel{height:34vh;min-height:180px;}
+    .title .sub{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="title">
+    <h1>C 程序逐步执行模拟</h1>
+    <span class="sub">素数判断 · for 循环试除 · break 提前跳出 · sqrt 优化 · 标记法</span>
+  </div>
+  <div class="controls">
+    <button id="btnReset">⟲ 重置</button>
+    <button id="btnPrev">◀ 上一步</button>
+    <button id="btnPlay" class="primary">▶ 自动播放</button>
+    <button id="btnNext">下一步 ▶</button>
+    <label class="speed">速度
+      <input type="range" id="speed" min="200" max="2000" step="50" value="450">
+      <b id="speedLabel">0.45s</b>
+    </label>
+  </div>
+</header>
+
+<main class="main">
+  <!-- ============ 源代码 ============ -->
+  <section class="panel code-panel">
+    <div class="panel-head">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span>源代码 · prime_check.c</span>
+      <span class="right" id="stepCounter">步骤 — / —</span>
+    </div>
+
+    <div class="code-scroll" id="codeScroll">
+      <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+      <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;math.h&gt;</span>                    <span class="cmt">// 包含数学函数头文件</span></span></div>
+      <div class="code-line" data-line="3"><span class="ln">3</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span></span></div>
+      <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">int</span> number, flag<span class="op">=</span><span class="num">1</span>, k, i;          <span class="cmt">// 定义变量和标记</span></span></div>
+      <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    <span class="fn">printf</span>(<span class="str">"Input a number:"</span>);         <span class="cmt">// 提示输入</span></span></div>
+      <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    <span class="fn">scanf</span>(<span class="str">"%d"</span>, <span class="op">&amp;</span>number);              <span class="cmt">// 输入要判断的数</span></span></div>
+      <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">    k <span class="op">=</span> <span class="fn">sqrt</span>(number);                  <span class="cmt">// 计算sqrt(number)取整</span></span></div>
+      <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">    <span class="kw">for</span> (i<span class="op">=</span><span class="num">2</span>; i<span class="op">&lt;=</span>k; i<span class="op">++</span>) {             <span class="cmt">// 从2到k循环</span></span></div>
+      <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">        <span class="kw">if</span> (number <span class="op">%</span> i <span class="op">==</span> <span class="num">0</span>) {         <span class="cmt">// 如果number能被i整除</span></span></div>
+      <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">            flag <span class="op">=</span> <span class="num">0</span>;                  <span class="cmt">// 标记为不是素数</span></span></div>
+      <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">            <span class="kw">break</span>;                     <span class="cmt">// 退出循环</span></span></div>
+      <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">        }</span></div>
+      <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">    }</span></div>
+      <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">    <span class="kw">if</span> (flag <span class="op">==</span> <span class="num">1</span> <span class="op">&amp;&amp;</span> number <span class="op">!=</span> <span class="num">1</span>) {    <span class="cmt">// 如果flag为1且number不为1</span></span></div>
+      <div class="code-line" data-line="15"><span class="ln">15</span><span class="src">        <span class="fn">printf</span>(<span class="str">"\n%d is prime"</span>, number); <span class="cmt">// 输出是素数</span></span></div>
+      <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">    } <span class="kw">else</span> {                           <span class="cmt">// 否则</span></span></div>
+      <div class="code-line" data-line="17"><span class="ln">17</span><span class="src">        <span class="fn">printf</span>(<span class="str">"\n%d isn't prime"</span>, number); <span class="cmt">// 输出不是素数</span></span></div>
+      <div class="code-line" data-line="18"><span class="ln">18</span><span class="src">    }</span></div>
+      <div class="code-line" data-line="19"><span class="ln">19</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回0，程序结束</span></span></div>
+      <div class="code-line" data-line="20"><span class="ln">20</span><span class="src">}</span></div>
+    </div>
+
+    <div class="explain" id="explain"></div>
+  </section>
+
+  <!-- ============ 变量 / 输出 ============ -->
+  <aside class="side">
+    <section class="panel vars-panel">
+      <div class="panel-head">变量 · 循环条件 · 试除结果 · 状态表</div>
+      <div class="var-table" id="varTable"></div>
+    </section>
+
+    <section class="panel out-panel">
+      <div class="panel-head">程序运行结果（屏幕输出）</div>
+      <div class="console" id="consoleBody"></div>
+    </section>
+  </aside>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+     1. 模拟输入
+        —— 本次演示输入：number = 91
+        —— 91 = 7 × 13，不是素数（这是最经典的"看起来像素数"的合数）
+        —— 判定过程：
+             sqrt(91) ≈ 9.539392 → 赋给 int k，截断得 k = 9
+             i 从 2 试到 9：
+               i=2  91 % 2 = 1   ✗
+               i=3  91 % 3 = 1   ✗
+               i=4  91 % 4 = 3   ✗
+               i=5  91 % 5 = 1   ✗
+               i=6  91 % 6 = 1   ✗
+               i=7  91 % 7 = 0   ✔ 找到因子！flag = 0，break 跳出
+         —— 最终输出：91 isn't prime
+     ========================================================= */
+  var IN_NUMBER = 91;
+
+  /* =========================================================
+     2. 逐步执行轨迹（程序化生成）
+     ========================================================= */
+  function buildSteps() {
+    var st = [];
+
+    var number = null;          /* 要判断的数，未初始化       */
+    var flag   = 1;             /* 素数标记，初值 1（是素数） */
+    var k      = null;          /* sqrt(number) 取整          */
+    var i      = null;          /* 循环变量                   */
+    var iter   = 0;             /* 循环体已执行次数           */
+    var printed = 0;            /* printf 调用次数            */
+    var ret    = '—';
+    var outLines = [];
+
+    function fmt(v) { return v === null ? '未初始化（不定值）' : String(v); }
+    function snap() { return outLines.map(function (l) { return l.slice(); }); }
+
+    function push(line, ctx, over, out, hit, skip, title, desc) {
+      var v = {
+        number: fmt(number),
+        flag:   String(flag),
+        k:      fmt(k),
+        i:      fmt(i),
+        cond:   '—',
+        subExpr:'—', subVal:'—', note:'—',
+        loops:  iter, prints: printed, ret: ret
+      };
+      for (var key in over) {
+        if (Object.prototype.hasOwnProperty.call(over, key)) v[key] = over[key];
+      }
+      st.push({
+        line: line, ctx: ctx, vars: v,
+        out: out || null,
+        hit: hit || [], skip: skip || [],
+        title: title, desc: desc
+      });
+    }
+
+    /* ========== 第 1 行 ========== */
+    push(1, '预处理阶段',
+      { number:'—', flag:'—', k:'—', i:'—' },
+      null, [], [],
+      '预处理指令 #include &lt;stdio.h&gt;',
+      '预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容引入源文件，让 <code>printf</code> 和 <code>scanf</code> 获得正确的函数声明。<br>注意：这一行<b>不是 C 语句</b>，在<b>编译之前</b>就被预处理器处理完了，不占运行时间，也不产生任何屏幕输出。'
+    );
+
+    /* ========== 第 2 行 ========== */
+    push(2, '预处理阶段 · 数学库',
+      { number:'—', flag:'—', k:'—', i:'—' },
+      null, [], [],
+      '预处理指令 #include &lt;math.h&gt;',
+      '引入数学函数头文件 <code>math.h</code>，本程序要用到的 <code>sqrt</code>（开平方）函数声明就在这个头文件里。<br><span class="tip"><b>sqrt 函数原型：</b><code>double sqrt(double x);</code> —— 它接收一个 <b>double</b> 参数，返回该数的<b>算术平方根</b>（也是 double）。本程序用它把试除上限从 number 缩小到 √number，把循环次数从 O(n) 降到 O(√n)，效率大幅提升。</span>'
+    );
+
+    /* ========== 第 3 行 ========== */
+    push(3, 'main · 程序入口',
+      { number:'—', flag:'—', k:'—', i:'—' },
+      null, [], [],
+      'int main() {  程序从这里开始',
+      '操作系统把控制权交给 <code>main</code>，程序正式开始执行。系统为 main 建立<b>栈帧</b>，接下来声明的 number、flag、k、i 都存放在这个栈帧里，函数结束时随栈帧一起销毁。'
+    );
+
+    /* ========== 第 4 行 ========== */
+    push(4, 'main · 声明并初始化',
+      { number:'未初始化（不定值）', flag:'1',
+        k:'未初始化（不定值）', i:'未初始化（不定值）',
+        subExpr:'int number, flag=1, k, i;',
+        subVal:'只有 flag 有初值 1',
+        note:'flag 是"素数标记"，1 表示暂时认为是素数' },
+      null, [], [],
+      'int number, flag=1, k, i;  声明四个变量，flag 初值为 1',
+      '一条语句声明 4 个 <b>int</b> 变量，分工如下：<br>· <b>number</b>：待判断的数，稍后由 scanf 读入；<br>· <b>flag = 1</b>：<b>素数标记</b>。初值 1 表示<b>"暂时认为是素数"</b>，只要在循环里找到一个因子，就立刻改成 0；<br>· <b>k</b>：试除的<b>上限</b>，稍后由 <code>sqrt(number)</code> 算出；<br>· <b>i</b>：for 循环的试除因子。<br><span class="tip"><b>标记法（flag）的思想：</b>先"假设是素数"，然后一路寻找<b>反例</b>。只要找到一个反例（能整除 number 的 i），就推翻假设。循环结束后看 flag 还立不立得住，就知道答案了。这种"先假设、后推翻"的模式在编程里非常常用，比用一堆嵌套判断要清晰得多。</span>'
+    );
+
+    /* ========== 第 5 行 ========== */
+    printed++;
+    outLines.push([{ t: 'Input a number:', c: 'out' }]);
+    push(5, 'main · printf 提示输入',
+      { number:'未初始化（不定值）', flag:'1',
+        k:'未初始化（不定值）', i:'未初始化（不定值）',
+        cond:'—',
+        subExpr:'printf("Input a number:")',
+        subVal:'输出提示文字，不换行',
+        note:'格式串无 \\n，光标停在冒号后' },
+      snap(), [], [],
+      'printf("Input a number:");  打印提示',
+      '向屏幕打印提示文字。注意结尾<b>没有</b> <code>\\n</code>，光标会停在冒号后面等待输入，不换行。这是交互式程序的习惯做法：先提示，再让 scanf 在同一行读取。'
+    );
+
+    /* ========== 第 6 行 ========== */
+    push(6, 'main · scanf 等待输入',
+      { number:'未初始化（不定值）', flag:'1',
+        k:'未初始化（不定值）', i:'未初始化（不定值）',
+        subExpr:'scanf("%d", &number)',
+        subVal:'（等待输入…）',
+        note:'%d 读十进制整数，参数必须是变量地址' },
+      null, [], [],
+      'scanf("%d", &amp;number);  阻塞等待用户输入',
+      '<code>scanf</code> 需要知道"把读到的整数写到哪里"，所以第二个参数必须是<b>地址</b>：<code>&amp;number</code>。格式串 <code>%d</code> 表示按十进制读一个整数。<br>此刻程序<b>阻塞</b>，光标停在冒号后面等待用户输入。<span class="warn"><b>易错点：</b>如果误写成 <code>scanf("%d", number)</code>（漏掉 &amp;），就是把一个不定值当地址用，属于未定义行为，程序很可能直接崩溃。</span>'
+    );
+
+    /* ========== 第 6 行：scanf 返回 ========== */
+    number = IN_NUMBER;
+    outLines[0] = [
+      { t: 'Input a number:', c: 'out' },
+      { t: String(IN_NUMBER), c: 'in' }
+    ];
+    push(6, 'main · scanf 返回',
+      { number:String(number), flag:'1',
+        k:'未初始化（不定值）', i:'未初始化（不定值）',
+        subExpr:'（输入完成）',
+        subVal:'number = ' + number,
+        note:'number 已通过地址写入' },
+      snap(), [], [],
+      '用户输入 ' + number + '，写入 number',
+      '用户键入 <code>' + number + '</code> 并回车，scanf 按 <code>%d</code> 把它解析成整数，顺着 <code>&amp;number</code> 写进 number 的存储单元。此刻 <b>number = ' + number + '</b>。<br>屏幕显示为 <b>Input a number:' + number + '</b>——提示与输入在同一行，回车后光标换到下一行。<br><span class="tip"><b>为什么偏偏选 ' + number + ' 来演示？</b>因为 <b>' + number + ' = 7 × 13</b>，它不是素数，却<b>很容易被误认为素数</b>——它不能被 2、3、5 整除，很多人心算到这里就停手了。<b>但它恰恰暴露了本程序循环上限的必要性：</b>sqrt(' + number + ') ≈ 9.54，所以必须试除到 <b>i = 9</b> 才能碰到因子 7。如果上限只写 5，就会误判为素数。</span>'
+    );
+
+    /* ========== 第 7 行：k = sqrt(number) ========== */
+    var sqrtVal = Math.sqrt(number);            /* 9.539392... */
+    k = Math.floor(sqrtVal);                    /* 赋值给 int，截断得 9 */
+    push(7, 'main · 计算试除上限 k',
+      { number:String(number), flag:'1',
+        k:String(k), i:'未初始化（不定值）',
+        subExpr:'k = sqrt(number)  →  sqrt(' + number + ')',
+        subVal:'sqrt(' + number + ') ≈ ' + sqrtVal.toFixed(6) + '，赋给 int 截断得 k = ' + k,
+        note:'sqrt 返回 double，赋给 int 会截断小数部分' },
+      null, [], [],
+      'k = sqrt(' + number + ')  →  k = ' + k,
+      '<code>k = sqrt(number);</code> 调用数学库函数 <code>sqrt</code> 求平方根。<br>· <code>sqrt(' + number + ')</code> 的返回值是 <b>double</b> 类型，约等于 <b>' + sqrtVal.toFixed(6) + '</b>；<br>· 把它赋给 <b>int</b> 变量 k 时，编译器执行<b>隐式类型转换</b>：小数部分被<b>直接截断</b>（不是四舍五入），所以 <b>k = ' + k + '</b>。<br><span class="tip"><b>为什么只需要试除到 √number？</b>因为如果 number 有一个大于 √number 的因子，那它一定还配有一个小于 √number 的因子。举例：' + number + ' = 7 × 13，其中 7 &lt; √' + number + ' &lt; 13，所以只要在 2 到 √' + number + ' 之间找，就一定能找到 7。反之，如果 2 到 √number 之间一个因子都找不到，就说明 number 没有真因子，必定是素数。这就是素数判定最经典的优化。</span>'
+    );
+
+    /* ========== 第 8 行：for 初始化 + 首次条件 ========== */
+    i = 2;
+    var firstCond = (i <= k);
+    push(8, 'main · for 初始化与首次条件',
+      { number:String(number), flag:'1',
+        k:String(k), i:String(i),
+        cond: i + ' <= ' + k + ' → ' + (firstCond ? '真' : '假'),
+        subExpr:'for (i=2; i<=k; i++)',
+        subVal:'初始化 i = 2；' + i + ' <= ' + k + ' 成立',
+        note:'for 顺序：初始化 → 条件 → 循环体 → i++ → 条件…',
+        loops: 0 },
+      null, [], [],
+      'for (i=2; ' + i + ' &lt;= ' + k + '; i++)  初始化并首次判断，条件为真',
+      '进入 <code>for</code> 语句，执行顺序是：<br>① <b>初始化</b> <code>i=2</code>（只在循环开始前执行一次）——从 2 开始试除，因为 1 是任何数的因子，试它没意义；<br>② <b>判断条件</b> <code>i &lt;= k</code>，即 <code>2 &lt;= ' + k + '</code>，结果为<b>真</b>；<br>③ 执行循环体（第 9~12 行）；<br>④ 回到 <code>for</code> 头，执行 <code>i++</code>；<br>⑤ 再次判断条件，如此往复。<br><span class="tip"><b>为什么从 2 开始、到 k 结束？</b><br>· <b>从 2 开始</b>：素数定义是"只有 1 和自身两个因子"，1 不算，所以试除从最小的候选因子 2 起头；<br>· <b>到 k = √number 结束</b>：如上所述，超过 √number 的因子必有配对小因子，试了也是白试。所以循环最多执行 <b>' + k + ' - 2 + 1 = ' + (k - 1) + ' 次</b>，非常高效。</span>'
+    );
+
+    /* ================= 循环试除 ================= */
+    var broken = false;
+    for (var trial = 2; trial <= k && !broken; trial++) {
+      i = trial;
+      iter = trial - 1;                     /* 已执行的循环体次数 */
+
+      /* ---------- 第 9 行：if (number % i == 0) ---------- */
+      var rem = number % i;
+      var divisible = (rem === 0);
+
+      push(9, 'main · 循环体 · 试除判断 i = ' + i,
+        { number:String(number), flag:String(flag),
+          k:String(k), i:String(i),
+          cond: i + ' <= ' + k + ' → 真',
+          subExpr:'number % i  →  ' + number + ' % ' + i,
+          subVal:'余数 = ' + rem + '，' + (divisible ? '等于 0 → 条件为真，' + i + ' 是因子！' : '不等于 0 → 条件为假，' + i + ' 不是因子'),
+          note:'% 是取余运算符：余数为 0 表示整除',
+          loops: iter },
+        null, [9, 10, 11], [],
+        '第 ' + i + ' 次试除：' + number + ' % ' + i + ' = ' + rem +
+          (divisible ? '  →  整除！' : '  →  不整除'),
+        '<code>if (number % i == 0)</code> 用<b>取余运算符</b> <code>%</code> 判断 number 能否被 i 整除：<br>· 计算：<code>' + number + ' % ' + i + '</code>，余数为 <b>' + rem + '</b>；<br>· 判断：余数 <code>== 0</code> 吗？结果是 <b>' + (divisible ? '真' : '假') + '</b>。<br>' +
+          (divisible
+            ? '<b>找到了一个因子！</b>' + number + ' = ' + i + ' × ' + (number / i) + '，所以它<b>不是素数</b>。进入 if 体，把 flag 改成 0，然后 <code>break</code> 跳出循环。'
+            : '余数不为 0，说明 ' + i + ' <b>不能整除</b> ' + number + '，它不是因子。if 体被<b>整块跳过</b>，直接执行第 12 行的右花括号，回到 for 头继续下一个 i。') +
+          '<span class="tip"><b>为什么用 % 而不是除法？</b>因为整数除法 <code>' + number + '/' + i + '</code> 只会告诉我们商是几，丢掉余数，没法判断"是否整除"。而 <code>%</code> 恰好返回余数：余数为 0 就是整除，非 0 就是不整除。<b>判断整除的标准写法就是 <code>a % b == 0</code>。</b></span>'
+      );
+
+      if (divisible) {
+        /* ---------- 第 10 行：flag = 0 ---------- */
+        var oldFlag = flag;
+        flag = 0;
+        push(10, 'main · 找到因子 · 标记为非素数',
+          { number:String(number), flag:String(flag),
+            k:String(k), i:String(i),
+            cond: i + ' <= ' + k + ' → 真',
+            subExpr:'flag = 0',
+            subVal:'flag 由 ' + oldFlag + ' 变为 0',
+            note:'一旦确认不是素数，就推翻原来的假设',
+            loops: iter },
+          null, [9, 10, 11], [],
+          'flag = 0，素数标记被推翻',
+          '<code>flag = 0;</code> 把素数标记从 <b>' + oldFlag + '</b> 改成 <b>0</b>，表示"已经找到了因子，' + number + ' 不是素数"。<br>这个标记一旦被置 0，就<b>不可逆</b>——即使后面还有别的 i 能整除，也不改变结论。所以可以立刻停止搜索。<br><span class="tip"><b>为什么要用 flag 而不直接输出？</b>因为找到因子只是"某个中间时刻的结论"，如果在这里直接 printf，程序就失去了"统一出口"的清晰结构。用 flag 把结论<b>暂存</b>起来，让循环自然收尾后，再在最后用一次 if-else 统一输出，逻辑更整洁，也方便以后扩展（比如统计有几个因子）。</span>'
+        );
+
+        /* ---------- 第 11 行：break ---------- */
+        push(11, 'main · break 提前跳出循环',
+          { number:String(number), flag:String(flag),
+            k:String(k), i:String(i),
+            cond:'—',
+            subExpr:'break',
+            subVal:'立即跳出 for 循环',
+            note:'break 只跳出"最内层"的循环或 switch',
+            loops: iter },
+          null, [9, 10, 11], [],
+          'break;  立即结束 for 循环',
+          '<code>break;</code> 的作用是<b>立即终止最内层的循环</b>，控制权直接跳到循环之后（第 14 行）。<br>此刻 <b>i = ' + i + '</b>，而循环上限是 <b>k = ' + k + '</b>，本来还要继续试除 ' + (k - i) + ' 次。但既然已经找到了因子，后面的试除<b>完全是浪费时间</b>，break 让我们提前收工。<br><span class="tip"><b>break 的两条规则：</b><br>① <b>只跳一层</b>——如果有多层嵌套循环，break 只跳出它所在的那一层，外层的循环不受影响；<br>② <b>在 switch 里也表示跳出分支</b>——这也是为什么前面的 switch 程序必须写 break。<br><b>如果这里不写 break 会怎样？</b>程序会继续用 i = ' + (i + 1) + '、' + (i + 2) + '… 试除到 ' + k + '，结果虽然还是"不是素数"，但多做了一堆无用功。<b>break 是性能优化，也是逻辑上的"见好就收"。</b></span>'
+        );
+
+        broken = true;
+        break;
+      }
+
+      /* ---------- 第 8 行：i++ 与条件判断 ---------- */
+      var oldI = i;
+      i = i + 1;
+      var stillIn = (i <= k);
+      push(8, 'main · for 更新 i 与条件判断（第 ' + trial + ' 轮结束）',
+        { number:String(number), flag:String(flag),
+          k:String(k), i:String(i),
+          cond: i + ' <= ' + k + ' → ' + (stillIn ? '真' : '假'),
+          subExpr:'i++  然后判断  ' + i + ' <= ' + k,
+          subVal:'i = ' + oldI + ' + 1 = ' + i + '；' +
+                  (stillIn ? '条件为真，继续下一轮' : '条件为假，退出循环'),
+          note:'i++ 在循环体之后自动执行',
+          loops: iter },
+        null, [], stillIn ? [] : [9, 10, 11],
+        'i 由 ' + oldI + ' 变为 ' + i + '，条件 ' + i + ' &lt;= ' + k + ' 为' + (stillIn ? '真' : '假'),
+        '<code>i++</code> 把试除因子加 1，由 <b>' + oldI + '</b> 变成 <b>' + i + '</b>。<br>' +
+          (stillIn
+            ? '重新判断 <code>' + i + ' &lt;= ' + k + '</code> 为<b>真</b>，于是进入下一轮循环，继续用 i = <b>' + i + '</b> 去试除 ' + number + '。'
+            : '重新判断 <code>' + i + ' &lt;= ' + k + '</code> 结果为<b>假</b>，<b>不再进入循环体</b>，程序跳到 <code>for</code> 之后（第 14 行）继续执行。<br>这意味着 2 到 ' + k + ' 之间<b>没有任何因子</b>，所以 ' + number + ' <b>是素数</b>。') +
+          '<span class="tip"><b>for 的"三步走"到这一步全部走完：</b>初始化（只做 1 次）→ 条件（做 ' + (k - 1) + ' 次）→ 循环体（做 ' + iter + ' 次）→ 更新 i++（做 ' + iter + ' 次）。条件判断比循环体多 1 次，因为最后那次判断为假，循环才退出。</span>'
+      );
+    }
+
+    /* ========== 第 14 行：if (flag == 1 && number != 1) ========== */
+    var condFlag = (flag === 1);
+    var condNot1 = (number !== 1);
+    var bothTrue = condFlag && condNot1;
+
+    push(14, 'main · 判断最终结论',
+      { number:String(number), flag:String(flag),
+        k:String(k), i:String(i),
+        cond:'—',
+        subExpr:'if (flag == 1 && number != 1)',
+        subVal: condFlag
+          ? 'flag == 1 → 真；再判断 number != 1 → ' + (condNot1 ? '真 → 整体为真' : '假 → 整体为假')
+          : 'flag == 1 → 假；&& 短路，number != 1 不再求值 → 整体为假',
+        note:'&& 短路求值：左边为假时右边不再计算',
+        loops: iter },
+      null, [], condFlag ? [] : [15],
+      'if (flag == 1 &amp;&amp; number != 1)  →  条件为' + (bothTrue ? '真' : '假'),
+      '循环结束后，用 <code>if (flag == 1 &amp;&amp; number != 1)</code> 做最终判断。这里有两个条件用 <b>&amp;&amp;</b>（逻辑与）连接：<br>· <b>条件一</b> <code>flag == 1</code>：标记还立着吗？此刻 flag = <b>' + flag + '</b>，所以结果是 <b>' + (condFlag ? '真' : '假') + '</b>；<br>' +
+        (condFlag
+          ? '· <b>条件二</b> <code>number != 1</code>：number 不是 1 吗？此刻 number = <b>' + number + '</b>，结果是 <b>' + (condNot1 ? '真' : '假') + '</b>。<br>两个条件都成立，<b>整体为真</b>，进入 if 体输出"是素数"。'
+          : '· 因为左边已经是<b>假</b>，<b>&amp;&amp; 短路求值</b>立刻生效，<code>number != 1</code> <b>根本不会去计算</b>。<br>整体结果为<b>假</b>，进入 else 分支，输出"不是素数"。') +
+        '<span class="tip"><b>为什么要加 number != 1？</b>因为 1 既不是素数也不是合数。而 1 恰好能通过循环的全部试除（2 到 1 之间根本没有数，循环一次都不执行），flag 会保持为 1。<b>如果不加这个条件，程序会错误地把 1 判为素数。</b>这是素数判断中最容易踩的坑。</span><span class="tip"><b>&amp;&amp; 短路求值：</b>当左边为假时，整个逻辑与必定为假，C 语言就"偷懒"跳过右边不计算。这不仅是效率优化，有时还能避免错误（比如 <code>i &lt; n &amp;&amp; a[i] == x</code>，如果 i >= n，右边访问 a[i] 会越界）。</span>'
+    );
+
+    /* ========== 第 17 行：printf（不是素数分支） ========== */
+    printed++;
+    outLines.push([]);                                          /* 空行（printf 里的 \n） */
+    outLines.push([{ t: number + " isn't prime", c: 'money' }]);
+    push(17, 'main · printf 输出结论',
+      { number:String(number), flag:String(flag),
+        k:String(k), i:String(i),
+        cond:'—',
+        subExpr:'printf("\\n%d isn\'t prime", number)',
+        subVal:'"\\n' + number + " isn't prime\"",
+        note:'格式串开头的 \\n 先换行；%d 被 number 替换',
+        loops: iter, prints: printed },
+      snap(), [], [],
+      'printf(...)  输出 ' + number + " isn't prime",
+      '进入 <code>else</code> 分支，执行 <code>printf("\\n%d isn\'t prime", number);</code>。<br>这条 printf 有两个细节：<br>· 格式串以 <code>\\n</code> <b>开头</b>：先输出一个换行，让结果与上一行输入分开。用户刚回车后光标已在下一行，再遇 \\n 就多空出一行，看起来更清爽；<br>· <code>%d</code> 被实参 <b>number = ' + number + '</b> 替换，所以打印出 <b>' + number + " isn't prime</b>。<br>格式串<b>没有</b>结尾的 \\n，输出后光标停在行尾，不换行。<br>屏幕上最终显示三行：<b>Input a number:' + number + '</b>、空行、<b>' + number + " isn't prime</b>。"
+    );
+
+    /* ========== 第 19 行：return ========== */
+    ret = '0';
+    push(19, 'main · return',
+      { number:String(number), flag:String(flag),
+        k:String(k), i:String(i),
+        cond:'—', subExpr:'—', subVal:'—', note:'—',
+        loops: iter, prints: printed, ret: '0' },
+      null, [], [],
+      'return 0;  结束 main 函数',
+      '<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。约定返回 0 表示程序<b>正常结束</b>，返回非 0 通常表示出错。这条语句不产生屏幕输出。'
+    );
+
+    /* ========== 第 20 行：} ========== */
+    push(20, '程序结束',
+      { number:String(number), flag:String(flag),
+        k:String(k), i:String(i),
+        cond:'—', subExpr:'—', subVal:'—', note:'—',
+        loops: iter, prints: printed, ret: '0' },
+      null, [], [],
+      'main 函数体结束 }',
+      '函数体收尾，main 的栈帧被销毁，变量 number、flag、k、i 随栈帧一起释放，控制权交还操作系统。<br>程序调用 <b>printf 2 次</b>（1 次提示 + 1 次结论）、<b>scanf 1 次</b>，for 循环体执行 <b>' + iter + ' 次</b>（在 i = ' + i + ' 时 break 提前跳出），返回值 0。<span class="tip"><b>本程序要点总结：</b><br>① <b>flag 标记法</b>：初值 1 表示"暂时认为是素数"，找到因子后改成 0；<br>② <b>sqrt 优化</b>：只需试除 2 到 √number，循环次数从 O(n) 降到 O(√n)；<br>③ <code>k = sqrt(number)</code> 把 double 隐式截断成 int，这里截断是<b>安全的</b>（宁可少试也不多试，见下）；<br>④ <b>整除判断</b>用 <code>number % i == 0</code>，余数为 0 即整除；<br>⑤ <b>break 提前跳出</b>：一旦确认不是素数，立即停止试除，节省时间；<br>⑥ 最终判断 <code>flag == 1 &amp;&amp; number != 1</code>，用 <b>number != 1</b> 排除 1 这个特殊情况；<br>⑦ 用 <b>&amp;&amp; 短路</b>特性，flag 为 0 时不再计算右边。<br><b>关于 k 的截断：</b>sqrt(' + number + ') ≈ ' + sqrtVal.toFixed(4) + '，截断后 k = ' + k + '。截断会让 k 稍微偏小，但绝不会漏判——因为若 number 有因子 i 满足 i ≤ √number，那么 i 一定 ≤ k（k 是 √number 向下取整，当 √number 不是整数时 k &lt; √number，但满足条件的整数 i ≤ √number 也一定满足 i ≤ floor(√number)）。<br><b>常见错误：</b>① 忘记排除 number == 1，会把 1 判成素数；② 循环条件写成 <code>i &lt; k</code> 而不是 <code>i &lt;= k</code>，会漏掉 i 恰好等于 k 的情况（如 number = 9，k = 3，若写 i &lt; k 就试不到 3，会误判 9 为素数）；③ 漏写 break，虽然结果不错但效率低。</span>'
+    );
+
+    return st;
+  }
+
+  var STEPS = buildSteps();
+
+  /* =========================================================
+     3. DOM 引用
+     ========================================================= */
+  var codeScroll  = document.getElementById('codeScroll');
+  var codeLines   = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+  var varTable    = document.getElementById('varTable');
+  var consoleBody = document.getElementById('consoleBody');
+  var explainEl   = document.getElementById('explain');
+  var stepCounter = document.getElementById('stepCounter');
+  var btnPlay     = document.getElementById('btnPlay');
+  var btnPrev     = document.getElementById('btnPrev');
+  var btnNext     = document.getElementById('btnNext');
+  var btnReset    = document.getElementById('btnReset');
+  var speedInput  = document.getElementById('speed');
+  var speedLabel  = document.getElementById('speedLabel');
+
+  /* =========================================================
+     4. 变量表行定义
+     ========================================================= */
+  var VAR_ROWS = [
+    { key:'ctx',     name:'当前执行位置',              kind:'k-ctx'   },
+    { key:'number',  name:'number (int) 待判断的数',    kind:'k-money' },
+    { key:'flag',    name:'flag (int) 素数标记',        kind:'k-flag'  },
+    { key:'k',       name:'k (int) sqrt(number) 取整',  kind:'k-main'  },
+    { key:'i',       name:'i (int) 试除因子',           kind:'k-main'  },
+    { key:'cond',    name:'循环条件 i <= k',            kind:'k-sw'    },
+    { key:'subExpr', name:'正在求值的子表达式',          kind:'k-sub'   },
+    { key:'subVal',  name:'子表达式结果',               kind:'k-val'   },
+    { key:'note',    name:'关键规则提示',               kind:'k-note'  },
+    { key:'loops',   name:'循环体已执行次数',            kind:'k-ctx'   },
+    { key:'prints',  name:'printf 调用次数',            kind:'k-ctx'   },
+    { key:'ret',     name:'main 返回值',                kind:'k-ret'   }
+  ];
+
+  /* =========================================================
+     5. 运行状态
+     ========================================================= */
+  var current    = -1;
+  var playing    = false;
+  var timer      = null;
+  var speed      = Number(speedInput.value);
+  var lastOutSig = '';
+
+  /* =========================================================
+     6. 构建变量表骨架
+     ========================================================= */
+  function buildVarTable() {
+    varTable.innerHTML = VAR_ROWS.map(function (r) {
+      return '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+               '<span class="var-name">' + r.name + '</span>' +
+               '<span class="var-value dim">—</span>' +
+             '</div>';
+    }).join('');
+  }
+
+  function valueOf(step, key) {
+    if (!step) return '—';
+    if (key === 'ctx') return step.ctx;
+    return step.vars[key];
+  }
+
+  function updateVars(step, prevStep) {
+    VAR_ROWS.forEach(function (r) {
+      var row   = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+      var valEl = row.querySelector('.var-value');
+      var val   = String(valueOf(step, r.key));
+      var old   = String(valueOf(prevStep, r.key));
+
+      if (valEl.textContent !== val) {
+        valEl.textContent = val;
+        valEl.classList.toggle('dim', val === '—');
+        valEl.title = val;
+        valEl.classList.remove('flash');
+        void valEl.offsetWidth;                 /* 触发重排，重放动画 */
+        valEl.classList.add('flash');
+        if (prevStep && old !== val) {
+          row.classList.add('changed');
+          window.setTimeout(function () { row.classList.remove('changed'); }, 700);
+        }
+      }
+    });
+  }
+
+  /* =========================================================
+     7. 代码高亮 + 自动滑动居中
+     ========================================================= */
+  function centerActiveLine() {
+    var el = codeScroll.querySelector('.code-line.active');
+    if (!el) return;
+    window.requestAnimationFrame(function () {
+      var er = el.getBoundingClientRect();
+      var cr = codeScroll.getBoundingClientRect();
+      var delta = (er.top + er.height / 2) - (cr.top + cr.height / 2);
+      if (Math.abs(delta) > 4) {
+        codeScroll.scrollTo({
+          top: Math.max(0, codeScroll.scrollTop + delta),
+          behavior: 'smooth'
+        });
+      }
+    });
+  }
+
+  function updateCode(step) {
+    var activeLine = step ? step.line : null;
+    var hitLines   = (step && step.hit)  || [];
+    var skipLines  = (step && step.skip) || [];
+
+    codeLines.forEach(function (el) {
+      var n = Number(el.dataset.line);
+      el.classList.toggle('active', activeLine !== null && n === activeLine);
+      el.classList.toggle('hit',    hitLines.indexOf(n)  !== -1);
+      el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+    });
+    centerActiveLine();
+  }
+
+  /* =========================================================
+     8. 输出区（按快照重建）
+     ========================================================= */
+  function resolveOut(upto) {
+    for (var k2 = upto; k2 >= 0; k2--) {
+      if (STEPS[k2] && STEPS[k2].out) return STEPS[k2].out;
+    }
+    return null;
+  }
+
+  function updateOutput(upto) {
+    var lines = resolveOut(upto);
+    var sig   = lines ? JSON.stringify(lines) : '';
+
+    if (sig === lastOutSig) return;             /* 内容未变则跳过 */
+    lastOutSig = sig;
+
+    consoleBody.innerHTML = '';
+    if (!lines) return;
+
+    lines.forEach(function (segs) {
+      var div = document.createElement('div');
+      div.className = 'out-line';
+      if (segs.length === 0) {
+        div.textContent = '\u00A0';             /* 空行占位 */
+      } else {
+        segs.forEach(function (seg) {
+          var span = document.createElement('span');
+          span.className = 'seg-' + (seg.c || 'out');
+          span.textContent = seg.t;
+          div.appendChild(span);
+        });
+      }
+      consoleBody.appendChild(div);
+    });
+
+    consoleBody.scrollTop = consoleBody.scrollHeight;
+  }
+
+  /* =========================================================
+     9. 总渲染
+     ========================================================= */
+  function render() {
+    var step = current >= 0 ? STEPS[current] : null;
+    var prev = current > 0 ? STEPS[current - 1] : null;
+
+    updateCode(step);
+    updateVars(step, prev);
+    updateOutput(current);
+
+    if (step) {
+      var isHit = step.hit && step.hit.length > 0;
+      explainEl.innerHTML =
+        '<span class="ex-line' + (isHit ? ' hit' : '') + '">第 ' + step.line + ' 行</span>' +
+        '<strong>' + step.title + '</strong> —— ' + step.desc;
+      stepCounter.textContent = '步骤 ' + (current + 1) + ' / ' + STEPS.length;
+    } else {
+      explainEl.innerHTML =
+        '<em>点击「自动播放」或「下一步」，开始逐条执行程序。本次演示输入：<b>' + IN_NUMBER +
+        '</b>（= 7 × 13，非素数，但常被误认为素数）。</em>';
+      stepCounter.textContent = '步骤 — / ' + STEPS.length;
+    }
+
+    btnPrev.disabled = current < 0;
+    btnNext.disabled = current >= STEPS.length - 1;
+  }
+
+  /* =========================================================
+     10. 播放控制
+     ========================================================= */
+  function updatePlayBtn() {
+    btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+    btnPlay.classList.toggle('playing', playing);
+  }
+
+  function tick() {
+    if (current >= STEPS.length - 1) { pause(); return; }
+    current += 1;
+    render();
+    if (current >= STEPS.length - 1) pause();   /* 最后一步自动停止 */
+  }
+
+  function play() {
+    if (playing) return;
+    if (current >= STEPS.length - 1) { current = -1; render(); }
+    playing = true;
+    updatePlayBtn();
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+    tick();                                     /* 立即走第一步 */
+  }
+
+  function pause() {
+    playing = false;
+    window.clearInterval(timer);
+    timer = null;
+    updatePlayBtn();
+  }
+
+  function nextStep() {
+    pause();
+    if (current < STEPS.length - 1) { current += 1; render(); }
+  }
+
+  function prevStep() {
+    pause();
+    if (current > -1) { current -= 1; render(); }
+  }
+
+  function resetAll() {
+    pause();
+    current = -1;
+    lastOutSig = '';
+    consoleBody.innerHTML = '';
+    render();
+  }
+
+  /* =========================================================
+     11. 事件绑定
+     ========================================================= */
+  btnPlay.addEventListener('click', function () { playing ? pause() : play(); });
+  btnNext.addEventListener('click', nextStep);
+  btnPrev.addEventListener('click', prevStep);
+  btnReset.addEventListener('click', resetAll);
+
+  speedInput.addEventListener('input', function () {
+    speed = Number(speedInput.value);
+    speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+    if (playing) {
+      window.clearInterval(timer);
+      timer = window.setInterval(tick, speed);
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space')            { e.preventDefault(); playing ? pause() : play(); }
+    else if (e.code === 'ArrowRight')  { nextStep(); }
+    else if (e.code === 'ArrowLeft')   { prevStep(); }
+    else if (e.code === 'KeyR')        { resetAll(); }
+  });
+
+  /* =========================================================
+     12. 初始化
+     ========================================================= */
+  buildVarTable();
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  render();
+})();
+</script>
+</body>
+</html>

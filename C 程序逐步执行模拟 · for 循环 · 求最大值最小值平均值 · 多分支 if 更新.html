@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · for 循环 · 求最大值/最小值/平均值 · 多分支 if 更新</title>
+<style>
+  :root{
+    --bg:#070e1a; --border:#1e2f49; --text:#dce8f8; --muted:#7d93b3;
+    --accent:#38bdf8; --green:#4ade80; --amber:#fbbf24;
+    --pink:#f472b6; --purple:#c084fc; --teal:#2dd4bf; --orange:#fb923c;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:radial-gradient(1100px 640px at 12% -8%,#152743 0%,var(--bg) 62%);
+    color:var(--text);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+
+  /* ===== 顶栏 ===== */
+  .topbar{
+    flex:0 0 auto;display:flex;align-items:center;flex-wrap:wrap;gap:.5rem .9rem;
+    padding:.55rem .9rem;background:linear-gradient(180deg,#122036,#0c1626);
+    border-bottom:1px solid var(--border);z-index:5;
+  }
+  .title{display:flex;align-items:baseline;gap:.6rem;min-width:0;}
+  .title h1{margin:0;font-size:1.02rem;letter-spacing:.03em;white-space:nowrap;}
+  .title .sub{font-size:.78rem;color:var(--muted);white-space:nowrap;}
+  .controls{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;margin-left:auto;}
+  button{
+    font:inherit;font-size:.9rem;padding:.42rem .85rem;border-radius:.55rem;
+    border:1px solid var(--border);background:#182741;color:var(--text);
+    cursor:pointer;transition:background .15s,border-color .15s,transform .1s;
+    white-space:nowrap;
+  }
+  button:hover:not(:disabled){background:#213352;border-color:#33507d;}
+  button:active:not(:disabled){transform:translateY(1px);}
+  button:disabled{opacity:.32;cursor:not-allowed;}
+  button.primary{
+    background:linear-gradient(180deg,#0ea5e9,#0284c7);
+    border-color:#38bdf8;color:#04121f;font-weight:700;
+  }
+  button.primary.playing{
+    background:linear-gradient(180deg,#f59e0b,#d97706);
+    border-color:#fbbf24;color:#1a1200;
+  }
+  .speed{display:flex;align-items:center;gap:.45rem;font-size:.82rem;color:var(--muted);}
+  .speed input{width:6.5rem;accent-color:var(--accent);cursor:pointer;}
+  .speed b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:2.8rem;display:inline-block;}
+
+  /* ===== 主区域 ===== */
+  .main{
+    flex:1 1 auto;min-height:0;display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1.12fr);
+    gap:.75rem;padding:.75rem;overflow:hidden;
+  }
+  .panel{
+    background:linear-gradient(180deg,#111d31,#0e1728);
+    border:1px solid var(--border);border-radius:.8rem;
+    display:flex;flex-direction:column;min-height:0;min-width:0;
+    overflow:hidden;box-shadow:0 10px 26px rgba(0,0,0,.4);
+  }
+  .panel-head{
+    flex:0 0 auto;display:flex;align-items:center;gap:.6rem;
+    padding:.5rem .8rem;font-size:.8rem;letter-spacing:.06em;
+    color:var(--muted);background:#16233a;border-bottom:1px solid var(--border);
+    text-transform:uppercase;
+  }
+  .panel-head .right{margin-left:auto;letter-spacing:0;text-transform:none;color:#5f7796;font-size:.76rem;}
+  .dots{display:flex;gap:.28rem;}
+  .dots i{width:.55rem;height:.55rem;border-radius:50%;display:block;}
+  .dots i:nth-child(1){background:#ef4444;}
+  .dots i:nth-child(2){background:#eab308;}
+  .dots i:nth-child(3){background:#22c55e;}
+
+  /* ===== 代码区 ===== */
+  .code-scroll{
+    position:relative;flex:1 1 auto;min-height:0;overflow:auto;padding:.7rem 0;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:clamp(.74rem,.26vw + .56vh,1.06rem);
+    line-height:1.95;scrollbar-width:thin;scrollbar-color:#334155 transparent;
+    scroll-behavior:smooth;
+  }
+  .code-scroll::-webkit-scrollbar{width:9px;height:9px;}
+  .code-scroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:9px;}
+  .code-scroll::-webkit-scrollbar-track{background:transparent;}
+
+  .code-line{
+    display:flex;align-items:flex-start;gap:.85rem;
+    padding:.12rem 1rem .12rem .45rem;
+    border-left:4px solid transparent;white-space:pre;
+    transition:background .3s,border-color .3s,opacity .3s;
+  }
+  .code-line .ln{
+    flex:0 0 auto;width:2.6ch;text-align:right;color:#3f5a7d;
+    user-select:none;font-variant-numeric:tabular-nums;
+  }
+  .code-line .src{flex:1 1 auto;}
+  /* 循环体高亮（写在 .active 之前，会被覆盖） */
+  .code-line.hit{
+    background:linear-gradient(90deg,rgba(74,222,128,.16),rgba(74,222,128,0));
+    border-left-color:var(--green);
+  }
+  .code-line.hit .ln{color:var(--green);}
+  /* 跳过 */
+  .code-line.skip{opacity:.24;}
+  .code-line.skip .ln{color:#4d5f78;}
+  /* 当前行（优先级最高） */
+  .code-line.active{
+    background:linear-gradient(90deg,rgba(56,189,248,.2),rgba(56,189,248,0));
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 1px rgba(56,189,248,.16);
+    opacity:1;
+  }
+  .code-line.active .ln{color:var(--accent);font-weight:700;}
+  .code-line.active .src{color:#ffffff;}
+
+  /* 语法着色 */
+  .pp{color:var(--purple);font-weight:600;}
+  .str{color:var(--green);}
+  .cmt{color:#5b6f8c;font-style:italic;}
+  .fn{color:var(--accent);}
+  .kw{color:var(--pink);font-weight:600;}
+  .num{color:var(--amber);}
+  .op{color:var(--orange);font-weight:700;}
+
+  /* ===== 说明区 ===== */
+  .explain{
+    flex:0 0 auto;padding:.62rem .9rem;font-size:.88rem;line-height:1.6;
+    color:#b8c9e0;background:#0b1424;border-top:1px solid var(--border);
+    max-height:12rem;overflow:auto;
+  }
+  .explain .ex-line{
+    display:inline-block;margin-right:.5rem;padding:.05rem .5rem;
+    border-radius:.4rem;background:rgba(56,189,248,.16);
+    color:var(--accent);font-weight:700;font-size:.78rem;vertical-align:middle;
+  }
+  .explain .ex-line.hit{background:rgba(74,222,128,.18);color:var(--green);}
+  .explain strong{color:#eaf3ff;}
+  .explain code{
+    font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.15);border-radius:.3rem;
+    padding:0 .32rem;color:#e2e8f0;
+  }
+  .explain .tip{
+    display:block;margin-top:.4rem;padding:.35rem .55rem;border-radius:.4rem;
+    background:rgba(45,212,191,.1);border-left:3px solid var(--teal);color:#bff5ec;
+    font-size:.85rem;
+  }
+  .explain .warn{
+    display:block;margin-top:.4rem;padding:.35rem .55rem;border-radius:.4rem;
+    background:rgba(251,191,36,.12);border-left:3px solid var(--amber);color:#ffe6b0;
+    font-size:.85rem;
+  }
+
+  /* ===== 右侧 ===== */
+  .side{display:flex;flex-direction:column;gap:.75rem;min-height:0;min-width:0;}
+  .vars-panel{flex:0 0 auto;max-height:80%;}
+  .var-table{padding:.45rem .65rem .6rem;display:flex;flex-direction:column;gap:.2rem;overflow:auto;}
+  .var-row{
+    display:flex;justify-content:space-between;align-items:center;gap:.6rem;
+    padding:.26rem .65rem;border-radius:.5rem;
+    background:#0d1728;border:1px solid #1b293f;
+    font-size:.83rem;transition:background .3s,border-color .3s;
+  }
+  .var-row.k-ctx{background:#122844;border-color:#26456b;}
+  .var-row.k-main{border-left:3px solid rgba(34,211,238,.55);}
+  .var-row.k-sub{border-left:3px solid rgba(56,189,248,.85);}
+  .var-row.k-val{border-left:3px solid rgba(244,114,182,.85);}
+  .var-row.k-sw{border-left:3px solid rgba(45,212,191,.9);}
+  .var-row.k-max{border-left:3px solid rgba(239,68,68,.9);}
+  .var-row.k-min{border-left:3px solid rgba(56,189,248,.9);}
+  .var-row.k-sum{border-left:3px solid rgba(251,191,36,.9);}
+  .var-row.k-note{border-left:3px solid rgba(45,212,191,.75);}
+  .var-row.k-ret{border-left:3px solid rgba(251,191,36,.45);}
+  .var-row.changed{border-color:rgba(56,189,248,.85);background:rgba(56,189,248,.12);}
+  .var-name{color:var(--muted);white-space:nowrap;font-size:.78rem;}
+  .var-value{
+    font-family:ui-monospace,Consolas,monospace;font-weight:700;
+    color:var(--accent);font-variant-numeric:tabular-nums;
+    white-space:nowrap;text-align:right;
+  }
+  .var-value.dim{color:#5f7796;font-weight:500;}
+  .var-row.k-sub   .var-value{color:var(--accent);}
+  .var-row.k-val   .var-value{color:var(--pink);}
+  .var-row.k-sw    .var-value{color:var(--teal);}
+  .var-row.k-max   .var-value{color:#f87171;}
+  .var-row.k-min   .var-value{color:#7dd3fc;}
+  .var-row.k-sum   .var-value{color:var(--amber);}
+  .var-row.k-main  .var-value{color:var(--green);}
+  .var-row.k-note  .var-value{color:var(--teal);font-weight:600;font-size:.77rem;}
+  @keyframes flash{
+    0%{transform:scale(1);}
+    35%{transform:scale(1.28);color:#fff;text-shadow:0 0 14px var(--accent);}
+    100%{transform:scale(1);}
+  }
+  .var-value.flash{animation:flash .55s ease-out;}
+
+  /* ===== 输出区 ===== */
+  .out-panel{flex:1 1 auto;min-height:0;}
+  .console{
+    flex:1 1 auto;min-height:0;overflow:auto;
+    margin:.55rem .7rem .7rem;padding:.65rem .9rem;
+    background:#050c17;border:1px solid #16233a;border-radius:.55rem;
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:clamp(.82rem,.32vw + .6vh,1.06rem);
+    line-height:1.75;color:#e8f2ff;
+    scrollbar-width:thin;scrollbar-color:#334155 transparent;
+  }
+  .console::-webkit-scrollbar{width:9px;}
+  .console::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:9px;}
+  .console:empty::before{content:"（等待程序输出…）";color:#3d5474;}
+  .out-line{white-space:pre;animation:slideIn .35s ease-out;}
+  .seg-out{color:#e8f2ff;}
+  .seg-in{color:var(--teal);font-weight:700;}
+  .seg-money{color:var(--amber);font-weight:700;}
+  @keyframes slideIn{
+    from{opacity:0;transform:translateX(-.7rem);}
+    to{opacity:1;transform:none;}
+  }
+
+  /* ===== 窄屏 / 放大屏幕 ===== */
+  @media (max-width:960px){
+    body{overflow:auto;height:auto;min-height:100vh;}
+    .main{grid-template-columns:1fr;grid-template-rows:auto auto;overflow:visible;}
+    .code-panel{height:58vh;min-height:280px;}
+    .side{height:auto;}
+    .vars-panel{max-height:none;}
+    .out-panel{height:36vh;min-height:200px;}
+    .title .sub{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="title">
+    <h1>C 程序逐步执行模拟</h1>
+    <span class="sub">for 循环 · 10 个成绩 · 求最大值/最小值/平均值 · 哨兵初值 · if 单句更新</span>
+  </div>
+  <div class="controls">
+    <button id="btnReset">⟲ 重置</button>
+    <button id="btnPrev">◀ 上一步</button>
+    <button id="btnPlay" class="primary">▶ 自动播放</button>
+    <button id="btnNext">下一步 ▶</button>
+    <label class="speed">速度
+      <input type="range" id="speed" min="150" max="1800" step="50" value="350">
+      <b id="speedLabel">0.35s</b>
+    </label>
+  </div>
+</header>
+
+<main class="main">
+  <!-- ============ 源代码 ============ -->
+  <section class="panel code-panel">
+    <div class="panel-head">
+      <span class="dots"><i></i><i></i><i></i></span>
+      <span>源代码 · score_stats.c</span>
+      <span class="right" id="stepCounter">步骤 — / —</span>
+    </div>
+
+    <div class="code-scroll" id="codeScroll">
+      <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">"stdio.h"</span>                      <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+      <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span></span></div>
+      <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">int</span> i, n, max, min, sum;           <span class="cmt">// 定义循环变量、输入值、最大、最小、总和</span></span></div>
+      <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    max <span class="op">=</span> <span class="op">-</span><span class="num">32768</span>;                      <span class="cmt">// 最大值初始化为最小整数</span></span></div>
+      <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    min <span class="op">=</span> <span class="num">32767</span>;                       <span class="cmt">// 最小值初始化为最大整数</span></span></div>
+      <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    sum <span class="op">=</span> <span class="num">0</span>;                           <span class="cmt">// 总和初始化为0</span></span></div>
+      <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">    <span class="kw">for</span> (i<span class="op">=</span><span class="num">1</span>; i<span class="op">&lt;=</span><span class="num">10</span>; i<span class="op">++</span>) {            <span class="cmt">// 循环10次</span></span></div>
+      <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">        <span class="fn">printf</span>(<span class="str">"Please input the NO.%d score:"</span>, i); <span class="cmt">// 提示输入</span></span></div>
+      <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">        <span class="fn">scanf</span>(<span class="str">"%d"</span>, <span class="op">&amp;</span>n);               <span class="cmt">// 输入一个数</span></span></div>
+      <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">        <span class="kw">if</span> (n <span class="op">&gt;</span> max) max <span class="op">=</span> n;          <span class="cmt">// 如果n大于max，更新max</span></span></div>
+      <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">        <span class="kw">if</span> (n <span class="op">&lt;</span> min) min <span class="op">=</span> n;          <span class="cmt">// 如果n小于min，更新min</span></span></div>
+      <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">        sum <span class="op">+=</span> n;                      <span class="cmt">// 累加总和</span></span></div>
+      <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">    }</span></div>
+      <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">    <span class="fn">printf</span>(<span class="str">"Max=%d,Min=%d,Average=%.2f"</span>, max, min, (<span class="kw">float</span>)sum<span class="op">/</span><span class="num">10</span>); <span class="cmt">// 输出结果</span></span></div>
+      <div class="code-line" data-line="15"><span class="ln">15</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回0，程序结束</span></span></div>
+      <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">}</span></div>
+    </div>
+
+    <div class="explain" id="explain"></div>
+  </section>
+
+  <!-- ============ 变量 / 输出 ============ -->
+  <aside class="side">
+    <section class="panel vars-panel">
+      <div class="panel-head">变量 · 循环条件 · 当前统计 · 状态表</div>
+      <div class="var-table" id="varTable"></div>
+    </section>
+
+    <section class="panel out-panel">
+      <div class="panel-head">程序运行结果（屏幕输出）</div>
+      <div class="console" id="consoleBody"></div>
+    </section>
+  </aside>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+     1. 模拟输入
+        —— 本次演示依次输入 10 个成绩：
+             85, 92, 78, 90, 88, 76, 95, 83, 89, 91
+        —— 预期结果：
+             最大值 Max     = 95
+             最小值 Min     = 76
+             总和   sum     = 867
+             平均值 Average = 867 / 10 = 86.70
+     ========================================================= */
+  var INPUTS = [85, 92, 78, 90, 88, 76, 95, 83, 89, 91];
+  var TOTAL  = 10;
+
+  /* =========================================================
+     2. 逐步执行轨迹（程序化生成）
+     ========================================================= */
+  function buildSteps() {
+    var st = [];
+
+    var i = null, n = null, max = null, min = null, sum = null;
+    var iter = 0, printed = 0, ret = '—';
+    var outLines = [];
+    var LOOP_BODY = [8, 9, 10, 11, 12];
+
+    function fmt(v) { return v === null ? '未初始化（不定值）' : String(v); }
+    function snap() { return outLines.map(function (l) { return l.slice(); }); }
+
+    function push(line, ctx, over, out, hit, skip, title, desc) {
+      var v = {
+        i: fmt(i), n: fmt(n), max: fmt(max), min: fmt(min), sum: fmt(sum),
+        cond: '—', subExpr: '—', subVal: '—', note: '—',
+        loops: iter, prints: printed, ret: ret
+      };
+      for (var k in over) {
+        if (Object.prototype.hasOwnProperty.call(over, k)) v[k] = over[k];
+      }
+      st.push({
+        line: line, ctx: ctx, vars: v,
+        out: out || null,
+        hit: hit || [], skip: skip || [],
+        title: title, desc: desc
+      });
+    }
+
+    /* ========== 第 1 行 ========== */
+    push(1, '预处理阶段',
+      { i:'—', n:'—', max:'—', min:'—', sum:'—' },
+      null, [], [],
+      '预处理指令 #include "stdio.h"',
+      '预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容引入源文件，让 <code>printf</code> 和 <code>scanf</code> 都获得正确的函数声明。<br>注意：这一行<b>不是 C 语句</b>，在<b>编译之前</b>就已经被预处理器处理完了，不占运行时间，也不产生任何屏幕输出。<br><span class="tip"><b>两种写法的区别：</b><code>#include "stdio.h"</code>（双引号）会先在<b>当前目录</b>查找头文件，找不到再到系统目录；<code>#include &lt;stdio.h&gt;</code>（尖括号）直接到<b>系统目录</b>查找。标准库头文件两种写法都能用，通常推荐尖括号。</span>'
+    );
+
+    /* ========== 第 2 行 ========== */
+    push(2, 'main · 程序入口',
+      { i:'—', n:'—', max:'—', min:'—', sum:'—' },
+      null, [], [],
+      'int main() {  程序从这里开始',
+      '操作系统把控制权交给 <code>main</code>，程序正式开始执行。系统为 main 建立<b>栈帧</b>，接下来声明的 i、n、max、min、sum 都存放在这个栈帧里，函数结束时随栈帧一起销毁。'
+    );
+
+    /* ========== 第 3 行 ========== */
+    push(3, 'main · 声明 5 个整型变量',
+      { i:'未初始化（不定值）', n:'未初始化（不定值）',
+        max:'未初始化（不定值）', min:'未初始化（不定值）',
+        sum:'未初始化（不定值）',
+        subExpr:'int i, n, max, min, sum;',
+        subVal:'5 个 int 变量全部未初始化',
+        note:'每个 int 占 4 个字节，共 20 字节' },
+      null, [], [],
+      'int i, n, max, min, sum;  一条语句声明 5 个变量',
+      '一条语句声明 <b>5 个 int</b> 变量，分工如下：<br>· <b>i</b>：for 循环变量，控制循环 10 次；<br>· <b>n</b>：每次从键盘读入的<b>当前成绩</b>；<br>· <b>max</b>：到目前为止的<b>最高分</b>；<br>· <b>min</b>：到目前为止的<b>最低分</b>；<br>· <b>sum</b>：所有成绩的<b>总和</b>。<br>5 个变量现在都<b>未初始化</b>，里面是不确定的值，必须在下一次使用前赋初值。<span class="warn"><b>为什么 max、min 不能随便给 0？</b>如果把 max 初始化为 0，那么当所有成绩都是负数时就永远更新不了；如果把 min 初始化为 0，那么当所有成绩都是正数时就永远更新不了。所以下面的初始化用了"极端值"技巧。</span>'
+    );
+
+    /* ========== 第 4 行 ========== */
+    max = -32768;
+    push(4, 'main · 初始化 max 为最小整数',
+      { i:'未初始化（不定值）', n:'未初始化（不定值）',
+        max:'-32768', min:'未初始化（不定值）',
+        sum:'未初始化（不定值）',
+        subExpr:'max = -32768',
+        subVal:'max = -32768',
+        note:'比任何可能的输入成绩都小' },
+      null, [], [],
+      'max = -32768;  用"最小可能值"做哨兵',
+      '把 max 初始化为 <b>-32768</b>，这是 16 位有符号整数能表示的<b>最小值</b>（-2<sup>15</sup>）。<br>为什么这样做？因为接下来要用 <code>if (n &gt; max)</code> 来筛选最大值。只要 max 一开始比<b>任何可能的输入</b>都小，那么第一个输入的成绩就一定能被选中，max 立刻得到真实的第一份数据。<span class="tip"><b>哨兵技巧：</b>求最大值的哨兵要取"尽可能小"，求最小值的哨兵要取"尽可能大"。这样无论第一个数据是多少，都能正确进入更新逻辑，不会遗漏。如果把 max 初始化成 0，那么当输入全是负数时，max 会错误地停留在 0——因为它比任何负数都大，永远更新不了。</span>'
+    );
+
+    /* ========== 第 5 行 ========== */
+    min = 32767;
+    push(5, 'main · 初始化 min 为最大整数',
+      { i:'未初始化（不定值）', n:'未初始化（不定值）',
+        max:'-32768', min:'32767',
+        sum:'未初始化（不定值）',
+        subExpr:'min = 32767',
+        subVal:'min = 32767',
+        note:'比任何可能的输入成绩都大' },
+      null, [], [],
+      'min = 32767;  用"最大可能值"做哨兵',
+      '把 min 初始化为 <b>32767</b>，这是 16 位有符号整数能表示的<b>最大值</b>（2<sup>15</sup>-1）。<br>同理，<code>if (n &lt; min)</code> 要用它来筛选最小值。只要 min 一开始比<b>任何可能的输入</b>都大，第一个输入的成绩就一定能被选中。<br><b>max 和 min 的哨兵是对称的：</b>max 取极小，min 取极大，两者相向而行，共同夹逼出数据的真实范围。'
+    );
+
+    /* ========== 第 6 行 ========== */
+    sum = 0;
+    push(6, 'main · 初始化 sum 为 0',
+      { i:'未初始化（不定值）', n:'未初始化（不定值）',
+        max:'-32768', min:'32767', sum:'0',
+        subExpr:'sum = 0',
+        subVal:'sum = 0',
+        note:'加法单位元是 0（乘法才是 1）' },
+      null, [], [],
+      'sum = 0;  累加器从 0 开始',
+      '把 sum 初始化为 <b>0</b>。<br>为什么是 0 而不是 1？因为 sum 是<b>累加器</b>，执行的是 <code>sum += n</code>（即 <code>sum = sum + n</code>）。如果初值是 1，最后结果就会凭空多出 1。加法的<b>单位元</b>是 0，乘法的单位元才是 1。<br>现在三个累加/比较变量都就位了：<b>max = -32768、min = 32767、sum = 0</b>，可以进入循环处理 10 个成绩了。'
+    );
+
+    /* ================= 第 1 轮：for 初始化 + 条件 ================= */
+    i = 1;
+    push(7, 'main · for 初始化与条件（第 1 轮）',
+      { i:'1', n:'未初始化（不定值）',
+        max:'-32768', min:'32767', sum:'0',
+        cond:'1 <= 10 → 真',
+        subExpr:'for (i=1; i<=10; i++)',
+        subVal:'初始化 i=1；1 <= 10 成立',
+        note:'for 顺序：初始化 → 条件 → 循环体 → i++ → 条件…',
+        loops: 0 },
+      null, [], [],
+      'for (i=1; 1 &lt;= 10; i++)  初始化并首次判断，条件为真',
+      '进入 <code>for</code> 语句，执行顺序是：<br>① <b>初始化</b> <code>i=1</code>（只在循环开始前执行一次）；<br>② <b>判断条件</b> <code>i &lt;= 10</code>，即 <code>1 &lt;= 10</code>，结果为<b>真</b>；<br>③ 执行循环体；<br>④ 回到 <code>for</code> 头，执行 <code>i++</code>；<br>⑤ 再次判断条件，如此往复。<br>所以循环体一共会执行 <b>10 次</b>，i 依次取 1、2、3、…、10。<span class="tip"><b>for 与 while 的关系：</b><code>for (i=1; i&lt;=10; i++)</code> 完全等价于 <code>i=1; while (i&lt;=10) { ...; i++; }</code>。for 只是把"初始化、条件、更新"三件事集中写在了一行里，更紧凑、更不容易漏写。</span>'
+    );
+
+    /* ================= 循环 10 轮 ================= */
+    for (var round = 1; round <= TOTAL; round++) {
+      iter = round;
+      var score = INPUTS[round - 1];
+
+      /* ---------- 第 8 行：printf 提示 ---------- */
+      printed++;
+      outLines.push([{ t: 'Please input the NO.' + round + ' score:', c: 'out' }]);
+      push(8, 'main · 循环体 · printf 提示（第 ' + round + ' 次）',
+        { i: String(i), n: fmt(n), max: fmt(max), min: fmt(min), sum: fmt(sum),
+          cond: i + ' <= 10 → 真',
+          subExpr: 'printf("Please input the NO.%d score:", ' + i + ')',
+          subVal: '输出提示，不换行',
+          note: 'printf 无 \\n，光标停在冒号后',
+          loops: round },
+        snap(), LOOP_BODY, [],
+        '第 ' + round + ' 次提示：Please input the NO.' + round + ' score:',
+        '向屏幕打印提示文字，<code>%d</code> 被当前循环变量 <b>i = ' + i + '</b> 替换，所以显示的是 <b>NO.' + round + '</b>。<br>格式串结尾<b>没有</b> <code>\\n</code>，光标会停在冒号后面，等待用户在同一行输入成绩。这是交互式程序的习惯做法：先提示，再让 scanf 接着读。'
+      );
+
+      /* ---------- 第 9 行：scanf 读入 ---------- */
+      n = score;
+      outLines[outLines.length - 1] = [
+        { t: 'Please input the NO.' + round + ' score:', c: 'out' },
+        { t: String(score), c: 'in' }
+      ];
+      push(9, 'main · 循环体 · scanf 读入（第 ' + round + ' 次）',
+        { i: String(i), n: String(n), max: fmt(max), min: fmt(min), sum: fmt(sum),
+          cond: i + ' <= 10 → 真',
+          subExpr: 'scanf("%d", &n)',
+          subVal: 'n = ' + n,
+          note: '%d 读十进制整数；参数必须是地址 &n',
+          loops: round },
+        snap(), LOOP_BODY, [],
+        '第 ' + round + ' 次输入：n = ' + n,
+        '用户键入 <code>' + score + '</code> 并回车，scanf 按 <code>%d</code> 把它解析成整数，顺着 <code>&amp;n</code> 写进 n 的存储单元。此刻 <b>n = ' + n + '</b>。<br>屏幕显示为 <b>Please input the NO.' + round + ' score:' + score + '</b>——提示与输入在同一行，回车后光标换到下一行。<br><span class="warn"><b>易错点：</b>如果写成 <code>scanf("%d", n)</code>（漏掉 &amp;），就是把 n 的值当地址用，属于未定义行为，程序很可能直接崩溃。</span>'
+      );
+
+      /* ---------- 第 10 行：if (n > max) ---------- */
+      var oldMax = max;
+      var isGt = (n > oldMax);
+      if (isGt) max = n;
+      push(10, 'main · 循环体 · 更新最大值（第 ' + round + ' 次）',
+        { i: String(i), n: String(n), max: fmt(max), min: fmt(min), sum: fmt(sum),
+          cond: i + ' <= 10 → 真',
+          subExpr: 'if (n > max)  →  ' + n + ' > ' + oldMax,
+          subVal: isGt ? ('真 → max 更新为 ' + n) : ('假 → max 保持 ' + oldMax),
+          note: 'if 只控制一条语句时可省略花括号',
+          loops: round },
+        null, LOOP_BODY, [],
+        '第 ' + round + ' 次比较：n = ' + n + (isGt ? ' > ' : ' ≤ ') + ' max = ' + oldMax +
+          (isGt ? '，更新 max' : '，max 不变'),
+        '<code>if (n &gt; max) max = n;</code> 判断当前成绩是否<b>比已知最大值还大</b>：<br>· 比较：<code>' + n + ' &gt; ' + oldMax + '</code> → <b>' + (isGt ? '真' : '假') + '</b>；<br>· ' + (isGt
+          ? '条件成立，执行 <code>max = n</code>，max 由 <b>' + oldMax + '</b> 更新为 <b>' + max + '</b>。'
+          : '条件不成立，<b>跳过赋值语句</b>，max 保持 <b>' + oldMax + '</b>。') +
+        '<br><span class="tip"><b>if 的"单句"写法：</b>当 if 只控制一条语句时，花括号可以省略，写成 <code>if (n &gt; max) max = n;</code>。如果写成多行，习惯上把被控制的语句缩进，提醒读者它从属于这个 if。<b>但要注意：</b>如果 if 后面要控制多条语句，就必须用花括号包起来，否则只有第一条受 if 控制——这是新手最常见的陷阱之一。</span>'
+      );
+
+      /* ---------- 第 11 行：if (n < min) ---------- */
+      var oldMin = min;
+      var isLt = (n < oldMin);
+      if (isLt) min = n;
+      push(11, 'main · 循环体 · 更新最小值（第 ' + round + ' 次）',
+        { i: String(i), n: String(n), max: fmt(max), min: fmt(min), sum: fmt(sum),
+          cond: i + ' <= 10 → 真',
+          subExpr: 'if (n < min)  →  ' + n + ' < ' + oldMin,
+          subVal: isLt ? ('真 → min 更新为 ' + n) : ('假 → min 保持 ' + oldMin),
+          note: '与求最大值完全对称，方向相反',
+          loops: round },
+        null, LOOP_BODY, [],
+        '第 ' + round + ' 次比较：n = ' + n + (isLt ? ' < ' : ' ≥ ') + ' min = ' + oldMin +
+          (isLt ? '，更新 min' : '，min 不变'),
+        '<code>if (n &lt; min) min = n;</code> 与上一句<b>完全对称</b>，只是方向相反：判断当前成绩是否<b>比已知最小值还小</b>。<br>· 比较：<code>' + n + ' &lt; ' + oldMin + '</code> → <b>' + (isLt ? '真' : '假') + '</b>；<br>· ' + (isLt
+          ? '条件成立，执行 <code>min = n</code>，min 由 <b>' + oldMin + '</b> 更新为 <b>' + min + '</b>。'
+          : '条件不成立，<b>跳过赋值语句</b>，min 保持 <b>' + oldMin + '</b>。') +
+        '<br><span class="tip"><b>为什么这两句一定要分开写？</b>因为一个成绩<b>不可能同时既大于 max 又小于 min</b>（除非这是第一个数据）。两句互不干扰，各管各的方向。把它们放在一起，就构成了一对"维护极值"的标准模式。</span>'
+      );
+
+      /* ---------- 第 12 行：sum += n ---------- */
+      var oldSum = sum;
+      sum = sum + n;
+      push(12, 'main · 循环体 · 累加总和（第 ' + round + ' 次）',
+        { i: String(i), n: String(n), max: fmt(max), min: fmt(min), sum: fmt(sum),
+          cond: i + ' <= 10 → 真',
+          subExpr: 'sum += n   即   sum = sum + n',
+          subVal: 'sum = ' + oldSum + ' + ' + n + ' = ' + sum,
+          note: '复合赋值：先加，再把结果写回 sum',
+          loops: round },
+        null, LOOP_BODY, [],
+        '第 ' + round + ' 次累加：sum = ' + oldSum + ' + ' + n + ' = ' + sum,
+        '<code>sum += n;</code> 中 <code>+=</code> 是<b>复合赋值运算符</b>，完全等价于 <code>sum = sum + n;</code>：先取 sum 与 n 相加，再把和写回 sum。<br>· sum 由 <b>' + oldSum + '</b> 变成 <b>' + sum + '</b>；<br>· 累加完成后，循环体执行完毕，程序自动回到 <code>for</code> 头，执行 <code>i++</code> 并重新判断条件。'
+      );
+
+      /* ---------- 第 7 行：i++ 与条件判断 ---------- */
+      var oldI = i;
+      i = i + 1;
+      var stillIn = (i <= TOTAL);
+      push(7, 'main · for 更新与条件（第 ' + round + ' 轮结束）',
+        { i: String(i), n: String(n), max: fmt(max), min: fmt(min), sum: fmt(sum),
+          cond: i + ' <= 10 → ' + (stillIn ? '真' : '假'),
+          subExpr: 'i++  然后判断  ' + i + ' <= 10',
+          subVal: 'i = ' + oldI + ' + 1 = ' + i + '；' +
+                  (stillIn ? '条件为真，继续下一轮' : '条件为假，退出循环'),
+          note: 'i++ 在循环体之后自动执行',
+          loops: round },
+        null, [], stillIn ? [] : LOOP_BODY,
+        'i 由 ' + oldI + ' 变为 ' + i + '，条件 ' + i + ' &lt;= 10 为' + (stillIn ? '真' : '假'),
+        (stillIn
+          ? '<code>i++</code> 把循环变量加 1，由 <b>' + oldI + '</b> 变成 <b>' + i + '</b>。重新判断 <code>' + i + ' &lt;= 10</code> 为<b>真</b>，于是进入第 <b>' + (round + 1) + '</b> 轮循环，准备读入第 ' + (round + 1) + ' 个成绩。'
+          : '<code>i++</code> 把循环变量加 1，由 <b>' + oldI + '</b> 变成 <b>' + i + '</b>。重新判断 <code>11 &lt;= 10</code> 结果为<b>假</b>，<b>不再进入循环体</b>，程序跳到 <code>for</code> 之后（第 14 行）继续执行。<br><b>循环总账：</b>循环体一共执行了 <b>10 次</b>（i 从 1 走到 10），读入 10 个成绩，最终 <b>max = ' + max + '、min = ' + min + '、sum = ' + sum + '</b>。') +
+        '<span class="tip"><b>for 的"三步走"到这一步全部走完：</b>初始化（只做 1 次）→ 条件（做 11 次）→ 循环体（做 10 次）→ 更新 i++（做 10 次）。条件判断比循环体多 1 次，因为最后那次判断为假，循环才退出。</span>'
+      );
+    }
+
+    /* ================= 第 14 行：printf 输出结果 ================= */
+    printed++;
+    var avgStr = (sum / TOTAL).toFixed(2);
+    outLines.push([
+      { t: 'Max=', c: 'out' }, { t: String(max), c: 'money' },
+      { t: ',Min=', c: 'out' }, { t: String(min), c: 'money' },
+      { t: ',Average=', c: 'out' }, { t: avgStr, c: 'money' }
+    ]);
+
+    push(14, 'main · printf 输出最终结果',
+      { i: String(i), n: String(n), max: fmt(max), min: fmt(min), sum: fmt(sum),
+        cond: '11 <= 10 → 假（已退出）',
+        subExpr: 'printf("Max=%d,Min=%d,Average=%.2f", max, min, (float)sum/10)',
+        subVal: '"Max=' + max + ',Min=' + min + ',Average=' + avgStr + '"',
+        note: '(float)sum 把 int 转成 float，保证浮点除法',
+        loops: iter, prints: printed },
+      snap(), [], [],
+      'printf(...)  输出 Max=' + max + ',Min=' + min + ',Average=' + avgStr,
+      '这条 printf 一次性输出三个结果，格式串里有 <b>三个转换说明</b>，对应后面<b>三个实参</b>，顺序必须一一对应：<br>· <code>%d</code> ← <b>max</b>，输出 <b>' + max + '</b>；<br>· <code>%d</code> ← <b>min</b>，输出 <b>' + min + '</b>；<br>· <code>%.2f</code> ← <b>(float)sum/10</b>，输出 <b>' + avgStr + '</b>。<br><span class="tip"><b>关键点：为什么必须写 (float)sum/10？</b>因为 sum 和 10 都是 <b>int</b>，如果不加转换，<code>sum/10</code> 会执行<b>整数除法</b>，867/10 会算成 <b>86</b>（小数被截断）。加了 <code>(float)</code> 强制类型转换后，sum 先变成 float，除法就按<b>浮点运算</b>进行，结果才是 86.7，再由 <code>%.2f</code> 输出为 <b>86.70</b>。<b>这是本程序最容易写错的一处。</b></span><br>格式串里<b>没有</b> <code>\\n</code>，所以输出后光标停在行尾，不换行。'
+    );
+
+    /* ================= 第 15 行：return ================= */
+    ret = '0';
+    push(15, 'main · return',
+      { i: String(i), n: String(n), max: fmt(max), min: fmt(min), sum: fmt(sum),
+        cond: '—', subExpr: '—', subVal: '—', note: '—',
+        loops: iter, prints: printed, ret: '0' },
+      null, [], [],
+      'return 0;  结束 main 函数',
+      '<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。约定返回 0 表示程序<b>正常结束</b>，返回非 0 通常表示出错。这条语句不产生屏幕输出。'
+    );
+
+    /* ================= 第 16 行：} ================= */
+    push(16, '程序结束',
+      { i: String(i), n: String(n), max: fmt(max), min: fmt(min), sum: fmt(sum),
+        cond: '—', subExpr: '—', subVal: '—', note: '—',
+        loops: iter, prints: printed, ret: '0' },
+      null, [], [],
+      'main 函数体结束 }',
+      '函数体收尾，main 的栈帧被销毁，变量 i、n、max、min、sum 随栈帧一起释放，控制权交还操作系统。<br>程序共调用 <b>printf 11 次</b>（10 次提示 + 1 次结果）、<b>scanf 10 次</b>，循环体执行 <b>10 次</b>，返回值 0。<span class="tip"><b>本程序要点总结：</b><br>① <b>哨兵初值技巧</b>：max 取最小可能值 -32768，min 取最大可能值 32767，保证第一个输入一定能被选中；<br>② <b>sum 初值为 0</b>，是加法的单位元；<br>③ <code>for (i=1; i&lt;=10; i++)</code> 控制循环 10 次，结构紧凑，三步（初始化/条件/更新）集中在一行；<br>④ <b>两个对称的 if 单句</b>维护极值：<code>if (n&gt;max) max=n;</code> 与 <code>if (n&lt;min) min=n;</code>，互不干扰；<br>⑤ <b>(float)sum/10 强制类型转换</b>，保证平均值是浮点除法，得到 86.70 而不是 86；<br>⑥ <code>%.2f</code> 保留 2 位小数，并做四舍五入。<br><b>最终结果：Max=' + max + ', Min=' + min + ', Average=' + avgStr + '</b>。</span>'
+    );
+
+    return st;
+  }
+
+  var STEPS = buildSteps();
+
+  /* =========================================================
+     3. DOM 引用
+     ========================================================= */
+  var codeScroll  = document.getElementById('codeScroll');
+  var codeLines   = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+  var varTable    = document.getElementById('varTable');
+  var consoleBody = document.getElementById('consoleBody');
+  var explainEl   = document.getElementById('explain');
+  var stepCounter = document.getElementById('stepCounter');
+  var btnPlay     = document.getElementById('btnPlay');
+  var btnPrev     = document.getElementById('btnPrev');
+  var btnNext     = document.getElementById('btnNext');
+  var btnReset    = document.getElementById('btnReset');
+  var speedInput  = document.getElementById('speed');
+  var speedLabel  = document.getElementById('speedLabel');
+
+  /* =========================================================
+     4. 变量表行定义
+     ========================================================= */
+  var VAR_ROWS = [
+    { key:'ctx',     name:'当前执行位置',              kind:'k-ctx'   },
+    { key:'i',       name:'i  (int) 循环变量',          kind:'k-main'  },
+    { key:'n',       name:'n  (int) 当前输入成绩',      kind:'k-main'  },
+    { key:'max',     name:'max (int) 最高分',           kind:'k-max'   },
+    { key:'min',     name:'min (int) 最低分',           kind:'k-min'   },
+    { key:'sum',     name:'sum (int) 总分',             kind:'k-sum'   },
+    { key:'cond',    name:'循环条件 i <= 10',           kind:'k-sw'    },
+    { key:'subExpr', name:'正在求值的子表达式',          kind:'k-sub'   },
+    { key:'subVal',  name:'子表达式结果',               kind:'k-val'   },
+    { key:'note',    name:'关键规则提示',               kind:'k-note'  },
+    { key:'loops',   name:'循环体已执行次数',            kind:'k-ctx'   },
+    { key:'prints',  name:'printf 调用次数',            kind:'k-ctx'   },
+    { key:'ret',     name:'main 返回值',                kind:'k-ret'   }
+  ];
+
+  /* =========================================================
+     5. 运行状态
+     ========================================================= */
+  var current    = -1;
+  var playing    = false;
+  var timer      = null;
+  var speed      = Number(speedInput.value);
+  var lastOutSig = '';
+
+  /* =========================================================
+     6. 构建变量表骨架
+     ========================================================= */
+  function buildVarTable() {
+    varTable.innerHTML = VAR_ROWS.map(function (r) {
+      return '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+               '<span class="var-name">' + r.name + '</span>' +
+               '<span class="var-value dim">—</span>' +
+             '</div>';
+    }).join('');
+  }
+
+  function valueOf(step, key) {
+    if (!step) return '—';
+    if (key === 'ctx') return step.ctx;
+    return step.vars[key];
+  }
+
+  function updateVars(step, prevStep) {
+    VAR_ROWS.forEach(function (r) {
+      var row   = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+      var valEl = row.querySelector('.var-value');
+      var val   = String(valueOf(step, r.key));
+      var old   = String(valueOf(prevStep, r.key));
+
+      if (valEl.textContent !== val) {
+        valEl.textContent = val;
+        valEl.classList.toggle('dim', val === '—');
+        valEl.title = val;
+        valEl.classList.remove('flash');
+        void valEl.offsetWidth;                 /* 触发重排，重放动画 */
+        valEl.classList.add('flash');
+        if (prevStep && old !== val) {
+          row.classList.add('changed');
+          window.setTimeout(function () { row.classList.remove('changed'); }, 700);
+        }
+      }
+    });
+  }
+
+  /* =========================================================
+     7. 代码高亮 + 自动滑动居中
+     ========================================================= */
+  function centerActiveLine() {
+    var el = codeScroll.querySelector('.code-line.active');
+    if (!el) return;
+    window.requestAnimationFrame(function () {
+      var er = el.getBoundingClientRect();
+      var cr = codeScroll.getBoundingClientRect();
+      var delta = (er.top + er.height / 2) - (cr.top + cr.height / 2);
+      if (Math.abs(delta) > 4) {
+        codeScroll.scrollTo({
+          top: Math.max(0, codeScroll.scrollTop + delta),
+          behavior: 'smooth'
+        });
+      }
+    });
+  }
+
+  function updateCode(step) {
+    var activeLine = step ? step.line : null;
+    var hitLines   = (step && step.hit)  || [];
+    var skipLines  = (step && step.skip) || [];
+
+    codeLines.forEach(function (el) {
+      var n = Number(el.dataset.line);
+      el.classList.toggle('active', activeLine !== null && n === activeLine);
+      el.classList.toggle('hit',    hitLines.indexOf(n)  !== -1);
+      el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+    });
+    centerActiveLine();
+  }
+
+  /* =========================================================
+     8. 输出区（按快照重建）
+     ========================================================= */
+  function resolveOut(upto) {
+    for (var k = upto; k >= 0; k--) {
+      if (STEPS[k] && STEPS[k].out) return STEPS[k].out;
+    }
+    return null;
+  }
+
+  function updateOutput(upto) {
+    var lines = resolveOut(upto);
+    var sig   = lines ? JSON.stringify(lines) : '';
+
+    if (sig === lastOutSig) return;             /* 内容未变则跳过 */
+    lastOutSig = sig;
+
+    consoleBody.innerHTML = '';
+    if (!lines) return;
+
+    lines.forEach(function (segs) {
+      var div = document.createElement('div');
+      div.className = 'out-line';
+      segs.forEach(function (seg) {
+        var span = document.createElement('span');
+        span.className = 'seg-' + (seg.c || 'out');
+        span.textContent = seg.t;
+        div.appendChild(span);
+      });
+      consoleBody.appendChild(div);
+    });
+
+    consoleBody.scrollTop = consoleBody.scrollHeight;
+  }
+
+  /* =========================================================
+     9. 总渲染
+     ========================================================= */
+  function render() {
+    var step = current >= 0 ? STEPS[current] : null;
+    var prev = current > 0 ? STEPS[current - 1] : null;
+
+    updateCode(step);
+    updateVars(step, prev);
+    updateOutput(current);
+
+    if (step) {
+      var isHit = step.hit && step.hit.length > 0;
+      explainEl.innerHTML =
+        '<span class="ex-line' + (isHit ? ' hit' : '') + '">第 ' + step.line + ' 行</span>' +
+        '<strong>' + step.title + '</strong> —— ' + step.desc;
+      stepCounter.textContent = '步骤 ' + (current + 1) + ' / ' + STEPS.length;
+    } else {
+      explainEl.innerHTML =
+        '<em>点击「自动播放」或「下一步」，开始逐条执行程序。本次演示将依次输入 10 个成绩：<b>' +
+        INPUTS.join('、') + '</b>。</em>';
+      stepCounter.textContent = '步骤 — / ' + STEPS.length;
+    }
+
+    btnPrev.disabled = current < 0;
+    btnNext.disabled = current >= STEPS.length - 1;
+  }
+
+  /* =========================================================
+     10. 播放控制
+     ========================================================= */
+  function updatePlayBtn() {
+    btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+    btnPlay.classList.toggle('playing', playing);
+  }
+
+  function tick() {
+    if (current >= STEPS.length - 1) { pause(); return; }
+    current += 1;
+    render();
+    if (current >= STEPS.length - 1) pause();   /* 最后一步自动停止 */
+  }
+
+  function play() {
+    if (playing) return;
+    if (current >= STEPS.length - 1) { current = -1; render(); }
+    playing = true;
+    updatePlayBtn();
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+    tick();                                     /* 立即走第一步 */
+  }
+
+  function pause() {
+    playing = false;
+    window.clearInterval(timer);
+    timer = null;
+    updatePlayBtn();
+  }
+
+  function nextStep() {
+    pause();
+    if (current < STEPS.length - 1) { current += 1; render(); }
+  }
+
+  function prevStep() {
+    pause();
+    if (current > -1) { current -= 1; render(); }
+  }
+
+  function resetAll() {
+    pause();
+    current = -1;
+    lastOutSig = '';
+    consoleBody.innerHTML = '';
+    render();
+  }
+
+  /* =========================================================
+     11. 事件绑定
+     ========================================================= */
+  btnPlay.addEventListener('click', function () { playing ? pause() : play(); });
+  btnNext.addEventListener('click', nextStep);
+  btnPrev.addEventListener('click', prevStep);
+  btnReset.addEventListener('click', resetAll);
+
+  speedInput.addEventListener('input', function () {
+    speed = Number(speedInput.value);
+    speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+    if (playing) {
+      window.clearInterval(timer);
+      timer = window.setInterval(tick, speed);
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space')            { e.preventDefault(); playing ? pause() : play(); }
+    else if (e.code === 'ArrowRight')  { nextStep(); }
+    else if (e.code === 'ArrowLeft')   { prevStep(); }
+    else if (e.code === 'KeyR')        { resetAll(); }
+  });
+
+  /* =========================================================
+     12. 初始化
+     ========================================================= */
+  buildVarTable();
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  render();
+})();
+</script>
+</body>
+</html>
