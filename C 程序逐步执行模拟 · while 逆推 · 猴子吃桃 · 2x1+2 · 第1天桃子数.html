@@ -98,16 +98,13 @@
     user-select:none;font-variant-numeric:tabular-nums;
   }
   .code-line .src{flex:1 1 auto;}
-  /* 循环体高亮（写在 .active 之前，会被覆盖） */
   .code-line.hit{
     background:linear-gradient(90deg,rgba(74,222,128,.16),rgba(74,222,128,0));
     border-left-color:var(--green);
   }
   .code-line.hit .ln{color:var(--green);}
-  /* 跳过 */
   .code-line.skip{opacity:.24;}
   .code-line.skip .ln{color:#4d5f78;}
-  /* 当前行（优先级最高） */
   .code-line.active{
     background:linear-gradient(90deg,rgba(56,189,248,.2),rgba(56,189,248,0));
     border-left-color:var(--accent);
@@ -217,19 +214,86 @@
     to{opacity:1;transform:none;}
   }
 
-  /* ===== 窄屏 / 放大屏幕 ===== */
-  @media (max-width:960px){
-    body{overflow:auto;height:auto;min-height:100vh;}
-    .main{grid-template-columns:1fr;grid-template-rows:auto auto;overflow:visible;}
-    .code-panel{height:58vh;min-height:280px;}
-    .side{height:auto;}
-    .vars-panel{max-height:none;}
-    .out-panel{height:34vh;min-height:180px;}
+  /* ===== 视图切换标签：默认隐藏，小视口才出现 ===== */
+  .viewtabs{display:none;}
+
+  /* ===== 小视口 / 高倍缩放（1080p @ 300% ≈ 640×360）===== */
+  @media (max-width:760px), (max-height:520px){
+    html,body{height:100%;overflow:hidden;}
+
+    /* 顶栏瘦身：不换行、隐藏副标题与速度条 */
+    .topbar{padding:.25rem .45rem;gap:.3rem .5rem;flex-wrap:nowrap;}
+    .title h1{font-size:.82rem;letter-spacing:0;}
     .title .sub{display:none;}
+    .controls{gap:.28rem;margin-left:auto;flex-wrap:nowrap;}
+    button{font-size:.75rem;padding:.26rem .48rem;border-radius:.4rem;}
+    .speed{display:none;}
+
+    /* 切换标签出现 */
+    .viewtabs{
+      display:flex;flex:0 0 auto;gap:.25rem;
+      padding:.25rem .45rem 0;background:#0c1626;
+      border-bottom:1px solid var(--border);
+    }
+    .viewtabs button{
+      flex:1 1 0;min-width:0;padding:.26rem .2rem;
+      font-size:.75rem;border-radius:.4rem .4rem 0 0;
+      border-bottom-color:transparent;
+    }
+    .viewtabs button.on{
+      background:#1d3352;border-color:#38bdf8;color:#eaf6ff;font-weight:700;
+    }
+
+    /* 主区改单栏，一次只显示一个面板 */
+    .main{
+      display:flex;flex-direction:column;
+      gap:.35rem;padding:.35rem;overflow:hidden;
+    }
+    .main > .code-panel,
+    .main > .side{display:none;flex:1 1 auto;min-height:0;}
+    body[data-view="code"] .main > .code-panel{display:flex;}
+    body[data-view="vars"] .main > .side,
+    body[data-view="out"]  .main > .side{display:flex;}
+
+    .side > .panel{display:none;flex:1 1 auto;min-height:0;}
+    body[data-view="vars"] .side > .vars-panel{display:flex;}
+    body[data-view="out"]  .side > .out-panel{display:flex;}
+    .vars-panel{max-height:none;}
+
+    /* 面板头与代码区密度 */
+    .panel-head{padding:.28rem .5rem;font-size:.7rem;}
+    .panel-head .right{font-size:.66rem;}
+    .code-scroll{
+      padding:.3rem 0;
+      font-size:clamp(.7rem, 2.7vh, .92rem);
+      line-height:1.62;
+    }
+    .code-line{padding:.07rem .5rem .07rem .3rem;gap:.5rem;}
+    .code-line .ln{width:2.2ch;}
+
+    .explain{
+      padding:.4rem .55rem;font-size:.74rem;line-height:1.5;
+      max-height:26vh;
+    }
+    .explain .ex-line{font-size:.66rem;}
+    .explain code{padding:0 .22rem;}
+    .explain .tip,.explain .warn{font-size:.72rem;padding:.3rem .45rem;}
+
+    /* 变量表与输出台 */
+    .var-table{padding:.3rem .45rem .4rem;gap:.15rem;}
+    .var-row{padding:.18rem .45rem;font-size:.72rem;}
+    .var-name{font-size:.67rem;}
+    .var-value{font-size:.74rem;}
+    .var-row.k-note .var-value{font-size:.7rem;}
+
+    .console{
+      margin:.3rem .45rem .45rem;padding:.45rem .6rem;
+      font-size:clamp(.85rem, 3.2vh, 1.1rem);line-height:1.8;
+    }
   }
 </style>
 </head>
-<body>
+<body data-view="code">
 
 <header class="topbar">
   <div class="title">
@@ -247,6 +311,12 @@
     </label>
   </div>
 </header>
+
+<nav class="viewtabs" id="viewTabs" role="tablist">
+  <button type="button" data-view="code" class="on">源代码</button>
+  <button type="button" data-view="vars">变量表</button>
+  <button type="button" data-view="out">输出</button>
+</nav>
 
 <main class="main">
   <!-- ============ 源代码 ============ -->
@@ -509,6 +579,23 @@
   var btnReset    = document.getElementById('btnReset');
   var speedInput  = document.getElementById('speed');
   var speedLabel  = document.getElementById('speedLabel');
+  var viewTabs    = document.getElementById('viewTabs');
+
+  /* =========================================================
+     视图切换（小视口下：代码 / 变量 / 输出 三选一）
+     ========================================================= */
+  function setView(v) {
+    document.body.setAttribute('data-view', v);
+    Array.prototype.forEach.call(viewTabs.querySelectorAll('button'), function (b) {
+      b.classList.toggle('on', b.getAttribute('data-view') === v);
+    });
+    if (v === 'code') centerActiveLine();
+  }
+
+  viewTabs.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if (b && b.getAttribute('data-view')) setView(b.getAttribute('data-view'));
+  });
 
   /* =========================================================
      变量表行定义
@@ -751,6 +838,7 @@
      ========================================================= */
   buildVarTable();
   speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  setView('code');
   render();
 })();
 </script>
