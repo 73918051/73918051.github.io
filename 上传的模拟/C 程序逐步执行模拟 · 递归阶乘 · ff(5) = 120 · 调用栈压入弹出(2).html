@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 递归阶乘 · ff(5) = 120 · 调用栈压入弹出</title>
+<style>
+:root{
+  --bg:#0d1117;
+  --panel-bg:rgba(13,17,23,0.82);
+  --border:#22334a;
+  --text:#dce8f8;
+  --muted:#8aa3c4;
+  --accent:#38bdf8;
+  --green:#4ade80;
+  --amber:#fbbf24;
+  --pink:#f472b6;
+  --purple:#c084fc;
+  --teal:#2dd4bf;
+  --orange:#fb923c;
+  --gold:#facc15;
+
+  --code-font: clamp(52px, 3.6vw, 88px);
+  --out-font:  clamp(48px, 3.4vw, 84px);
+  --var-font:  clamp(26px, 1.5vw, 42px);
+  --explain-font: clamp(28px, 1.7vw, 48px);
+  --btn-font:  clamp(24px, 1.5vw, 40px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;margin:0;overflow:hidden;}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  user-select:none;
+}
+
+/* ============ 全屏代码区 ============ */
+#codeScroll{
+  position:fixed;inset:0;overflow:auto;
+  background:radial-gradient(1400px 800px at 8% -10%,#152743 0%,#0d1117 60%);
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+  z-index:1;
+}
+#codeScroll::-webkit-scrollbar{width:14px;height:14px;}
+#codeScroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:14px;}
+
+#codeInner{
+  min-width:max-content;padding:0;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  line-height:1.55;
+}
+.code-line{
+  display:flex;align-items:flex-start;gap:.45em;
+  padding:.10em 1.4em .10em .5em;
+  border-left:14px solid transparent;
+  white-space:pre;
+  transition:background .25s,border-color .25s,opacity .3s,filter .3s;
+}
+.code-line .ln{
+  flex:0 0 auto;width:2.9ch;text-align:right;
+  color:#40597b;font-size:.62em;padding-top:.28em;
+  user-select:none;font-variant-numeric:tabular-nums;
+}
+.code-line .src{flex:1 1 auto;}
+
+.code-line.pending{opacity:.26;filter:saturate(.35);}
+.code-line.done{opacity:.72;}
+.code-line.active{
+  opacity:1;filter:none;
+  background:linear-gradient(90deg,rgba(56,189,248,.22),rgba(56,189,248,.02));
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 2px rgba(56,189,248,.22);
+}
+.code-line.active .ln{color:var(--accent);font-weight:900;}
+.code-line.active .src{color:#ffffff;text-shadow:0 0 18px rgba(56,189,248,.35);}
+
+/* 语法高亮 */
+.pp{color:#c084fc;font-weight:800;}
+.str{color:#4ade80;}
+.cmt{color:#5d738f;font-style:italic;}
+.fn{color:#38bdf8;}
+.fn.ff{color:#c084fc;font-weight:800;}
+.fn.out{color:#4ade80;font-weight:800;}
+.fn.in{color:#7dd3fc;font-weight:800;}
+.kw{color:#f472b6;font-weight:800;}
+.kw.long{color:#facc15;font-weight:900;text-decoration:underline;}
+.num{color:#fbbf24;}
+.op{color:#fb923c;font-weight:800;}
+.op.addr{color:#fb923c;font-weight:900;background:rgba(251,146,60,.15);border-radius:.2em;padding:0 .1em;}
+.fmt{color:#facc15;text-decoration:underline;font-weight:900;}
+
+/* ============ 通用面板 ============ */
+.panel{
+  position:fixed;
+  background:var(--panel-bg);
+  -webkit-backdrop-filter:blur(14px) saturate(1.3);
+  backdrop-filter:blur(14px) saturate(1.3);
+  border:2px solid var(--border);
+  border-radius:18px;
+  box-shadow:0 18px 50px rgba(0,0,0,.62);
+  display:flex;flex-direction:column;
+  overflow:hidden;z-index:10;
+  transition:border-color .18s,box-shadow .18s,opacity .2s;
+  min-width:0;min-height:0;
+}
+.panel:hover{border-color:#2f4a6d;}
+.panel.front{border-color:var(--accent);box-shadow:0 0 0 3px rgba(56,189,248,.28),0 22px 60px rgba(0,0,0,.7);}
+.panel.hidden{display:none;}
+
+.p-head{
+  flex:0 0 auto;display:flex;align-items:center;gap:.6em;
+  padding:.45em .7em;
+  background:linear-gradient(180deg,rgba(30,45,68,.96),rgba(17,26,42,.96));
+  border-bottom:2px solid var(--border);
+  cursor:grab;touch-action:none;
+}
+.p-head:active{cursor:grabbing;}
+.p-title{
+  font-size:var(--var-font);font-weight:800;letter-spacing:.02em;
+  color:#cfe3ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.p-close{
+  margin-left:auto;flex:0 0 auto;
+  width:1.9em;height:1.9em;min-width:44px;min-height:44px;
+  border-radius:10px;border:2px solid #3a4d68;background:#1b2740;
+  color:#c9dcf6;font-size:var(--var-font);font-weight:900;line-height:1;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:background .15s,border-color .15s;
+}
+.p-close:hover{background:#e11d48;border-color:#fb7185;color:#fff;}
+
+.p-body{
+  flex:1 1 auto;min-height:0;min-width:0;overflow:auto;
+  padding:.5em .7em;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+}
+.p-body::-webkit-scrollbar{width:10px;height:10px;}
+.p-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+
+.p-resize{
+  position:absolute;right:0;bottom:0;
+  width:44px;height:44px;cursor:nwse-resize;touch-action:none;
+  background:linear-gradient(135deg,transparent 0 44%,#2f4a6d 44% 52%,transparent 52% 62%,#2f4a6d 62% 70%,transparent 70% 80%,#2f4a6d 80% 88%,transparent 88%);
+  border-bottom-right-radius:16px;opacity:.9;
+}
+.p-resize:hover{background-color:rgba(56,189,248,.22);}
+
+/* ============ 工具栏按钮 ============ */
+#panel-toolbar .p-body{
+  display:flex;flex-wrap:wrap;align-items:center;gap:.5em;padding:.55em .7em;
+}
+button.tb{
+  font:inherit;font-size:var(--btn-font);font-weight:800;
+  padding:.34em .72em;min-height:72px;border-radius:14px;
+  border:2px solid var(--border);background:#182741;color:var(--text);
+  cursor:pointer;white-space:nowrap;
+  transition:background .15s,border-color .15s,transform .1s;
+}
+button.tb:hover:not(:disabled){background:#22385a;border-color:#3f6091;}
+button.tb:active:not(:disabled){transform:translateY(2px);}
+button.tb:disabled{opacity:.32;cursor:not-allowed;}
+button.tb.primary{background:linear-gradient(180deg,#0ea5e9,#0369a1);border-color:#38bdf8;color:#04121f;}
+button.tb.primary.playing{background:linear-gradient(180deg,#f59e0b,#b45309);border-color:#fbbf24;color:#1a1200;}
+.speedbox{display:flex;align-items:center;gap:.5em;font-size:var(--btn-font);color:var(--muted);padding:0 .3em;}
+.speedbox input[type=range]{width:clamp(140px,12vw,300px);height:44px;accent-color:var(--accent);cursor:pointer;}
+.speedbox b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:4.4ch;display:inline-block;}
+
+/* ============ 变量分组 ============ */
+.grp{border-radius:14px;border:2px solid #23364f;margin-bottom:.5em;overflow:hidden;background:rgba(10,17,28,.55);}
+.grp-h{font-size:calc(var(--var-font) * .82);font-weight:900;letter-spacing:.06em;padding:.28em .6em;background:rgba(255,255,255,.05);color:#9fb8d8;}
+.grp.gold .grp-h{color:#facc15;background:rgba(250,204,21,.12);}
+.grp.purple .grp-h{color:#c084fc;background:rgba(192,132,252,.12);}
+.grp.teal .grp-h{color:#2dd4bf;background:rgba(45,212,191,.12);}
+.grp.blue .grp-h{color:#38bdf8;background:rgba(56,189,248,.12);}
+
+.vrow{
+  display:flex;align-items:center;justify-content:space-between;gap:.6em;
+  padding:.20em .6em;font-size:var(--var-font);
+  border-top:1px solid rgba(45,70,100,.5);transition:background .3s;
+}
+.vrow:first-of-type{border-top:none;}
+.vrow .k{color:var(--muted);white-space:nowrap;font-size:.82em;}
+.vrow .v{
+  font-family:ui-monospace,Consolas,monospace;font-weight:900;
+  font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--accent);
+}
+.vrow.gold .v{color:var(--gold);}
+.vrow.purple .v{color:var(--purple);}
+.vrow.teal .v{color:var(--teal);}
+.vrow.blue .v{color:var(--accent);}
+.vrow.pink .v{color:var(--pink);}
+.vrow .v.dim{color:#4d6b8f;font-weight:600;}
+.vrow.wrap .v{white-space:normal;text-align:right;font-size:.78em;line-height:1.45;}
+@keyframes vpop{0%{transform:scale(1);}40%{transform:scale(1.18);filter:brightness(1.8);}100%{transform:scale(1);}}
+.vrow.pop .v{animation:vpop .55s ease-out;}
+
+/* 调用栈 */
+#stackBody{display:flex;align-items:center;gap:.4em;flex-wrap:wrap;font-family:ui-monospace,Consolas,monospace;}
+.frame{
+  font-size:var(--var-font);font-weight:900;padding:.18em .62em;border-radius:.4em;
+  background:#0d1728;border:2px solid #1b293f;color:#7f9cbe;transition:all .3s;
+}
+.frame.top{border-color:var(--accent);background:rgba(56,189,248,.22);color:#fff;
+  box-shadow:0 0 0 3px rgba(56,189,248,.30),0 0 26px rgba(56,189,248,.55);}
+.arrow{color:#3f5a7d;font-size:var(--var-font);font-weight:900;}
+.stack-empty{color:#3d5474;font-size:var(--var-font);font-family:ui-monospace,monospace;}
+
+/* ============ 输出 ============ */
+#consoleBody{
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);line-height:1.55;color:#86efac;
+  white-space:pre;padding:.2em .1em;
+}
+.out-line{display:block;white-space:pre;min-height:1.55em;animation:fadein .4s ease-out;}
+@keyframes fadein{from{opacity:0;transform:translateX(-14px);}to{opacity:1;transform:none;}}
+.cursor{display:inline-block;color:#4ade80;font-weight:400;animation:blink 1s step-end infinite;margin-left:2px;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+.out-empty{color:#3d5474;}
+
+/* ============ 说明 ============ */
+#explainBody{font-size:var(--explain-font);line-height:1.55;color:#bcd2ee;}
+#explainBody .ex-line{
+  display:inline-block;margin-right:.5em;padding:.06em .5em;border-radius:.4em;
+  background:rgba(56,189,248,.2);color:var(--accent);font-weight:900;font-size:.78em;
+}
+#explainBody .ex-line.gold{background:rgba(250,204,21,.24);color:var(--gold);}
+#explainBody .ex-line.purple{background:rgba(192,132,252,.24);color:var(--purple);}
+#explainBody .ex-line.teal{background:rgba(45,212,191,.24);color:var(--teal);}
+#explainBody .ex-line.green{background:rgba(74,222,128,.22);color:var(--green);}
+#explainBody .ex-line.mv{background:rgba(244,114,182,.22);color:var(--pink);}
+#explainBody .ex-line.ans{background:rgba(56,189,248,.22);color:var(--accent);}
+#explainBody strong{color:#fff;}
+#explainBody code{font-family:ui-monospace,Consolas,monospace;background:rgba(148,163,184,.18);border-radius:.3em;padding:0 .3em;color:#e7f0ff;}
+#explainBody .tip{display:block;margin-top:.4em;padding:.35em .6em;border-radius:.45em;
+  background:rgba(45,212,191,.12);border-left:6px solid var(--teal);color:#c6f7ee;font-size:.88em;}
+#explainBody .warn{display:block;margin-top:.4em;padding:.35em .6em;border-radius:.45em;
+  background:rgba(251,191,36,.14);border-left:6px solid var(--amber);color:#ffe8b8;font-size:.88em;}
+#explainBody .win{display:block;margin-top:.4em;padding:.4em .6em;border-radius:.45em;
+  background:rgba(250,204,21,.16);border-left:6px solid var(--gold);color:#fff5cb;font-weight:700;font-size:.9em;}
+
+/* ============ 缩略图 ============ */
+#panel-minimap .p-body{padding:.15em;overflow:hidden;}
+#mmWrap{
+  position:relative;width:100%;height:100%;min-height:0;
+  background:rgba(8,14,24,.72);border-radius:10px;overflow:hidden;
+}
+#mmBody{position:absolute;inset:0;display:flex;flex-direction:column;}
+.mm-line{
+  flex:1 1 0;min-height:0;overflow:hidden;
+  display:flex;align-items:center;white-space:pre;
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:8px;line-height:1.1;color:#5f7796;padding-left:2px;
+  transition:background .2s,color .2s;
+}
+.mm-line .mm-ln{
+  color:#33475f;flex:0 0 auto;display:inline-block;
+  width:2.4ch;text-align:right;margin-right:3px;
+}
+.mm-line .mm-code{
+  flex:1 1 auto;min-width:0;display:block;overflow:hidden;
+  white-space:pre;text-overflow:clip;
+}
+.mm-line.act{background:rgba(56,189,248,.35);color:#eaf6ff;}
+.mm-line.done{color:#46617f;}
+#mmMark{position:absolute;left:0;right:0;background:rgba(250,204,21,.30);border-left:3px solid #facc15;pointer-events:none;display:none;}
+#mmViewport{position:absolute;left:0;right:0;background:rgba(56,189,248,.18);border-top:2px solid rgba(56,189,248,.85);border-bottom:2px solid rgba(56,189,248,.85);pointer-events:none;}
+#mmHit{position:absolute;inset:0;cursor:pointer;}
+
+/* 提示 */
+#toast{
+  position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);
+  background:rgba(13,17,23,.94);border:2px solid var(--accent);
+  color:#eaf6ff;padding:.6em 1.2em;border-radius:14px;
+  font-size:clamp(24px,1.6vw,44px);font-weight:800;
+  z-index:9999;pointer-events:none;opacity:0;transition:opacity .25s;
+}
+#toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<!-- ==================== 全屏代码区 ==================== -->
+<div id="codeScroll">
+  <div id="codeInner">
+
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                 <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw long">long</span> <span class="fn ff">ff</span>(<span class="kw">int</span> n) {                     <span class="cmt">// 递归求阶乘函数</span></span></div>
+
+    <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw long">long</span> f;                         <span class="cmt">// 定义长整型变量</span></span></div>
+
+    <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">if</span>(n <span class="op">&lt;</span> <span class="num">0</span>) {                      <span class="cmt">// 如果n小于0</span></span></div>
+
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">        <span class="fn out">printf</span>(<span class="str">"Error"</span>);               <span class="cmt">// 本次不执行（n=5≥0）</span></span></div>
+
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    } <span class="kw">else if</span>(n <span class="op">==</span> <span class="num">0</span> <span class="op">||</span> n <span class="op">==</span> <span class="num">1</span>) {    <span class="cmt">// 递归出口</span></span></div>
+
+    <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">        f <span class="op">=</span> <span class="num">1</span>;                       <span class="cmt">// 0!和1!都为1</span></span></div>
+
+    <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">    } <span class="kw">else</span> {                         <span class="cmt">// 递归调用</span></span></div>
+
+    <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">        f <span class="op">=</span> <span class="fn ff">ff</span>(n<span class="op">-</span><span class="num">1</span>) <span class="op">*</span> n;             <span class="cmt">// n! = (n-1)! * n</span></span></div>
+
+    <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">    }</span></div>
+
+    <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">    <span class="kw">return</span> f;                        <span class="cmt">// 返回结果</span></span></div>
+
+    <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">}</span></div>
+
+    <div class="code-line" data-line="13"><span class="ln">13</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                         <span class="cmt">// 主函数</span></span></div>
+
+    <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">    <span class="kw">int</span> m;                          <span class="cmt">// 定义变量</span></span></div>
+
+    <div class="code-line" data-line="15"><span class="ln">15</span><span class="src">    <span class="kw long">long</span> y;                         <span class="cmt">// 定义长整型变量</span></span></div>
+
+    <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">    <span class="fn in">scanf</span>(<span class="str">"%d"</span>, <span class="op addr">&amp;</span>m);                  <span class="cmt">// 输入n（本次输入 5）</span></span></div>
+
+    <div class="code-line" data-line="17"><span class="ln">17</span><span class="src">    y <span class="op">=</span> <span class="fn ff">ff</span>(m);                       <span class="cmt">// 调用递归函数</span></span></div>
+
+    <div class="code-line" data-line="18"><span class="ln">18</span><span class="src">    <span class="fn out">printf</span>(<span class="str">"<span class="fmt">%d</span>!=<span class="fmt">%ld</span>"</span>, m, y);          <span class="cmt">// 输出结果（末尾无 \n）</span></span></div>
+
+    <div class="code-line" data-line="19"><span class="ln">19</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                       <span class="cmt">// 返回0，程序结束</span></span></div>
+
+    <div class="code-line" data-line="20"><span class="ln">20</span><span class="src">}</span></div>
+
+  </div>
+</div>
+
+<!-- ==================== 工具栏 ==================== -->
+<div class="panel" id="panel-toolbar" data-panel="toolbar" style="left:50%;top:14px;transform:translateX(-50%);width:auto;height:auto;">
+  <div class="p-head">
+    <span class="p-title">控制台</span>
+    <button class="p-close" data-close="toolbar" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <button class="tb" id="btnReset">⟲ 重置</button>
+    <button class="tb" id="btnPrev">◀ 上一步</button>
+    <button class="tb primary" id="btnPlay">▶ 播放</button>
+    <button class="tb" id="btnNext">下一步 ▶</button>
+    <div class="speedbox">
+      <span>速度</span>
+      <input type="range" id="speed" min="60" max="1800" step="20" value="600">
+      <b id="speedLabel">0.60s</b>
+    </div>
+    <button class="tb" id="btnFull">⛶ 全屏</button>
+    <button class="tb" id="btnToggleMM">🗺 缩略图</button>
+    <button class="tb" id="btnToggleAll">👁 面板</button>
+    <button class="tb" id="btnResetLayout">⟲ 重置布局</button>
+  </div>
+  <div class="p-resize"></div>
+</div>
+
+<!-- ==================== 变量 / 调用栈 / 状态 ==================== -->
+<div class="panel" id="panel-vars" data-panel="vars" style="left:14px;top:14px;width:600px;height:680px;">
+  <div class="p-head">
+    <span class="p-title">调用栈 · 递归栈 · 状态</span>
+    <button class="p-close" data-close="vars" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+
+    <div class="grp blue">
+      <div class="grp-h">运行时状态</div>
+      <div class="vrow blue wrap"><span class="k">当前执行位置</span><span class="v" id="vCtx">—</span></div>
+      <div class="vrow blue"><span class="k">当前函数</span><span class="v" id="vFunc">—</span></div>
+      <div class="vrow blue"><span class="k">递归深度</span><span class="v" id="vDepth">0</span></div>
+      <div class="vrow pink wrap"><span class="k">正在求值的表达式</span><span class="v" id="vExpr">—</span></div>
+      <div class="vrow pink wrap"><span class="k">表达式结果</span><span class="v" id="vExprVal">—</span></div>
+      <div class="vrow teal wrap"><span class="k">关键状态提示</span><span class="v" id="vNote">—</span></div>
+    </div>
+
+    <div class="grp teal">
+      <div class="grp-h">调用栈（栈顶高亮）</div>
+      <div style="padding:.4em .6em;">
+        <div id="stackBody"><span class="stack-empty">（空）</span></div>
+      </div>
+    </div>
+
+    <div class="grp blue">
+      <div class="grp-h">main 作用域</div>
+      <div class="vrow blue" data-k="mainM"><span class="k">main 中 m（输入整数）</span><span class="v dim">—</span></div>
+      <div class="vrow blue" data-k="mainY"><span class="k">main 中 y（阶乘结果）</span><span class="v dim">—</span></div>
+    </div>
+
+    <div class="grp purple">
+      <div class="grp-h">当前 ff 层（栈顶）</div>
+      <div class="vrow purple" data-k="curN"><span class="k">当前层的 n（形参）</span><span class="v dim">—</span></div>
+      <div class="vrow purple" data-k="curF"><span class="k">当前层的 f（局部）</span><span class="v dim">—</span></div>
+    </div>
+
+    <div class="grp gold">
+      <div class="grp-h">★ 递归栈一览（各层 n / f）</div>
+      <div class="vrow gold wrap"><span class="k">各层状态</span><span class="v" id="vRecStack">—</span></div>
+    </div>
+
+    <div class="grp">
+      <div class="grp-h">计数器</div>
+      <div class="vrow"><span class="k">ff() 调用次数</span><span class="v" id="vFC">0</span></div>
+      <div class="vrow"><span class="k">scanf 调用次数</span><span class="v" id="vSC">0</span></div>
+      <div class="vrow"><span class="k">printf 调用次数</span><span class="v" id="vPC">0</span></div>
+      <div class="vrow"><span class="k">输出行数</span><span class="v" id="vOL">0</span></div>
+      <div class="vrow"><span class="k">main 返回值</span><span class="v" id="vRet">—</span></div>
+    </div>
+
+  </div>
+  <div class="p-resize"></div>
+</div>
+
+<!-- ==================== 程序输出 ==================== -->
+<div class="panel" id="panel-output" data-panel="output" style="right:200px;top:14px;width:580px;height:360px;">
+  <div class="p-head">
+    <span class="p-title">程序运行结果（屏幕输出）</span>
+    <button class="p-close" data-close="output" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <div id="consoleBody"></div>
+  </div>
+  <div class="p-resize"></div>
+</div>
+
+<!-- ==================== 说明条 ==================== -->
+<div class="panel" id="panel-explain" data-panel="explain" style="left:50%;bottom:14px;transform:translateX(-50%);width:1200px;height:340px;">
+  <div class="p-head">
+    <span class="p-title">当前语句说明</span>
+    <button class="p-close" data-close="explain" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <div id="explainBody"></div>
+  </div>
+  <div class="p-resize"></div>
+</div>
+
+<!-- ==================== 缩略图 ==================== -->
+<div class="panel" id="panel-minimap" data-panel="minimap" style="right:14px;bottom:14px;width:180px;height:560px;">
+  <div class="p-head">
+    <span class="p-title">缩略图</span>
+    <button class="p-close" data-close="minimap" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <div id="mmWrap">
+      <div id="mmBody"></div>
+      <div id="mmMark"></div>
+      <div id="mmViewport"></div>
+      <div id="mmHit"></div>
+    </div>
+  </div>
+  <div class="p-resize"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   一、模拟状态与步骤数据
+   ============================================================ */
+var INPUT_M = 5;
+
+var S = {
+  func:'—', stack:[],
+  mainM:null, mainY:null,
+  curN:null, curF:null,
+  recStack:'（当前不在递归中）',
+  depth:0,
+  retVal:null,
+  fCount:0, sCount:0, pCount:0
+};
+var outText = '';
+var STEPS = [];
+var seenLines = {};
+var ffStack = [];  /* { n, f } */
+
+function curFrame(){
+  return ffStack.length > 0 ? ffStack[ffStack.length-1] : null;
+}
+function refreshStack(){
+  S.stack = ['main'];
+  for (var i=0;i<ffStack.length;i++) S.stack.push('ff('+ffStack[i].n+')');
+  S.depth = ffStack.length;
+  var top = curFrame();
+  S.curN = top ? top.n : null;
+  S.curF = top ? top.f : null;
+  S.recStack = ffStack.length === 0
+    ? '（当前不在递归中）'
+    : ffStack.map(function(fr){
+        return 'ff(' + fr.n + '):f=' + (fr.f === null ? '?' : fr.f);
+      }).join('  →  ');
+}
+
+function emit(s){ outText += s; }
+function snap(line, o){
+  o = o || {};
+  seenLines[line] = 1;
+  STEPS.push({
+    line: line,
+    cls: o.cls || '',
+    ctx: o.ctx || '—',
+    expr: o.expr || '—',
+    exprVal: o.exprVal || '—',
+    note: o.note || '—',
+    title: o.title || '',
+    desc: o.desc || '',
+    func: S.func,
+    stack: S.stack.slice(),
+    mainM:S.mainM, mainY:S.mainY,
+    curN:S.curN, curF:S.curF,
+    recStack:S.recStack,
+    depth:S.depth,
+    retVal:S.retVal,
+    fCount:S.fCount, sCount:S.sCount, pCount:S.pCount,
+    out: outText,
+    seen: Object.keys(seenLines).map(Number)
+  });
+}
+
+/* ============================================================
+   辅助：一次完整的 ff 调用（含递归展开 + 回溯 + 栈帧销毁）
+   ============================================================ */
+function stepFF(n, depth){
+  S.fCount++;
+  ffStack.push({ n: n, f: null });
+  S.func = 'ff';
+  refreshStack();
+
+  /* --- 第 2 行：进入 ff --- */
+  snap(2, {
+    cls:'mv',
+    ctx:'ff · 第 ' + depth + ' 层 · 进入函数',
+    expr:'long ff(int n)   →   n = ' + n,
+    exprVal:'形参 n = ' + n + '（第 ' + depth + ' 层）',
+    note:'进入第 ' + depth + ' 层，n = ' + n,
+    title:'进入 <b>ff</b> 第 <b>' + depth + '</b> 层：<b>n = ' + n + '</b>',
+    desc:'递归进入第 <b>' + depth + '</b> 层：<br>' +
+         '· 形参 <code>n = ' + n + '</code>；<br>' +
+         '· 系统为这一层建立<b>新的栈帧</b>；' +
+         (depth > 1
+           ? '<br>· 上一层的 <code>f = ff(' + (n+1) + ') * ' + (n+1) +
+             '</code> 正在等待这一层返回。'
+           : '<br>· 这是最外层调用（由 main 第 17 行发起）。') +
+         '<span class="tip"><b>递归深度：</b>' + depth + ' 层栈帧同时存在</span>'
+  });
+
+  /* --- 第 3 行：long f; --- */
+  snap(3, {
+    cls:'ans',
+    ctx:'ff · 第 ' + depth + ' 层 · 声明变量',
+    title:'long f;　声明长整型变量（未初始化）',
+    desc:'声明 <code>long f;</code>，用于存放本层计算结果：<br>' +
+         '· <b>long</b> 是长整型，比 <code>int</code> 能表示更大的整数；<br>' +
+         '· 阶乘增长很快（如 13! 已超过 int 范围），用 long 更安全；<br>' +
+         '· 此刻 f 是栈上的垃圾值，显示为 <b>—</b>。'
+  });
+
+  /* --- 第 4 行：if(n < 0) --- */
+  var cond1 = (n < 0);
+  snap(4, {
+    cls: cond1 ? 'gold' : 'ans',
+    ctx:'ff · 第 ' + depth + ' 层 · if(n<0)',
+    expr:'if(n < 0)   →   if(' + n + ' < 0)',
+    exprVal: cond1 ? '真 → 输出 Error' : '假 → 跳过',
+    note: cond1 ? 'n < 0，走 Error 分支' : ('n = ' + n + ' ≥ 0，继续判断'),
+    title:'if(n &lt; 0)　→　<b>' + (cond1 ? '真' : '假') + '</b>',
+    desc:'判断 n 是否小于 0：<br>' +
+         '· <code>n = ' + n + '</code>；<br>' +
+         '· <code>' + n + ' &lt; 0</code> → <b>' + (cond1 ? '真' : '假') + '</b>。' +
+         (cond1
+           ? '<span class="warn">会输出 "Error"，本模拟输入 m=5，n 均为正数，不会走此分支。</span>'
+           : '<span class="tip">n ≥ 0，跳过此分支，进入 else if。</span>')
+  });
+
+  /* --- 第 6 行：else if(n == 0 || n == 1) --- */
+  var cond2 = (n === 0 || n === 1);
+  snap(6, {
+    cls: cond2 ? 'gold' : 'ans',
+    ctx:'ff · 第 ' + depth + ' 层 · else if(n==0 || n==1)',
+    expr:'else if(n == 0 || n == 1)   →   else if(' + n + ' == 0 || ' + n + ' == 1)',
+    exprVal: cond2 ? '真 → 到达递归出口' : '假 → 继续递归',
+    note: cond2 ? ('n = ' + n + ' 到达递归出口') : ('n = ' + n + '，需要继续递归'),
+    title:'else if(n==0 || n==1)　→　<b>' +
+          (cond2 ? '真（递归出口）' : '假') + '</b>',
+    desc:'判断是否到达<b>递归出口</b>：<br>' +
+         '· <code>n = ' + n + '</code>；<br>' +
+         '· <code>' + n + ' == 0</code> → ' + (n === 0 ? '真' : '假') + '；<br>' +
+         '· <code>' + n + ' == 1</code> → ' + (n === 1 ? '真' : '假') + '；<br>' +
+         '· 结果：<b>' + (cond2 ? '真' : '假') + '</b>。' +
+         (cond2
+           ? '<span class="win"><b>到达递归出口！</b>0! 和 1! 都为 1，' +
+             '执行 <code>f = 1</code>，然后返回。</span>'
+           : '<span class="tip"><b>未到出口：</b>n ≥ 2，需要继续递归调用 <code>ff(n-1)</code>。</span>')
+  });
+
+  if (cond2) {
+    /* --- 第 7 行：f = 1 --- */
+    curFrame().f = 1;
+    snap(7, {
+      cls:'purple',
+      ctx:'ff · 第 ' + depth + ' 层 · f = 1（递归出口）',
+      expr:'f = 1;',
+      exprVal:'f = 1',
+      note:'f = 1（0! 和 1! 都为 1）',
+      title:'f = 1;　→　<b>f = 1</b>',
+      desc:'到达递归出口，赋值：<br>' +
+           '· <code>f = 1</code>；<br>' +
+           '· 这是递归的<b>基准情况</b>（base case）：0! = 1，1! = 1；<br>' +
+           '· 递归到这里停止向下，即将开始向上返回。' +
+           '<span class="win">★ 最深一层（n=1）的结果已经确定：f = 1。</span>'
+    });
+  } else {
+    /* --- 第 9 行：准备递归调用 --- */
+    snap(9, {
+      cls:'mv',
+      ctx:'ff · 第 ' + depth + ' 层 · 准备递归调用',
+      expr:'f = ff(n-1) * n   →   f = ff(' + (n-1) + ') * ' + n,
+      exprVal:'先调用 ff(' + (n-1) + ')，返回值再乘以 ' + n,
+      note:'递归调用 ff(' + (n-1) + ')，本层暂停等待返回',
+      title:'f = ff(n-1) * n　→　准备调用 <b>ff(' + (n-1) + ')</b>',
+      desc:'执行 <code>f = ff(n-1) * n</code>：<br>' +
+           '· 先求值 <code>ff(n-1) = ff(' + (n-1) + ')</code>；<br>' +
+           '· 这是<b>递归调用</b>——函数调用自己，只是参数减小 1；<br>' +
+           '· 本层暂停在第 9 行，等待 ff(' + (n-1) + ') 返回；<br>' +
+           '· 返回值再乘以 <code>n = ' + n + '</code>，赋给 f。' +
+           '<span class="tip"><b>递归思想：</b>把 n! 转化为 (n-1)! × n，' +
+           '问题规模不断缩小，直到 n=1 到达出口。</span>'
+    });
+
+    /* --- 递归调用 --- */
+    var subVal = stepFF(n - 1, depth + 1);
+
+    /* --- 第 9 行：完成乘法 --- */
+    curFrame().f = subVal * n;
+    snap(9, {
+      cls:'gold',
+      ctx:'ff · 第 ' + depth + ' 层 · 完成乘法（回溯）',
+      expr:'f = ' + subVal + ' * ' + n + ' = ' + (subVal * n),
+      exprVal:'f = ' + (subVal * n),
+      note:'ff(' + (n-1) + ') 返回 ' + subVal + '，f = ' +
+            subVal + ' × ' + n + ' = ' + (subVal * n),
+      title:'ff(' + (n-1) + ') 返回 <b>' + subVal + '</b>，' +
+            'f = ' + subVal + ' × ' + n + ' = <b>' + (subVal * n) + '</b>',
+      desc:'递归调用返回后，完成本层的乘法：<br>' +
+           '· <code>ff(' + (n-1) + ')</code> 返回 <b>' + subVal + '</b>；<br>' +
+           '· <code>f = ' + subVal + ' * ' + n + ' = ' + (subVal * n) + '</code>；<br>' +
+           '· 本层的 f 已经算好，准备返回给上一层。' +
+           (n === 5
+             ? '<span class="win">★ 最外层结果出炉：5! = <b>' + (subVal * n) + '</b></span>'
+             : '')
+    });
+  }
+
+  /* --- 第 11 行：return f --- */
+  var retVal = curFrame().f;
+  S.retVal = retVal;
+  snap(11, {
+    cls:'gold',
+    ctx:'ff · 第 ' + depth + ' 层 · return f',
+    expr:'return f;   →   return ' + retVal,
+    exprVal:'返回 ' + retVal,
+    note:'第 ' + depth + ' 层返回 ' + retVal,
+    title:'return f;　→　第 ' + depth + ' 层返回 <b>' + retVal + '</b>',
+    desc:'返回本层结果：<br>' +
+         '· <code>f = ' + retVal + '</code>；<br>' +
+         '· 第 ' + depth + ' 层的栈帧即将销毁，控制权交回上一层；' +
+         (depth === 1
+           ? '<br>· 第 1 层是最外层，将直接把结果返回给 main。'
+           : '<br>· 上一层的 <code>f = ff(' + n + ') * ' + (n+1) +
+             '</code> 即将用这个值继续计算。') +
+         (n === 5 ? '<span class="win">★ ff(5) = <b>' + retVal + '</b></span>' : '')
+  });
+
+  /* --- 第 12 行：} 栈帧销毁 --- */
+  var frameName = 'ff(' + n + ')';
+  snap(12, {
+    cls:'mv',
+    ctx:'ff · 第 ' + depth + ' 层 · 函数体结束（栈帧销毁）',
+    expr:'}',
+    exprVal:frameName + ' 栈帧即将销毁',
+    note:frameName + ' 即将出栈，' + (depth === 1 ? '返回 main' : '返回上一层'),
+    title:frameName + ' 函数体结束 <code>}</code>　→　栈帧销毁',
+    desc:frameName + ' 的栈帧即将销毁：<br>' +
+         '· 局部变量 <code>n = ' + n + '</code>、<code>f = ' + retVal +
+         '</code> 随栈帧一起消失；<br>' +
+         '· 控制权交回' + (depth === 1 ? ' main。' : '上一层。') +
+         '<span class="tip"><b>生命周期：</b>每层栈帧中的 n 和 f 都是独立的，' +
+         '随本层返回而销毁。</span>'
+  });
+
+  ffStack.pop();
+  refreshStack();
+  S.func = ffStack.length > 0 ? 'ff' : 'main';
+
+  return retVal;
+}
+
+/* ============================================================
+   二、构建全部步骤
+   ============================================================ */
+
+/* --- 步骤 1：预处理 --- */
+snap(1, {
+  cls:'ans',
+  ctx:'预处理阶段 · 程序尚未运行',
+  expr:'#include <stdio.h>',
+  exprVal:'包含标准输入输出头文件',
+  note:'预处理指令，不占运行时间，不产生输出',
+  title:'#include &lt;stdio.h&gt;　预处理指令',
+  desc:'以 <code>#</code> 开头的都是<b>预处理指令</b>，在编译之前由预处理器处理。<br>' +
+       '· 本程序要用到 <code>printf</code> 和 <code>scanf</code>；<br>' +
+       '· 它<b>不是</b> C 语句，<b>不占运行时间</b>，也<b>不产生任何屏幕输出</b>；<br>' +
+       '· 本程序有 1 次运行时输入（第 16 行 <code>scanf</code>），' +
+       '本次模拟输入 <b>m = ' + INPUT_M + '</b>，最终屏幕输出固定为 <b>1 行</b>。' +
+       '<span class="tip"><b>先记住本程序全貌：</b><br>' +
+       '· 主函数读入 m，然后调用递归函数 <code>ff(m)</code>；<br>' +
+       '· <b>递归展开</b>：ff(5) → ff(4) → ff(3) → ff(2) → ff(1)，共 5 层；<br>' +
+       '· <b>递归出口</b>：ff(1) 时 f = 1；<br>' +
+       '· <b>递归回溯</b>：返回 1 → 2 → 6 → 24 → 120，逐层向上；<br>' +
+       '· 最终输出：<code>' + INPUT_M + '!=120</code>（末尾无换行）。</span>'
+});
+
+/* --- 步骤 2：ff 定义登记（不执行） --- */
+snap(2, {
+  cls:'ans',
+  ctx:'函数定义登记阶段 · 不执行',
+  expr:'long ff(int n) { ... }',
+  exprVal:'编译器登记函数 ff 的定义',
+  note:'只是登记，此刻不会执行 ff 的函数体',
+  title:'long ff(int n) { ... }　递归函数 ff 的定义（<b>只登记，不执行</b>）',
+  desc:'编译器在这里<b>登记</b>函数 ff 的定义，<b>此刻不会执行</b>——' +
+       '只有 main 中第 17 行调用它时才真正运行。<br>' +
+       '· 返回类型 <code>long</code>：<b>返回长整型</b>（阶乘值增长快）；<br>' +
+       '· 参数列表 <code>(int n)</code>：<b>接受一个整型参数 n</b>；<br>' +
+       '· 功能：根据 n 的值，走三分支之一，然后 <code>return f</code>。' +
+       '<span class="tip"><b>核心伏笔：</b>ff 函数体内<b>又调用了自己</b>——' +
+       '这就是<b>递归</b>。<br>' +
+       '· 必须有<b>递归出口</b>（n==0 || n==1）；<br>' +
+       '· 每次递归调用参数减小 1，最终必然到达出口。</span>'
+});
+
+/* --- 步骤 3：main 入口 --- */
+S.func = 'main';
+refreshStack();
+snap(13, {
+  cls:'ans',
+  ctx:'main · 程序入口',
+  expr:'int main() {',
+  exprVal:'操作系统把控制权交给 main',
+  note:'系统为 main 建立栈帧',
+  title:'int main() {　程序从这里开始',
+  desc:'操作系统把控制权交给 <code>main</code>，程序正式开始。' +
+       '<b>整体流程：</b><br>' +
+       '① 第 14 行：声明整型变量 <code>m</code>；<br>' +
+       '② 第 15 行：声明长整型变量 <code>y</code>；<br>' +
+       '③ 第 16 行：<code>scanf</code> 读入 m；<br>' +
+       '④ 第 17 行：<code>y = ff(m)</code> 调用递归求阶乘；<br>' +
+       '⑤ 第 18 行：输出 <code>m!=y</code>；<br>' +
+       '⑥ 第 19 行：<code>return 0;</code> 结束程序。' +
+       '<span class="win"><b>本次模拟输入：</b>m = <b>' + INPUT_M + '</b><br>' +
+       '<b>预期输出：</b><code>' + INPUT_M + '!=120</code>（末尾无换行）</span>'
+});
+
+/* --- 步骤 4：int m; --- */
+snap(14, {
+  cls:'ans',
+  ctx:'main · 声明变量 m',
+  title:'int m;　声明整型变量（未初始化）',
+  desc:'声明一个整型变量 <code>m</code>，<b>没有初始化</b>：<br>' +
+       '· 用来接收用户输入的整数；<br>' +
+       '· 此刻它的值是栈上的垃圾值，显示为 <b>—</b>。'
+});
+
+/* --- 步骤 5：long y; --- */
+snap(15, {
+  cls:'ans',
+  ctx:'main · 声明变量 y',
+  title:'long y;　声明长整型变量（未初始化）',
+  desc:'声明一个<b>长整型</b>变量 <code>y</code>，用于接收 ff 的返回值：<br>' +
+       '· 类型必须与 <code>ff</code> 的返回类型一致（都是 <code>long</code>）；<br>' +
+       '· 若写成 <code>int y</code>，结果可能因溢出而被截断；<br>' +
+       '· 此刻 y 是栈上的垃圾值，显示为 <b>—</b>。'
+});
+
+/* --- 步骤 6：scanf 等待 --- */
+S.sCount++;
+snap(16, {
+  cls:'mv',
+  ctx:'main · 调用 scanf（等待输入）',
+  expr:'scanf("%d", &m)',
+  exprVal:'等待用户输入一个整数',
+  note:'程序在此阻塞，等待输入',
+  title:'scanf("%d", &amp;m);　等待输入整数',
+  desc:'调用 <code>scanf("%d", &amp;m)</code>：<br>' +
+       '· <code>%d</code> 表示读入一个十进制整数；<br>' +
+       '· <code>&amp;m</code> 是变量 m 的<b>地址</b>——scanf 需要地址才能写回；<br>' +
+       '· 程序在此<b>阻塞</b>，等待用户输入。' +
+       '<span class="warn"><b>为什么必须写 &amp;？</b><br>' +
+       '<code>scanf</code> 需要地址才能把值写回去。' +
+       '<code>m</code> 是值，<code>&amp;m</code> 才是地址。</span>'
+});
+
+/* --- 步骤 7：scanf 读取完成 --- */
+S.mainM = INPUT_M;
+snap(16, {
+  cls:'gold',
+  ctx:'main · scanf 读取完成',
+  expr:'m ← ' + INPUT_M,
+  exprVal:'m = ' + INPUT_M,
+  note:'m = ' + INPUT_M,
+  title:'scanf 读入：<b>m = ' + INPUT_M + '</b>',
+  desc:'<code>scanf</code> 把用户输入的整数写入 m：<br>' +
+       '· <b>m</b> 从未初始化变为 <b>' + INPUT_M + '</b>；<br>' +
+       '· 第 16 行执行完毕，进入第 17 行。'
+});
+
+/* --- 步骤 8：准备调用 ff(m) --- */
+snap(17, {
+  cls:'mv',
+  ctx:'main · 准备调用 ff(m)',
+  expr:'ff(m)   →   ff(' + INPUT_M + ')',
+  exprVal:'把实参 m = ' + INPUT_M + ' 复制给形参，控制权交给 ff',
+  note:'准备进入 ff 函数，开始递归',
+  title:'y = ff(m);　准备调用 <b>ff(' + INPUT_M + ')</b>',
+  desc:'执行 <code>y = ff(m)</code>：<br>' +
+       '· 把 <b>m = ' + INPUT_M + '</b> 作为实参传给 ff；<br>' +
+       '· 控制权交给 ff，main 暂停在第 17 行等待返回；<br>' +
+       '· 接下来将看到递归展开：ff(5) → ff(4) → … → ff(1)。' +
+       '<span class="tip"><b>调用栈：</b>main → ff(5)（即将压栈）</span>'
+});
+
+/* --- 递归展开与回溯 --- */
+var result = stepFF(INPUT_M, 1);
+
+/* --- 回到 main：ff 返回 --- */
+S.func = 'main';
+refreshStack();
+S.mainY = result;
+S.retVal = null;
+snap(17, {
+  cls:'gold',
+  ctx:'main · ff 返回',
+  expr:'y = ' + result,
+  exprVal:'y = ' + result,
+  note:'ff(' + INPUT_M + ') 返回 ' + result + '，y = ' + result,
+  title:'ff(' + INPUT_M + ') 返回 <b>' + result + '</b>，y = <b>' + result + '</b>',
+  desc:'递归调用完成，返回值赋给 y：<br>' +
+       '· <code>ff(' + INPUT_M + ') = ' + result + '</code>；<br>' +
+       '· <b>y</b> 从未初始化变为 <b>' + result + '</b>；<br>' +
+       '· 所有递归栈帧已全部销毁，调用栈恢复到只有 main。' +
+       '<span class="win">★ ' + INPUT_M + '! = <b>' + result + '</b></span>'
+});
+
+/* --- 第 18 行：printf --- */
+S.pCount++;
+var outStr = INPUT_M + '!=' + result;
+emit(outStr);
+snap(18, {
+  cls:'green',
+  ctx:'main · 输出结果（第 1 次 printf 调用）',
+  expr:'printf("%d!=%ld", m, y)',
+  exprVal:'输出 "' + outStr + '"（无换行）',
+  note:'屏幕追加 "' + outStr + '"',
+  title:'printf("%d!=%ld", m, y);　→　输出 <b>"' + outStr + '"</b>',
+  desc:'输出 m 和 y：<br>' +
+       '· <code>%d</code> 对应 <code>m = ' + INPUT_M + '</code>（int）；<br>' +
+       '· <code>%ld</code> 是 <b>长整型</b>的格式符，对应 <code>y = ' + result + '</code>（long）；<br>' +
+       '· 输出 <b>"' + outStr + '"</b>；<br>' +
+       '· <b>注意：</b>格式串末尾<b>没有 \\n</b>，光标停在这一行末尾，不会换行。' +
+       '<span class="tip"><b>屏幕当前内容：</b><br><code>' +
+       outText + '<span style="color:#4ade80">▊</span></code></span>'
+});
+
+/* --- 第 19 行：return 0 --- */
+S.retVal = 0;
+snap(19, {
+  cls:'ans',
+  ctx:'main · return 0',
+  expr:'return 0;',
+  exprVal:'返回 0，程序正常结束',
+  note:'main 返回 0 表示程序正常结束（0 不会打印到屏幕）',
+  title:'return 0;　结束 main 函数',
+  desc:'<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还给操作系统：<br>' +
+       '· 约定返回 <b>0</b> 表示程序<b>正常结束</b>；<br>' +
+       '· 这个 0 <b>不会</b>被打印到屏幕上，它是给操作系统看的「退出码」；<br>' +
+       '· 所以屏幕输出仍然是那一行 <code>' + outStr + '</code>，不会有任何变化。'
+});
+
+/* --- 第 20 行：程序结束 --- */
+S.func = '—';
+S.stack = [];
+refreshStack();
+snap(20, {
+  cls:'ans',
+  ctx:'程序结束 · 调用栈清空',
+  expr:'}',
+  exprVal:'main 栈帧销毁，程序退出',
+  note:'调用栈清空',
+  title:'main 函数体结束 <code>}</code>　→　程序结束',
+  desc:'main 的栈帧被销毁，调用栈清空，程序正常退出。' +
+       '<span class="win"><b>★ 程序最终运行结果（屏幕严格 1 行）：</b><br>' +
+       '<code>' + outStr + '<span style="color:#4ade80">▊</span></code><br>' +
+       '（末尾<b>没有换行</b>，光标停在此处）</span>' +
+       '<b>本程序要点总结：</b><br>' +
+       '① <b>递归的本质</b>：函数调用自己，但参数不断减小，最终到达出口；<br>' +
+       '② <b>递归出口（base case）</b>：<code>n==0 || n==1</code> 时 f=1；<br>' +
+       '③ <b>递归展开</b>：ff(5) → ff(4) → ff(3) → ff(2) → ff(1)，共 5 层；<br>' +
+       '④ <b>递归回溯</b>：返回值 1 → 2 → 6 → 24 → 120；<br>' +
+       '⑤ <b>调用栈</b>：递归时最多 6 层栈帧同时存在，回溯时逐层弹出；<br>' +
+       '⑥ <b>每层 n/f 独立</b>：位于各自栈帧，同名但互不影响；<br>' +
+       '⑦ <b>long 长整型</b>：阶乘值增长快，必须用 long；<br>' +
+       '⑧ <b>%ld 格式符</b>：输出 long 必须用 %ld，不是 %d；<br>' +
+       '⑨ <b>scanf 需要 &amp;m</b>：把变量地址传给 scanf 才能写回；<br>' +
+       '⑩ <b>printf 末尾无 \\n</b>：输出后光标停在原地。' +
+       '<b>常见错误：</b><br>' +
+       '① 忘记递归出口——会无限递归，导致栈溢出；<br>' +
+       '② 用 <code>int</code> 接收阶乘结果——较大 n 时会溢出，应用 <code>long</code>；<br>' +
+       '③ 用 <code>%d</code> 输出 long 值——应该用 <code>%ld</code>；<br>' +
+       '④ 忘记 <code>return f;</code>——函数返回不确定值；<br>' +
+       '⑤ 忘记 <code>&amp;m</code>——scanf 无法写回，m 保持垃圾值。'
+});
+
+/* ============================================================
+   三、DOM 引用
+   ============================================================ */
+var codeScroll = document.getElementById('codeScroll');
+var codeInner  = document.getElementById('codeInner');
+var codeLines  = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+var consoleBody= document.getElementById('consoleBody');
+var stackBody  = document.getElementById('stackBody');
+var explainBody= document.getElementById('explainBody');
+var mmBody     = document.getElementById('mmBody');
+var mmViewport = document.getElementById('mmViewport');
+var mmMark     = document.getElementById('mmMark');
+var mmHit      = document.getElementById('mmHit');
+var toast      = document.getElementById('toast');
+
+var vCtx   = document.getElementById('vCtx');
+var vFunc  = document.getElementById('vFunc');
+var vDepth = document.getElementById('vDepth');
+var vExpr  = document.getElementById('vExpr');
+var vExprVal=document.getElementById('vExprVal');
+var vNote  = document.getElementById('vNote');
+var vRecStack = document.getElementById('vRecStack');
+var vFC = document.getElementById('vFC');
+var vSC = document.getElementById('vSC');
+var vPC = document.getElementById('vPC');
+var vOL = document.getElementById('vOL');
+var vRet= document.getElementById('vRet');
+
+var btnPlay   = document.getElementById('btnPlay');
+var btnPrev   = document.getElementById('btnPrev');
+var btnNext   = document.getElementById('btnNext');
+var btnReset  = document.getElementById('btnReset');
+var btnFull   = document.getElementById('btnFull');
+var btnToggleMM = document.getElementById('btnToggleMM');
+var btnToggleAll= document.getElementById('btnToggleAll');
+var btnResetLayout = document.getElementById('btnResetLayout');
+var speedInput= document.getElementById('speed');
+var speedLabel= document.getElementById('speedLabel');
+
+/* ============================================================
+   四、缩略图构建（带缩进修复）
+   ============================================================ */
+var mmLines = [];
+function buildMinimap(){
+  var h = '';
+  for (var i=0;i<codeLines.length;i++){
+    var el = codeLines[i];
+    var n = el.dataset.line;
+    var srcEl = el.querySelector('.src');
+    var raw = srcEl.textContent || '';
+    var m = raw.match(/^[ \t]*/);
+    var indent = m ? m[0].replace(/\t/g, '    ').length : 0;
+    var inner = srcEl.innerHTML.replace(/^[ \t]+/, '');
+    h += '<div class="mm-line" data-line="'+n+'">' +
+           '<span class="mm-ln">'+n+'</span>' +
+           '<span class="mm-code" style="padding-left:'+indent+'ch">'+ inner +'</span>' +
+         '</div>';
+  }
+  mmBody.innerHTML = h;
+  mmLines = Array.prototype.slice.call(mmBody.querySelectorAll('.mm-line'));
+}
+buildMinimap();
+
+/* ============================================================
+   五、渲染
+   ============================================================ */
+var current = -1;
+var playing = false;
+var timer = null;
+var speed = Number(speedInput.value);
+var lastOutText = null;
+
+function disp(v){ return (v===null||v===undefined) ? '—' : String(v); }
+
+var VAR_ROWS = ['mainM','mainY','curN','curF'];
+var rowEls = {};
+VAR_ROWS.forEach(function(k){
+  rowEls[k] = document.querySelector('.vrow[data-k="'+k+'"]');
+});
+
+function setRow(k, val, animate){
+  var row = rowEls[k];
+  if (!row) return;
+  var v = row.querySelector('.v');
+  var newText = disp(val);
+  if (v.textContent !== newText){
+    v.textContent = newText;
+    if (val === null || val === undefined) v.classList.add('dim');
+    else v.classList.remove('dim');
+    if (animate){
+      v.classList.remove('pop');
+      void v.offsetWidth;
+      v.classList.add('pop');
+    }
+  }
+}
+
+function updateVars(step, prev){
+  var animate = speed >= 300;
+  VAR_ROWS.forEach(function(k){
+    var val = step ? step[k] : null;
+    var pv  = prev ? prev[k] : null;
+    setRow(k, val, animate && pv !== val);
+  });
+  /* 递归栈一览 */
+  if (vRecStack){
+    var rs = step ? step.recStack : '（当前不在递归中）';
+    if (vRecStack.textContent !== rs) vRecStack.textContent = rs;
+  }
+
+  if (step){
+    vCtx.textContent = step.ctx;
+    vFunc.textContent = step.func;
+    vDepth.textContent = String(step.depth);
+    vExpr.textContent = step.expr;
+    vExprVal.textContent = step.exprVal;
+    vNote.textContent = step.note;
+    vFC.textContent = step.fCount;
+    vSC.textContent = step.sCount;
+    vPC.textContent = step.pCount;
+    vOL.textContent = step.out === '' ? 0 : step.out.split('\n').length;
+    vRet.textContent = step.retVal === null ? '—' : step.retVal;
+  } else {
+    vCtx.textContent = '—'; vFunc.textContent = '—'; vDepth.textContent = '0';
+    vExpr.textContent = '—'; vExprVal.textContent = '—'; vNote.textContent = '—';
+    vFC.textContent = '0'; vSC.textContent = '0'; vPC.textContent = '0';
+    vOL.textContent = '0'; vRet.textContent = '—';
+  }
+}
+
+function updateStack(step){
+  var stk = step ? step.stack : [];
+  if (!stk || stk.length === 0){
+    stackBody.innerHTML = '<span class="stack-empty">（空）</span>';
+    return;
+  }
+  var h = '';
+  for (var i=0;i<stk.length;i++){
+    if (i>0) h += '<span class="arrow">→</span>';
+    var top = (i === stk.length-1);
+    h += '<span class="frame' + (top ? ' top' : '') + '">' + stk[i] + '</span>';
+  }
+  stackBody.innerHTML = h;
+}
+
+function updateCode(step){
+  var activeLine = step ? step.line : null;
+  var seen = step ? step.seen : [];
+  for (var i=0;i<codeLines.length;i++){
+    var el = codeLines[i];
+    var n = Number(el.dataset.line);
+    var isActive = (activeLine !== null && n === activeLine);
+    var isSeen = (seen.indexOf(n) >= 0);
+    el.classList.toggle('active', isActive);
+    el.classList.toggle('done', !isActive && isSeen);
+    el.classList.toggle('pending', activeLine !== null && !isSeen && !isActive);
+  }
+  centerActiveLine();
+  syncMinimap();
+}
+
+function centerActiveLine(){
+  var el = codeInner.querySelector('.code-line.active');
+  if (!el) return;
+  var target = el.offsetTop - (codeScroll.clientHeight - el.offsetHeight)/2;
+  var maxTop = codeScroll.scrollHeight - codeScroll.clientHeight;
+  target = Math.max(0, Math.min(target, maxTop));
+  codeScroll.scrollTop = target;
+}
+
+function makeCursor(){
+  var cur = document.createElement('span');
+  cur.className = 'cursor';
+  cur.textContent = '▊';
+  return cur;
+}
+
+function updateOutput(idx){
+  var text = (idx >= 0 && STEPS[idx]) ? STEPS[idx].out : '';
+  if (text === lastOutText) return;
+  lastOutText = text;
+  consoleBody.innerHTML = '';
+
+  if (text === ''){
+    var ph = document.createElement('div');
+    ph.className = 'out-line out-empty';
+    ph.textContent = '（等待程序输出…）';
+    consoleBody.appendChild(ph);
+    return;
+  }
+
+  var parts = text.split('\n');
+  for (var i=0;i<parts.length;i++){
+    var isLast = (i === parts.length-1);
+    var d = document.createElement('div');
+    d.className = 'out-line';
+    if (parts[i] === ''){
+      if (isLast) d.appendChild(makeCursor());
+      else d.innerHTML = '&nbsp;';
+    } else {
+      d.textContent = parts[i];
+      if (isLast) d.appendChild(makeCursor());
+    }
+    consoleBody.appendChild(d);
+  }
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+function updateExplain(step){
+  if (step){
+    explainBody.innerHTML =
+      '<span class="ex-line ' + (step.cls||'') + '">第 ' + step.line + ' 行</span>' +
+      '<strong>' + step.title + '</strong><br>' + step.desc;
+  } else {
+    explainBody.innerHTML =
+      '<em>点击「▶ 播放」或「下一步 ▶」，开始逐条执行程序。<br>' +
+      '本程序演示 <b>递归函数</b> 求阶乘，并展示 <b>调用栈的嵌套压入与回溯弹出</b>：<br>' +
+      '· <b>递归展开</b>：ff(5) → ff(4) → ff(3) → ff(2) → ff(1)，5 层栈帧逐层压入；<br>' +
+      '· <b>递归出口</b>：ff(1) 时 <code>n==1</code> 为真，执行 <code>f = 1</code>；<br>' +
+      '· <b>递归回溯</b>：1 → 2 → 6 → 24 → 120，栈帧逐层弹出并向上返回；<br>' +
+      '· 本次模拟输入 <b>m = ' + INPUT_M + '</b>，最终输出 1 行：<b>' + INPUT_M + '!=120</b>。<br>' +
+      '共 ' + STEPS.length + ' 个执行步骤，请用「播放」或方向键逐步查看。</em>';
+  }
+}
+
+/* ---- 缩略图同步 ---- */
+var rafPending = false;
+function syncMinimap(){
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(function(){
+    rafPending = false;
+    var contentH = codeInner.scrollHeight || 1;
+    var viewH = codeScroll.clientHeight;
+    var miniH = mmBody.clientHeight || 1;
+    var st = codeScroll.scrollTop;
+
+    var vTop = (st / contentH) * miniH;
+    var vH = (viewH / contentH) * miniH;
+    if (vH > miniH) vH = miniH;
+    mmViewport.style.top = vTop + 'px';
+    mmViewport.style.height = Math.max(4, vH) + 'px';
+
+    var activeIdx = -1;
+    for (var i=0;i<codeLines.length;i++){
+      if (codeLines[i].classList.contains('active')){ activeIdx = i; break; }
+    }
+    if (activeIdx >= 0){
+      var miniLine = miniH / codeLines.length;
+      mmMark.style.top = (activeIdx * miniLine) + 'px';
+      mmMark.style.height = miniLine + 'px';
+      mmMark.style.display = 'block';
+    } else {
+      mmMark.style.display = 'none';
+    }
+
+    for (var j=0;j<mmLines.length;j++){
+      var ln = Number(mmLines[j].dataset.line);
+      var isAct = (activeIdx >= 0) && (ln === Number(codeLines[activeIdx].dataset.line));
+      mmLines[j].classList.toggle('act', isAct);
+      mmLines[j].classList.toggle('done', !isAct && (STEPS[current] && STEPS[current].seen.indexOf(ln) >= 0));
+    }
+  });
+}
+codeScroll.addEventListener('scroll', syncMinimap, {passive:true});
+window.addEventListener('resize', function(){ syncMinimap(); });
+
+mmHit.addEventListener('click', function(e){
+  var r = mmBody.getBoundingClientRect();
+  var y = e.clientY - r.top;
+  var ratio = Math.max(0, Math.min(1, y / r.height));
+  var target = ratio * (codeScroll.scrollHeight - codeScroll.clientHeight);
+  codeScroll.scrollTop = target;
+  syncMinimap();
+});
+
+/* ---- 总渲染 ---- */
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+  var prev = current > 0 ? STEPS[current-1] : null;
+  updateCode(step);
+  updateVars(step, prev);
+  updateStack(step);
+  updateOutput(current);
+  updateExplain(step);
+  syncMinimap();
+
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length-1;
+}
+
+/* ============================================================
+   六、播放控制
+   ============================================================ */
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+
+function tick(){
+  if (current >= STEPS.length-1){ pause(); return; }
+  current += 1;
+  render();
+  if (current >= STEPS.length-1) pause();
+}
+
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length-1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  clearInterval(timer);
+  timer = setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){
+  pause();
+  if (current < STEPS.length-1){ current += 1; render(); }
+}
+
+function prevStep(){
+  pause();
+  if (current > -1){ current -= 1; render(); }
+}
+
+function resetAll(){
+  pause();
+  current = -1;
+  lastOutText = null;
+  consoleBody.innerHTML = '';
+  codeScroll.scrollTop = 0;
+  render();
+}
+
+btnPlay.addEventListener('click', function(){ if (playing) pause(); else play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+  if (playing){
+    clearInterval(timer);
+    timer = setInterval(tick, speed);
+  }
+});
+
+/* ============================================================
+   七、面板：拖动 / 缩放 / 置顶 / 关闭 / 重置布局
+   ============================================================ */
+var zTop = 20;
+function bringToFront(panel){
+  zTop += 1;
+  panel.style.zIndex = zTop;
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('front'); });
+  panel.classList.add('front');
+}
+
+var LAYOUT = {
+  toolbar:  {left:'50%', top:'14px', right:'auto', bottom:'auto', transform:'translateX(-50%)', width:'auto', height:'auto'},
+  vars:     {left:'14px', top:'14px', right:'auto', bottom:'auto', transform:'none', width:'600px', height:'680px'},
+  output:   {right:'200px', top:'14px', left:'auto', bottom:'auto', transform:'none', width:'580px', height:'360px'},
+  explain:  {left:'50%', bottom:'14px', right:'auto', top:'auto', transform:'translateX(-50%)', width:'1200px', height:'340px'},
+  minimap:  {right:'14px', bottom:'14px', left:'auto', top:'auto', transform:'none', width:'180px', height:'560px'}
+};
+
+function applyLayout(key){
+  var p = document.querySelector('.panel[data-panel="'+key+'"]');
+  if (!p) return;
+  var L = LAYOUT[key];
+  p.style.left = L.left;
+  p.style.top = L.top;
+  p.style.right = L.right;
+  p.style.bottom = L.bottom;
+  p.style.width = L.width;
+  p.style.height = L.height;
+  p.style.transform = L.transform;
+}
+
+function resetLayout(){
+  Object.keys(LAYOUT).forEach(applyLayout);
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('hidden'); p.classList.remove('front'); });
+  zTop = 20;
+  document.querySelectorAll('.panel').forEach(function(p, i){ p.style.zIndex = 10 + i; });
+  syncMinimap();
+}
+
+document.querySelectorAll('.panel').forEach(function(panel){
+  panel.addEventListener('pointerdown', function(){ bringToFront(panel); }, true);
+  panel.addEventListener('focusin', function(){ bringToFront(panel); });
+
+  /* 拖动 */
+  var head = panel.querySelector('.p-head');
+  head.addEventListener('pointerdown', function(e){
+    if (e.target.closest('.p-close')) return;
+    bringToFront(panel);
+    var r = panel.getBoundingClientRect();
+    panel.style.left = r.left + 'px';
+    panel.style.top = r.top + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.transform = 'none';
+
+    var sx = e.clientX, sy = e.clientY;
+    var ox = r.left, oy = r.top;
+    try { head.setPointerCapture(e.pointerId); } catch(_){}
+
+    function onMove(ev){
+      var nx = ox + (ev.clientX - sx);
+      var ny = oy + (ev.clientY - sy);
+      panel.style.left = nx + 'px';
+      panel.style.top = ny + 'px';
+    }
+    function onUp(ev){
+      head.removeEventListener('pointermove', onMove);
+      head.removeEventListener('pointerup', onUp);
+      head.removeEventListener('pointercancel', onUp);
+      try { head.releasePointerCapture(ev.pointerId); } catch(_){}
+      syncMinimap();
+    }
+    head.addEventListener('pointermove', onMove);
+    head.addEventListener('pointerup', onUp);
+    head.addEventListener('pointercancel', onUp);
+    e.preventDefault();
+  });
+
+  /* 缩放（不设最小/最大限制） */
+  var rz = panel.querySelector('.p-resize');
+  rz.addEventListener('pointerdown', function(e){
+    e.stopPropagation();
+    bringToFront(panel);
+    var r = panel.getBoundingClientRect();
+    panel.style.left = r.left + 'px';
+    panel.style.top = r.top + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.transform = 'none';
+
+    var sx = e.clientX, sy = e.clientY;
+    var ow = r.width, oh = r.height;
+    try { rz.setPointerCapture(e.pointerId); } catch(_){}
+
+    function onMove(ev){
+      var nw = ow + (ev.clientX - sx);
+      var nh = oh + (ev.clientY - sy);
+      panel.style.width = nw + 'px';
+      panel.style.height = nh + 'px';
+    }
+    function onUp(ev){
+      rz.removeEventListener('pointermove', onMove);
+      rz.removeEventListener('pointerup', onUp);
+      rz.removeEventListener('pointercancel', onUp);
+      try { rz.releasePointerCapture(ev.pointerId); } catch(_){}
+      syncMinimap();
+    }
+    rz.addEventListener('pointermove', onMove);
+    rz.addEventListener('pointerup', onUp);
+    rz.addEventListener('pointercancel', onUp);
+    e.preventDefault();
+  });
+
+  /* 关闭按钮 */
+  var cb = panel.querySelector('.p-close');
+  if (cb){
+    cb.addEventListener('click', function(e){
+      e.stopPropagation();
+      panel.classList.add('hidden');
+      syncMinimap();
+    });
+  }
+});
+
+/* ============================================================
+   八、工具栏按钮
+   ============================================================ */
+function toastMsg(t){
+  toast.textContent = t;
+  toast.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ toast.classList.remove('show'); }, 1100);
+}
+
+btnFull.addEventListener('click', function(){
+  if (!document.fullscreenElement){
+    document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+    toastMsg('进入全屏');
+  } else {
+    document.exitFullscreen && document.exitFullscreen();
+    toastMsg('退出全屏');
+  }
+});
+
+btnToggleMM.addEventListener('click', function(){
+  var p = document.querySelector('.panel[data-panel="minimap"]');
+  p.classList.toggle('hidden');
+  if (!p.classList.contains('hidden')){ bringToFront(p); syncMinimap(); }
+});
+
+btnToggleAll.addEventListener('click', function(){
+  var panels = document.querySelectorAll('.panel');
+  var anyVisible = Array.prototype.some.call(panels, function(p){ return !p.classList.contains('hidden'); });
+  panels.forEach(function(p){ p.classList.toggle('hidden', anyVisible); });
+  if (anyVisible) toastMsg('已隐藏全部面板（按 H 恢复）');
+  else { toastMsg('已显示全部面板'); syncMinimap(); }
+});
+
+btnResetLayout.addEventListener('click', function(){
+  resetLayout();
+  toastMsg('布局已重置');
+});
+
+/* ============================================================
+   九、全局快捷键
+   ============================================================ */
+document.addEventListener('keydown', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+
+  if (e.code === 'Space'){ e.preventDefault(); if (playing) pause(); else play(); }
+  else if (e.code === 'ArrowRight'){ e.preventDefault(); nextStep(); }
+  else if (e.code === 'ArrowLeft'){ e.preventDefault(); prevStep(); }
+  else if (e.code === 'KeyR'){ e.preventDefault(); resetAll(); }
+  else if (e.code === 'KeyF'){
+    e.preventDefault();
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+    else document.exitFullscreen && document.exitFullscreen();
+  }
+  else if (e.code === 'KeyM'){
+    e.preventDefault();
+    var p = document.querySelector('.panel[data-panel="minimap"]');
+    p.classList.toggle('hidden');
+    if (!p.classList.contains('hidden')){ bringToFront(p); syncMinimap(); }
+  }
+  else if (e.code === 'KeyH'){
+    e.preventDefault();
+    var panels = document.querySelectorAll('.panel');
+    var anyVisible = Array.prototype.some.call(panels, function(p){ return !p.classList.contains('hidden'); });
+    panels.forEach(function(p){ p.classList.toggle('hidden', anyVisible); });
+    if (!anyVisible) syncMinimap();
+  }
+});
+
+/* ============================================================
+   十、初始化
+   ============================================================ */
+speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+document.querySelectorAll('.panel').forEach(function(p, i){ p.style.zIndex = 10 + i; });
+render();
+window.addEventListener('load', function(){ syncMinimap(); });
+
+})();
+</script>
+</body>
+</html>

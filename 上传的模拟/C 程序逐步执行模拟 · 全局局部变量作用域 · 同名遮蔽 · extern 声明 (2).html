@@ -1,0 +1,1773 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 全局/局部变量作用域 · 同名遮蔽 · extern 声明</title>
+<style>
+:root{
+  --bg:#0d1117;
+  --panel-bg:rgba(13,17,23,0.80);
+  --panel-solid:#0f1621;
+  --border:#22334a;
+  --text:#dce8f8;
+  --muted:#8aa3c4;
+  --accent:#38bdf8;
+  --green:#4ade80;
+  --amber:#fbbf24;
+  --pink:#f472b6;
+  --purple:#c084fc;
+  --teal:#2dd4bf;
+  --orange:#fb923c;
+  --gold:#facc15;
+
+  --code-font: clamp(56px, 4vw, 96px);
+  --out-font:  clamp(48px, 3.4vw, 88px);
+  --var-font:  clamp(26px, 1.5vw, 42px);
+  --explain-font: clamp(28px, 1.7vw, 48px);
+  --btn-font:  clamp(24px, 1.5vw, 40px);
+  --title-font: clamp(28px, 1.8vw, 52px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;margin:0;overflow:hidden;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  user-select:none;
+}
+
+/* ================= 全屏代码区 ================= */
+#codeScroll{
+  position:fixed;inset:0;
+  overflow:auto;
+  background:radial-gradient(1400px 800px at 8% -10%,#152743 0%,#0d1117 60%);
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+  z-index:1;
+}
+#codeScroll::-webkit-scrollbar{width:14px;height:14px;}
+#codeScroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:14px;}
+#codeScroll::-webkit-scrollbar-corner{background:transparent;}
+
+#codeInner{
+  min-width:max-content;
+  padding:0;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  line-height:1.55;
+}
+
+.code-line{
+  display:flex;align-items:flex-start;gap:.45em;
+  padding:.10em 1.4em .10em .5em;
+  border-left:14px solid transparent;
+  white-space:pre;
+  transition:background .25s,border-color .25s,opacity .3s,filter .3s;
+}
+.code-line .ln{
+  flex:0 0 auto;
+  width:2.7ch;text-align:right;
+  color:#40597b;
+  font-size:.62em;
+  padding-top:.28em;
+  user-select:none;
+  font-variant-numeric:tabular-nums;
+}
+.code-line .src{flex:1 1 auto;}
+
+/* 未执行到的行：灰暗 */
+.code-line.pending{opacity:.26;filter:saturate(.35);}
+/* 已执行过的行 */
+.code-line.done{opacity:.72;}
+/* 当前执行行 */
+.code-line.active{
+  opacity:1;filter:none;
+  background:linear-gradient(90deg,rgba(56,189,248,.22),rgba(56,189,248,.02));
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 2px rgba(56,189,248,.22);
+}
+.code-line.active .ln{color:var(--accent);font-weight:900;}
+.code-line.active .src{color:#ffffff;text-shadow:0 0 18px rgba(56,189,248,.35);}
+
+/* 语法高亮 */
+.pp{color:#c084fc;font-weight:800;}
+.str{color:#4ade80;}
+.cmt{color:#5d738f;font-style:italic;}
+.fn{color:#38bdf8;}
+.fn.out{color:#4ade80;font-weight:800;}
+.fn.a{color:#c084fc;font-weight:800;}
+.fn.b{color:#2dd4bf;font-weight:800;}
+.kw{color:#f472b6;font-weight:800;}
+.num{color:#fbbf24;}
+.op{color:#fb923c;font-weight:800;}
+.var.g{color:#facc15;font-weight:800;}
+.var.p{color:#c084fc;font-weight:800;}
+.extern{color:#fb923c;font-weight:900;text-decoration:underline;}
+
+/* ================= 通用面板 ================= */
+.panel{
+  position:fixed;
+  background:var(--panel-bg);
+  -webkit-backdrop-filter:blur(14px) saturate(1.3);
+  backdrop-filter:blur(14px) saturate(1.3);
+  border:2px solid var(--border);
+  border-radius:18px;
+  box-shadow:0 18px 50px rgba(0,0,0,.62);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  z-index:10;
+  transition:border-color .18s,box-shadow .18s,opacity .2s;
+  min-width:0;min-height:0;
+}
+.panel:hover{border-color:#2f4a6d;}
+.panel.front{border-color:var(--accent);box-shadow:0 0 0 3px rgba(56,189,248,.28),0 22px 60px rgba(0,0,0,.7);}
+.panel.hidden{display:none;}
+
+.p-head{
+  flex:0 0 auto;
+  display:flex;align-items:center;gap:.6em;
+  padding:.45em .7em;
+  background:linear-gradient(180deg,rgba(30,45,68,.96),rgba(17,26,42,.96));
+  border-bottom:2px solid var(--border);
+  cursor:grab;
+  touch-action:none;
+}
+.p-head:active{cursor:grabbing;}
+.p-title{
+  font-size:var(--var-font);
+  font-weight:800;
+  letter-spacing:.02em;
+  color:#cfe3ff;
+  white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;
+}
+.p-close{
+  margin-left:auto;flex:0 0 auto;
+  width:1.9em;height:1.9em;
+  min-width:44px;min-height:44px;
+  border-radius:10px;
+  border:2px solid #3a4d68;
+  background:#1b2740;
+  color:#c9dcf6;
+  font-size:var(--var-font);
+  font-weight:900;line-height:1;
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .15s,border-color .15s;
+}
+.p-close:hover{background:#e11d48;border-color:#fb7185;color:#fff;}
+
+.p-body{
+  flex:1 1 auto;min-height:0;min-width:0;
+  overflow:auto;
+  padding:.5em .7em;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+}
+.p-body::-webkit-scrollbar{width:10px;height:10px;}
+.p-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+
+.p-resize{
+  position:absolute;right:0;bottom:0;
+  width:44px;height:44px;
+  cursor:nwse-resize;
+  touch-action:none;
+  background:
+    linear-gradient(135deg,transparent 0 44%,#2f4a6d 44% 52%,transparent 52% 62%,#2f4a6d 62% 70%,transparent 70% 80%,#2f4a6d 80% 88%,transparent 88%);
+  border-bottom-right-radius:16px;
+  opacity:.9;
+}
+.p-resize:hover{background-color:rgba(56,189,248,.22);}
+
+/* ================= 顶部工具栏 ================= */
+#panel-toolbar .p-body{
+  display:flex;flex-wrap:wrap;align-items:center;gap:.5em;
+  padding:.55em .7em;
+}
+button.tb{
+  font:inherit;
+  font-size:var(--btn-font);
+  font-weight:800;
+  padding:.34em .72em;
+  min-height:72px;
+  border-radius:14px;
+  border:2px solid var(--border);
+  background:#182741;color:var(--text);
+  cursor:pointer;
+  white-space:nowrap;
+  transition:background .15s,border-color .15s,transform .1s;
+}
+button.tb:hover:not(:disabled){background:#22385a;border-color:#3f6091;}
+button.tb:active:not(:disabled){transform:translateY(2px);}
+button.tb:disabled{opacity:.32;cursor:not-allowed;}
+button.tb.primary{
+  background:linear-gradient(180deg,#0ea5e9,#0369a1);
+  border-color:#38bdf8;color:#04121f;
+}
+button.tb.primary.playing{
+  background:linear-gradient(180deg,#f59e0b,#b45309);
+  border-color:#fbbf24;color:#1a1200;
+}
+.speedbox{
+  display:flex;align-items:center;gap:.5em;
+  font-size:var(--btn-font);color:var(--muted);
+  padding:0 .3em;
+}
+.speedbox input[type=range]{
+  width:clamp(140px,12vw,300px);
+  height:44px;
+  accent-color:var(--accent);
+  cursor:pointer;
+}
+.speedbox b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:4.4ch;display:inline-block;}
+
+/* ================= 变量 / 调用栈面板 ================= */
+.grp{
+  border-radius:14px;
+  border:2px solid #23364f;
+  margin-bottom:.5em;
+  overflow:hidden;
+  background:rgba(10,17,28,.55);
+}
+.grp-h{
+  font-size:calc(var(--var-font) * .82);
+  font-weight:900;letter-spacing:.06em;
+  padding:.28em .6em;
+  background:rgba(255,255,255,.05);
+  color:#9fb8d8;
+}
+.grp.gold .grp-h{color:#facc15;background:rgba(250,204,21,.12);}
+.grp.purple .grp-h{color:#c084fc;background:rgba(192,132,252,.12);}
+.grp.teal .grp-h{color:#2dd4bf;background:rgba(45,212,191,.12);}
+.grp.blue .grp-h{color:#38bdf8;background:rgba(56,189,248,.12);}
+
+.vrow{
+  display:flex;align-items:center;justify-content:space-between;gap:.6em;
+  padding:.20em .6em;
+  font-size:var(--var-font);
+  border-top:1px solid rgba(45,70,100,.5);
+  transition:background .3s;
+}
+.vrow:first-of-type{border-top:none;}
+.vrow .k{color:var(--muted);white-space:nowrap;font-size:.82em;}
+.vrow .v{
+  font-family:ui-monospace,Consolas,monospace;
+  font-weight:900;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+  color:var(--accent);
+}
+.vrow.gold .v{color:var(--gold);}
+.vrow.purple .v{color:var(--purple);}
+.vrow.teal .v{color:var(--teal);}
+.vrow.blue .v{color:var(--accent);}
+.vrow.pink .v{color:var(--pink);}
+.vrow .v.dim{color:#4d6b8f;font-weight:600;}
+.vrow.flash{background:rgba(56,189,248,.18);}
+.vrow.wrap .v{white-space:normal;text-align:right;font-size:.78em;line-height:1.35;}
+@keyframes vpop{
+  0%{transform:scale(1);}
+  40%{transform:scale(1.18);filter:brightness(1.8);}
+  100%{transform:scale(1);}
+}
+.vrow.pop .v{animation:vpop .55s ease-out;}
+
+/* 调用栈 */
+#stackBody{
+  display:flex;align-items:center;gap:.4em;flex-wrap:wrap;
+  font-family:ui-monospace,Consolas,monospace;
+}
+.frame{
+  font-size:var(--var-font);
+  font-weight:900;
+  padding:.18em .62em;
+  border-radius:.4em;
+  background:#0d1728;border:2px solid #1b293f;color:#7f9cbe;
+  transition:all .3s;
+}
+.frame.top{
+  border-color:var(--accent);
+  background:rgba(56,189,248,.22);
+  color:#fff;
+  box-shadow:0 0 0 3px rgba(56,189,248,.30),0 0 26px rgba(56,189,248,.55);
+}
+.arrow{color:#3f5a7d;font-size:var(--var-font);font-weight:900;}
+.stack-empty{color:#3d5474;font-size:var(--var-font);font-family:ui-monospace,monospace;}
+
+/* ================= 输出面板 ================= */
+#consoleBody{
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);
+  line-height:1.55;
+  color:#86efac;
+  white-space:pre;
+  padding:.2em .1em;
+}
+.out-line{
+  display:block;
+  white-space:pre;
+  min-height:1.55em;
+  animation:fadein .4s ease-out;
+}
+@keyframes fadein{from{opacity:0;transform:translateX(-14px);}to{opacity:1;transform:none;}}
+.ws-mark{
+  background:rgba(74,222,128,.28);
+  border-bottom:4px solid rgba(74,222,128,.85);
+  border-radius:3px;
+}
+.nl-mark{
+  color:#c084fc;
+  font-weight:900;
+  opacity:.85;
+  font-size:.78em;
+}
+.cursor{
+  display:inline-block;
+  color:#4ade80;font-weight:400;
+  animation:blink 1s step-end infinite;
+  margin-left:2px;
+}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+.out-empty{color:#3d5474;}
+
+/* ================= 说明面板 ================= */
+#explainBody{
+  font-size:var(--explain-font);
+  line-height:1.55;
+  color:#bcd2ee;
+}
+#explainBody .ex-line{
+  display:inline-block;
+  margin-right:.5em;
+  padding:.06em .5em;
+  border-radius:.4em;
+  background:rgba(56,189,248,.2);
+  color:var(--accent);
+  font-weight:900;
+  font-size:.78em;
+}
+#explainBody .ex-line.gold{background:rgba(250,204,21,.24);color:var(--gold);}
+#explainBody .ex-line.purple{background:rgba(192,132,252,.24);color:var(--purple);}
+#explainBody .ex-line.teal{background:rgba(45,212,191,.24);color:var(--teal);}
+#explainBody strong{color:#fff;}
+#explainBody code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(148,163,184,.18);
+  border-radius:.3em;
+  padding:0 .3em;
+  color:#e7f0ff;
+}
+#explainBody .tip{
+  display:block;margin-top:.4em;
+  padding:.35em .6em;border-radius:.45em;
+  background:rgba(45,212,191,.12);
+  border-left:6px solid var(--teal);
+  color:#c6f7ee;
+  font-size:.88em;
+}
+#explainBody .warn{
+  display:block;margin-top:.4em;
+  padding:.35em .6em;border-radius:.45em;
+  background:rgba(251,191,36,.14);
+  border-left:6px solid var(--amber);
+  color:#ffe8b8;
+  font-size:.88em;
+}
+#explainBody .win{
+  display:block;margin-top:.4em;
+  padding:.4em .6em;border-radius:.45em;
+  background:rgba(250,204,21,.16);
+  border-left:6px solid var(--gold);
+  color:#fff5cb;font-weight:700;
+  font-size:.9em;
+}
+
+/* ================= 缩略图 ================= */
+#panel-minimap .p-body{padding:.15em;overflow:hidden;}
+#mmWrap{
+  position:relative;
+  width:100%;height:100%;
+  min-height:0;
+  background:rgba(8,14,24,.72);
+  border-radius:10px;
+  overflow:hidden;
+}
+#mmBody{
+  position:absolute;inset:0;
+  display:flex;flex-direction:column;
+}
+/* ★ 修复：mm-line 内不要直接用 flex 承载文本（flex 会吃掉行首空白导致缩进丢失），
+   改为 flex 容器 + .mm-code 子元素承载代码，缩进用 padding-left 显式模拟 */
+.mm-line{
+  flex:1 1 0;min-height:0;
+  overflow:hidden;
+  display:flex;align-items:center;
+  white-space:pre;
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:9px;line-height:1.15;
+  color:#5f7796;
+  padding-left:2px;
+  transition:background .2s,color .2s;
+}
+.mm-line .mm-ln{
+  color:#33475f;
+  flex:0 0 auto;
+  display:inline-block;
+  width:2.2ch;
+  text-align:right;
+  margin-right:4px;
+}
+.mm-line .mm-code{
+  flex:1 1 auto;
+  min-width:0;
+  display:block;
+  overflow:hidden;
+  white-space:pre;        /* 保留行内空格，便于语法高亮之间的空白正常显示 */
+  text-overflow:clip;
+}
+.mm-line.act{background:rgba(56,189,248,.35);color:#eaf6ff;}
+.mm-line.done{color:#46617f;}
+#mmMark{
+  position:absolute;left:0;right:0;
+  background:rgba(250,204,21,.30);
+  border-left:3px solid #facc15;
+  pointer-events:none;
+  display:none;
+}
+#mmViewport{
+  position:absolute;left:0;right:0;
+  background:rgba(56,189,248,.18);
+  border-top:2px solid rgba(56,189,248,.85);
+  border-bottom:2px solid rgba(56,189,248,.85);
+  pointer-events:none;
+}
+#mmHit{position:absolute;inset:0;cursor:pointer;}
+
+/* 提示信息 */
+#toast{
+  position:fixed;left:50%;top:50%;
+  transform:translate(-50%,-50%);
+  background:rgba(13,17,23,.94);
+  border:2px solid var(--accent);
+  color:#eaf6ff;
+  padding:.6em 1.2em;
+  border-radius:14px;
+  font-size:clamp(24px,1.6vw,44px);
+  font-weight:800;
+  z-index:9999;
+  pointer-events:none;
+  opacity:0;
+  transition:opacity .25s;
+}
+#toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<!-- ==================== 全屏代码区 ==================== -->
+<div id="codeScroll">
+  <div id="codeInner">
+
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                 <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="var g">x</span><span class="op">=</span><span class="num">10</span>, <span class="var g">y</span><span class="op">=</span><span class="num">11</span>, <span class="var g">z</span><span class="op">=</span><span class="num">12</span>;               <span class="cmt">// 全局变量</span></span></div>
+
+    <div class="code-line" data-line="3"><span class="ln">3</span><span class="src"><span class="kw">void</span> <span class="fn a">a</span>() {                           <span class="cmt">// 函数a</span></span></div>
+
+    <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">int</span> <span class="var p">x</span><span class="op">=</span><span class="num">1</span>, <span class="var p">y</span><span class="op">=</span><span class="num">2</span>, <span class="var p">z</span><span class="op">=</span><span class="num">3</span>;              <span class="cmt">// 局部变量</span></span></div>
+
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    <span class="fn out">printf</span>(<span class="str">"x+y+z=%d \n"</span>, x<span class="op">+</span>y<span class="op">+</span>z);   <span class="cmt">// 输出6，局部优先</span></span></div>
+
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">}</span></div>
+
+    <div class="code-line" data-line="7"><span class="ln">7</span><span class="src"><span class="kw">void</span> <span class="fn b">b</span>() {                           <span class="cmt">// 函数b</span></span></div>
+
+    <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">    <span class="fn out">printf</span>(<span class="str">"x+y+z=%d \n"</span>, x<span class="op">+</span>y<span class="op">+</span>z);   <span class="cmt">// 输出33，使用全局变量</span></span></div>
+
+    <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">}</span></div>
+
+    <div class="code-line" data-line="10"><span class="ln">10</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                         <span class="cmt">// 主函数</span></span></div>
+
+    <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">    <span class="kw extern">extern</span> l, m, n;                 <span class="cmt">// 声明下面定义的全局变量</span></span></div>
+
+    <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">    <span class="fn a">a</span>();</span></div>
+
+    <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">    <span class="fn b">b</span>();</span></div>
+
+    <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">    <span class="fn out">printf</span>(<span class="str">"x+y+z=%d \n"</span>, x<span class="op">+</span>y<span class="op">+</span>z);   <span class="cmt">// 输出33</span></span></div>
+
+    <div class="code-line" data-line="15"><span class="ln">15</span><span class="src">    <span class="fn out">printf</span>(<span class="str">"l+m+n=%d"</span>, l<span class="op">+</span>m<span class="op">+</span>n);      <span class="cmt">// 输出27（末尾无 \n）</span></span></div>
+
+    <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;</span></div>
+
+    <div class="code-line" data-line="17"><span class="ln">17</span><span class="src">}</span></div>
+
+    <div class="code-line" data-line="18"><span class="ln">18</span><span class="src"><span class="kw">int</span> <span class="var g">l</span><span class="op">=</span><span class="num">8</span>, <span class="var g">m</span><span class="op">=</span><span class="num">9</span>, <span class="var g">n</span><span class="op">=</span><span class="num">10</span>;                  <span class="cmt">// 全局变量</span></span></div>
+
+  </div>
+</div>
+
+<!-- ==================== 工具栏 ==================== -->
+<div class="panel" id="panel-toolbar" data-panel="toolbar" style="left:50%;top:14px;transform:translateX(-50%);width:auto;height:auto;">
+  <div class="p-head">
+    <span class="p-title">控制台</span>
+    <button class="p-close" data-close="toolbar" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <button class="tb" id="btnReset">⟲ 重置</button>
+    <button class="tb" id="btnPrev">◀ 上一步</button>
+    <button class="tb primary" id="btnPlay">▶ 播放</button>
+    <button class="tb" id="btnNext">下一步 ▶</button>
+    <div class="speedbox">
+      <span>速度</span>
+      <input type="range" id="speed" min="60" max="1800" step="20" value="500">
+      <b id="speedLabel">0.50s</b>
+    </div>
+    <button class="tb" id="btnFull">⛶ 全屏</button>
+    <button class="tb" id="btnToggleMM">🗺 缩略图</button>
+    <button class="tb" id="btnToggleAll">👁 面板</button>
+    <button class="tb" id="btnResetLayout">⟲ 重置布局</button>
+  </div>
+  <div class="p-resize"></div>
+</div>
+
+<!-- ==================== 变量 / 调用栈 / 状态 ==================== -->
+<div class="panel" id="panel-vars" data-panel="vars" style="left:14px;top:14px;width:640px;height:640px;">
+  <div class="p-head">
+    <span class="p-title">调用栈 · 变量 · 状态</span>
+    <button class="p-close" data-close="vars" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+
+    <div class="grp blue">
+      <div class="grp-h">运行时状态</div>
+      <div class="vrow blue wrap"><span class="k">当前执行位置</span><span class="v" id="vCtx">—</span></div>
+      <div class="vrow blue"><span class="k">当前函数</span><span class="v" id="vFunc">—</span></div>
+      <div class="vrow pink wrap"><span class="k">正在求值的表达式</span><span class="v" id="vExpr">—</span></div>
+      <div class="vrow pink wrap"><span class="k">表达式结果</span><span class="v" id="vExprVal">—</span></div>
+      <div class="vrow teal wrap"><span class="k">关键状态提示</span><span class="v" id="vNote">—</span></div>
+    </div>
+
+    <div class="grp teal">
+      <div class="grp-h">调用栈（栈顶高亮）</div>
+      <div style="padding:.4em .6em;">
+        <div id="stackBody"><span class="stack-empty">（空）</span></div>
+      </div>
+    </div>
+
+    <div class="grp gold">
+      <div class="grp-h">全局作用域（main 之前初始化完成）</div>
+      <div class="vrow gold" data-k="gx"><span class="k">全局 x</span><span class="v dim">—</span></div>
+      <div class="vrow gold" data-k="gy"><span class="k">全局 y</span><span class="v dim">—</span></div>
+      <div class="vrow gold" data-k="gz"><span class="k">全局 z</span><span class="v dim">—</span></div>
+      <div class="vrow gold" data-k="gl"><span class="k">全局 l</span><span class="v dim">—</span></div>
+      <div class="vrow gold" data-k="gm"><span class="k">全局 m</span><span class="v dim">—</span></div>
+      <div class="vrow gold" data-k="gn"><span class="k">全局 n</span><span class="v dim">—</span></div>
+    </div>
+
+    <div class="grp purple">
+      <div class="grp-h">a 作用域（遮蔽全局同名变量）</div>
+      <div class="vrow purple" data-k="aX"><span class="k">a 局部 x</span><span class="v dim">—</span></div>
+      <div class="vrow purple" data-k="aY"><span class="k">a 局部 y</span><span class="v dim">—</span></div>
+      <div class="vrow purple" data-k="aZ"><span class="k">a 局部 z</span><span class="v dim">—</span></div>
+    </div>
+
+    <div class="grp blue">
+      <div class="grp-h">main / b 中可见的 x, y, z（引用全局）</div>
+      <div class="vrow blue wrap"><span class="k">可见 x / y / z</span><span class="v" id="vMainXYZ">—</span></div>
+    </div>
+
+    <div class="grp">
+      <div class="grp-h">计数器</div>
+      <div class="vrow"><span class="k">printf 调用次数</span><span class="v" id="vPC">0</span></div>
+      <div class="vrow"><span class="k">a() 调用次数</span><span class="v" id="vAC">0</span></div>
+      <div class="vrow"><span class="k">b() 调用次数</span><span class="v" id="vBC">0</span></div>
+      <div class="vrow"><span class="k">输出行数</span><span class="v" id="vOL">0</span></div>
+      <div class="vrow"><span class="k">main 返回值</span><span class="v" id="vRet">—</span></div>
+    </div>
+
+  </div>
+  <div class="p-resize"></div>
+</div>
+
+<!-- ==================== 程序输出 ==================== -->
+<div class="panel" id="panel-output" data-panel="output" style="right:180px;top:14px;width:660px;height:440px;">
+  <div class="p-head">
+    <span class="p-title">程序运行结果（屏幕输出）</span>
+    <button class="p-close" data-close="output" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <div id="consoleBody"></div>
+  </div>
+  <div class="p-resize"></div>
+</div>
+
+<!-- ==================== 说明条 ==================== -->
+<div class="panel" id="panel-explain" data-panel="explain" style="left:50%;bottom:14px;transform:translateX(-50%);width:1160px;height:400px;">
+  <div class="p-head">
+    <span class="p-title">当前语句说明</span>
+    <button class="p-close" data-close="explain" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <div id="explainBody"></div>
+  </div>
+  <div class="p-resize"></div>
+</div>
+
+<!-- ==================== 缩略图 ==================== -->
+<div class="panel" id="panel-minimap" data-panel="minimap" style="right:14px;bottom:14px;width:170px;height:520px;">
+  <div class="p-head">
+    <span class="p-title">缩略图</span>
+    <button class="p-close" data-close="minimap" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <div id="mmWrap">
+      <div id="mmBody"></div>
+      <div id="mmMark"></div>
+      <div id="mmViewport"></div>
+      <div id="mmHit"></div>
+    </div>
+  </div>
+  <div class="p-resize"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   一、模拟状态与步骤数据
+   ============================================================ */
+var S = {
+  func:'—', stack:[],
+  gx:null, gy:null, gz:null,
+  gl:null, gm:null, gn:null,
+  aX:null, aY:null, aZ:null,
+  pCount:0, aCount:0, bCount:0,
+  retVal:'—'
+};
+var outText = '';
+var STEPS = [];
+var seenLines = {};
+
+function snap(line, o){
+  o = o || {};
+  seenLines[line] = 1;
+  STEPS.push({
+    line: line,
+    cls: o.cls || '',
+    ctx: o.ctx || '—',
+    expr: o.expr || '—',
+    exprVal: o.exprVal || '—',
+    note: o.note || '—',
+    title: o.title || '',
+    desc: o.desc || '',
+    func: S.func,
+    stack: S.stack.slice(),
+    gx:S.gx, gy:S.gy, gz:S.gz,
+    gl:S.gl, gm:S.gm, gn:S.gn,
+    aX:S.aX, aY:S.aY, aZ:S.aZ,
+    pCount:S.pCount, aCount:S.aCount, bCount:S.bCount,
+    retVal:S.retVal,
+    out: outText,
+    seen: Object.keys(seenLines).map(Number)
+  });
+}
+
+/* ---------------- 步骤 1：预处理 ---------------- */
+snap(1, {
+  cls:'blue',
+  ctx:'预处理阶段 · 程序尚未运行',
+  expr:'#include <stdio.h>',
+  exprVal:'把标准输入输出头文件包含进来',
+  note:'预处理指令，不占运行时间，不产生任何输出',
+  title:'#include &lt;stdio.h&gt;　预处理指令',
+  desc:'以 <code>#</code> 开头的都是<b>预处理指令</b>，在编译之前由预处理器处理。<br>' +
+       '· 本程序要用到 <code>printf</code>，它的函数声明就在 <code>&lt;stdio.h&gt;</code> 里；<br>' +
+       '· 它<b>不是</b> C 语句，<b>不占运行时间</b>，也<b>不产生任何屏幕输出</b>；<br>' +
+       '· 本程序<b>没有输入</b>（没有 scanf / getchar），所有初值都写死在源码里，' +
+       '最终屏幕输出固定为 <b>4 行</b>。' +
+       '<span class="tip"><b>先记住本程序全貌：</b><br>' +
+       '· 全局 x/y/z = 10/11/12；全局 l/m/n = 8/9/10；<br>' +
+       '· a 里有局部 x/y/z = 1/2/3，会<b>遮蔽</b>全局同名变量；<br>' +
+       '· b 与 main 中没有局部 x/y/z，直接用全局；<br>' +
+       '· 最终输出：<b>6 / 33 / 33 / 27</b> 共 4 行。</span>'
+});
+
+/* ---------------- 步骤 2：全局 x/y/z 初始化（main 之前） ---------------- */
+S.gx = 10; S.gy = 11; S.gz = 12;
+snap(2, {
+  cls:'gold',
+  ctx:'启动阶段 · 全局变量初始化（在 main 之前）',
+  expr:'int x=10, y=11, z=12;',
+  exprVal:'全局 x = 10，y = 11，z = 12',
+  note:'全局变量已就位，从程序启动一直活到程序结束',
+  title:'全局变量初始化：<b>x = 10，y = 11，z = 12</b>',
+  desc:'定义并初始化三个<b>全局变量</b>：<br>' +
+       '· <b>全局变量</b>定义在所有函数之外，程序一启动就存在，直到程序结束才销毁；<br>' +
+       '· 本文件中<b>所有函数</b>都能访问它们（只要不被同名局部变量遮蔽）；<br>' +
+       '· 它们的值是 <b>10、11、12</b>，整个程序运行期间<b>不会改变</b>。' +
+       '<span class="win"><b>为什么这一行先执行？</b><br>' +
+       '全局变量的初始化发生在 <code>main</code> <b>之前</b>，由编译器与运行时系统自动完成。<br>' +
+       '这一步对程序员是"透明"的，但逻辑上确实先于 main 的第一条语句。</span>'
+});
+
+/* ---------------- 步骤 3：全局 l/m/n 初始化（main 之前） ---------------- */
+S.gl = 8; S.gm = 9; S.gn = 10;
+snap(18, {
+  cls:'gold',
+  ctx:'启动阶段 · 全局变量初始化（在 main 之前）',
+  expr:'int l=8, m=9, n=10;',
+  exprVal:'全局 l = 8，m = 9，n = 10',
+  note:'写在源码最后的全局变量，同样在 main 之前就已经就位',
+  title:'全局变量初始化（源码写在最后一行）：<b>l = 8，m = 9，n = 10</b>',
+  desc:'第 18 行虽然写在源文件的<b>最末尾</b>，但它同样是<b>全局变量</b>：<br>' +
+       '· 全局变量的初始化发生在 <code>main</code> <b>之前</b>，<b>与它在源码中的位置无关</b>；<br>' +
+       '· 所以程序一启动，l、m、n 就已经是 <b>8、9、10</b> 了；<br>' +
+       '· 那为什么 main 里还要写 <code>extern l, m, n;</code>？<br>' +
+       '&nbsp;&nbsp;因为 main 的代码在前面，编译器读到 main 时<b>还不知道</b>后面有这三个变量，' +
+       '需要 extern 声明来"提前告知"。' +
+       '<span class="warn"><b>注意：</b><code>extern l, m, n;</code> 是老式（C89）写法，' +
+       '会被当作 <code>extern int l, m, n;</code>。现代 C 建议写成 <code>extern int l, m, n;</code>。</span>'
+});
+
+/* ---------------- 步骤 4：函数 a 定义登记 ---------------- */
+snap(3, {
+  cls:'purple',
+  ctx:'函数定义登记阶段 · 不执行',
+  expr:'void a() { ... }',
+  exprVal:'编译器登记函数 a 的定义',
+  note:'只是登记，此刻不会执行 a 的函数体',
+  title:'void a() { ... }　函数 a 的定义（<b>只登记，不执行</b>）',
+  desc:'编译器在这里<b>登记</b>函数 a 的定义，<b>此刻不会执行</b>——' +
+       '只有 main 中第 12 行调用它时才真正运行。<br>' +
+       '· 返回类型 <code>void</code>：<b>不返回任何值</b>；<br>' +
+       '· 参数列表是空的：<b>没有参数</b>；<br>' +
+       '· 功能：先声明三个<b>局部变量</b> x=1、y=2、z=3，然后输出它们的和。' +
+       '<span class="tip"><b>核心伏笔：</b>a 内部的 <code>x, y, z</code> 与全局的 ' +
+       '<code>x, y, z</code> <b>同名</b>，它们会<b>遮蔽（shadow）</b>全局变量。<br>' +
+       '在 a 内部访问 x、y、z 时，编译器采用"<b>就近原则</b>"，' +
+       '优先选择当前作用域中的局部变量。</span>'
+});
+
+/* ---------------- 步骤 5：函数 b 定义登记 ---------------- */
+snap(7, {
+  cls:'teal',
+  ctx:'函数定义登记阶段 · 不执行',
+  expr:'void b() { ... }',
+  exprVal:'编译器登记函数 b 的定义',
+  note:'只是登记，此刻不会执行 b 的函数体',
+  title:'void b() { ... }　函数 b 的定义（<b>只登记，不执行</b>）',
+  desc:'编译器在这里<b>登记</b>函数 b 的定义，<b>此刻不会执行</b>。<br>' +
+       '· 返回类型同样是 <code>void</code>，<b>没有返回值</b>；<br>' +
+       '· 功能：输出 x、y、z 的和。' +
+       '<span class="tip"><b>核心对比：</b>b 内部<b>没有</b>声明 x、y、z，' +
+       '所以这里的 x、y、z 直接引用<b>全局变量</b>，' +
+       '求和结果 = 10 + 11 + 12 = <b>33</b>。<br>' +
+       '与 a 相比：a 有自己的局部 x/y/z → 用局部；b 没有 → 用全局。</span>'
+});
+
+/* ---------------- 步骤 6：main 入口 ---------------- */
+S.func = 'main';
+S.stack = ['main'];
+snap(10, {
+  cls:'blue',
+  ctx:'main · 程序入口',
+  expr:'int main() {',
+  exprVal:'操作系统把控制权交给 main',
+  note:'系统为 main 建立栈帧',
+  title:'int main() {　程序从这里开始',
+  desc:'操作系统把控制权交给 <code>main</code>，程序正式开始，系统为 main 建立<b>栈帧</b>。<br>' +
+       '<b>整体流程：</b><br>' +
+       '① 第 11 行：<code>extern l, m, n;</code> 声明后面定义的全局变量；<br>' +
+       '② 第 12 行：调用 <code>a()</code>；<br>' +
+       '③ 第 13 行：调用 <code>b()</code>；<br>' +
+       '④ 第 14 行：输出 x+y+z（使用全局变量）；<br>' +
+       '⑤ 第 15 行：输出 l+m+n；<br>' +
+       '⑥ 第 16 行：<code>return 0;</code> 结束程序。' +
+       '<span class="win"><b>预期输出（4 行）：</b><br>' +
+       '<code>x+y+z=6 ⏎</code>（数字 6 后面有一个空格）<br>' +
+       '<code>x+y+z=33 ⏎</code>（数字 33 后面有一个空格）<br>' +
+       '<code>x+y+z=33 ⏎</code>（数字 33 后面有一个空格）<br>' +
+       '<code>l+m+n=27</code>（末尾<b>没有换行</b>，光标停在原地）</span>'
+});
+
+/* ---------------- 步骤 7：extern 声明 ---------------- */
+snap(11, {
+  cls:'orange',
+  ctx:'main · extern 声明（只声明，不分配内存）',
+  expr:'extern l, m, n;',
+  exprVal:'向编译器声明：l、m、n 是全局变量，定义在别处',
+  note:'不分配内存、不初始化、不产生输出；只是让后续代码能用这三个名字',
+  title:'extern l, m, n;　声明三个全局变量',
+  desc:'<code>extern</code> 关键字的作用是<b>声明</b>（而不是定义）变量：<br>' +
+       '· 它告诉编译器："<code>l、m、n</code> 是全局变量，但定义在别的地方"；<br>' +
+       '· <b>不会分配新内存</b>，也不会初始化——它只是让后续代码能使用这三个名字；<br>' +
+       '· 由于它们的定义写在本文件后面（第 18 行），' +
+       '编译器读到 main 时还不知道它们，必须靠 extern 提前声明；<br>' +
+       '· 链接时，main 中的 l、m、n 会与第 18 行定义的同一份全局变量对上。' +
+       '<span class="warn"><b>声明 vs 定义（本节重点）：</b><br>' +
+       '<code>extern int l;</code> 是<b>声明</b>——不占内存、不初始化；<br>' +
+       '<code>int l = 8;</code> 是<b>定义</b>——分配内存并初始化。<br>' +
+       '如果这里误写成 <code>int l, m, n;</code>（定义），就会与第 18 行重复定义，产生链接错误。</span>'
+});
+
+/* ---------------- 步骤 8：准备调用 a() ---------------- */
+snap(12, {
+  cls:'purple',
+  ctx:'main · 准备调用 a()',
+  expr:'a()',
+  exprVal:'控制权即将转移给函数 a',
+  note:'调用 a()，main 暂停在第 12 行等待返回',
+  title:'a();　调用函数 <b>a</b>',
+  desc:'执行 <code>a()</code>：<br>' +
+       '· a <b>无参数、无返回值</b>（void）；<br>' +
+       '· 控制权交给 a，main 暂停在第 12 行等待返回；<br>' +
+       '· 系统即将为 a 建立新的<b>栈帧</b>。' +
+       '<span class="tip"><b>调用栈：</b>main → a（a 即将压栈）</span>'
+});
+
+/* ---------------- 步骤 9：进入 a ---------------- */
+S.func = 'a';
+S.stack = ['main','a'];
+S.aCount = 1;
+snap(3, {
+  cls:'purple',
+  ctx:'a · 进入函数体',
+  expr:'void a()',
+  exprVal:'a 的函数体开始执行',
+  note:'a 成为当前函数，栈顶高亮',
+  title:'进入 <b>a()</b> 函数体',
+  desc:'控制权交给 a，函数体开始执行：<br>' +
+       '· 系统为 a 建立新的<b>栈帧</b>；<br>' +
+       '· a 是 <code>void</code> 函数，<b>没有返回值</b>，也不需要 return 语句；<br>' +
+       '· 即将声明 a 的三个局部变量 x、y、z。' +
+       '<span class="tip"><b>调用栈：</b>main → a（a 成为当前函数，栈顶高亮）</span>'
+});
+
+/* ---------------- 步骤 10：a 的局部变量 ---------------- */
+S.aX = 1; S.aY = 2; S.aZ = 3;
+snap(4, {
+  cls:'purple',
+  ctx:'a · 声明并初始化局部变量（遮蔽全局同名变量）',
+  expr:'int x=1, y=2, z=3;',
+  exprVal:'a 的局部 x = 1，y = 2，z = 3',
+  note:'a 的局部变量已创建，遮蔽了同名的全局变量',
+  title:'int x=1, y=2, z=3;　→　<b>局部 x = 1，y = 2，z = 3</b>',
+  desc:'在 a 的栈帧中创建三个<b>局部变量</b>并初始化：<br>' +
+       '· <b>x = 1</b>、<b>y = 2</b>、<b>z = 3</b>；<br>' +
+       '· 它们与全局的 <code>x、y、z</code> <b>同名</b>，在 a 内部会<b>遮蔽</b>全局变量；<br>' +
+       '· 从此刻起，a 中写 <code>x</code> 访问的是<b>局部变量</b>；' +
+       '全局变量依然存在（值仍是 10/11/12），只是暂时"看不见"了。' +
+       '<span class="win"><b>变量表现在可以看到两组同名变量：</b><br>' +
+       '· 全局 x=10, y=11, z=12（金色，<b>仍然存在、值未变</b>）；<br>' +
+       '· a 局部 x=1, y=2, z=3（紫色，<b>当前函数使用</b>）。<br>' +
+       '它们同名，但是<b>两个完全独立的变量</b>，互不影响。</span>'
+});
+
+/* ---------------- 步骤 11：计算 x+y+z ---------------- */
+snap(5, {
+  cls:'purple',
+  ctx:'a · 名称解析：就近原则，优先用局部变量',
+  expr:'x + y + z   →   1 + 2 + 3',
+  exprVal:'x+y+z = 6（用的是 a 的局部变量）',
+  note:'a 中有局部 x/y/z → 就近原则 → 用局部（1、2、3）',
+  title:'计算 <code>x+y+z</code>：<b>就近原则 → 局部变量 → 1 + 2 + 3 = 6</b>',
+  desc:'<b>名称解析过程（本程序最关键的机制）：</b><br>' +
+       '· 编译器在 a 中看到 <code>x</code>，先在<b>当前作用域</b>（a 的函数体）里找；<br>' +
+       '· 发现 a 中有局部变量 <code>x</code>，就直接用它，<b>不再往外层找全局</b>；<br>' +
+       '· <code>y</code>、<code>z</code> 同理，用的都是 a 的局部变量；<br>' +
+       '· 所以 <code>x + y + z = 1 + 2 + 3 = 6</code>。' +
+       '<span class="tip"><b>这就是"同名遮蔽 / 就近原则"：</b><br>' +
+       '内层作用域的同名变量会"遮住"外层的同名变量，' +
+       '在内层访问这个名字时，看到的永远是<b>离自己最近</b>的那一个。</span>'
+});
+
+/* ---------------- 步骤 12：printf 输出 6 ---------------- */
+S.pCount = 1;
+outText += 'x+y+z=6 \n';
+snap(5, {
+  cls:'green',
+  ctx:'a · printf 输出（第 1 次 printf 调用）',
+  expr:'printf("x+y+z=%d \\n", x+y+z)   →   printf("x+y+z=%d \\n", 6)',
+  exprVal:'输出 "x+y+z=6 "（末尾一个空格），然后换行',
+  note:'屏幕追加 "x+y+z=6 "，末尾有一个空格，随后换行',
+  title:'printf("x+y+z=%d \\n", x+y+z);　→　输出 <b>"x+y+z=6 "</b> 并换行',
+  desc:'输出过程逐步拆解：<br>' +
+       '① <b>名称解析：</b>a 中有局部 x、y、z，所以用的是<b>局部变量</b>；<br>' +
+       '② <code>x + y + z = 1 + 2 + 3 = 6</code>；<br>' +
+       '③ 格式串中的 <code>%d</code> 被替换成 <b>6</b>；<br>' +
+       '④ 格式串是 <code>"x+y+z=%d \\n"</code>，注意 <code>%d</code> 与 <code>\\n</code> ' +
+       '之间<b>有一个空格</b>，会原样输出；<br>' +
+       '⑤ 所以屏幕上是 <b>"x+y+z=6 "</b>（数字 6 后面有一个空格）；<br>' +
+       '⑥ 最后 <code>\\n</code> 让光标换到下一行。' +
+       '<span class="tip"><b>全局 x/y/z 完全没有被修改</b>，仍然是 10、11、12。</span>' +
+       '<span class="win"><b>屏幕当前内容：</b><br><code>' +
+       outText.replace(/\n/g,'⏎<br>') + '</code></span>'
+});
+
+/* ---------------- 步骤 13：a 结束，栈帧销毁 ---------------- */
+S.func = 'main';
+S.stack = ['main'];
+S.aX = null; S.aY = null; S.aZ = null;
+snap(6, {
+  cls:'purple',
+  ctx:'a · 函数结束（栈帧销毁）',
+  expr:'}',
+  exprVal:'a 返回，局部变量随栈帧销毁',
+  note:'a 的局部 x、y、z 已随栈帧销毁（全局不变）',
+  title:'a 函数体结束 <code>}</code>　→　局部变量随栈帧销毁',
+  desc:'a 函数体执行完毕：<br>' +
+       '· 局部变量 <code>x, y, z</code> 随 a 的栈帧一起<b>销毁</b>（变量表中显示为 —）；<br>' +
+       '· 全局变量 <code>x, y, z</code> 依然存在，值仍然是 <b>10、11、12</b>；<br>' +
+       '· 控制权即将回到 main 的第 12 行之后。' +
+       '<span class="tip"><b>局部变量的生命周期：</b>随函数调用而生，随函数返回而亡。' +
+       '每次调用都会创建一份全新的局部变量。</span>'
+});
+
+/* ---------------- 步骤 14：回到 main ---------------- */
+snap(12, {
+  cls:'blue',
+  ctx:'main · a() 返回，继续往下执行',
+  expr:'a() 调用结束',
+  exprVal:'void 函数，无返回值',
+  note:'a 已出栈，调用栈回到只有 main',
+  title:'a() 调用结束，回到 main',
+  desc:'<code>a</code> 执行完毕，控制权回到 main：<br>' +
+       '· a 的栈帧已被销毁，a 中的局部 x、y、z 消失；<br>' +
+       '· main 继续执行第 13 行 <code>b()</code>。' +
+       '<span class="tip"><b>调用栈：</b>main（a 已出栈）</span>'
+});
+
+/* ---------------- 步骤 15：准备调用 b() ---------------- */
+snap(13, {
+  cls:'teal',
+  ctx:'main · 准备调用 b()',
+  expr:'b()',
+  exprVal:'控制权即将转移给函数 b',
+  note:'调用 b()，main 暂停在第 13 行等待返回',
+  title:'b();　调用函数 <b>b</b>',
+  desc:'执行 <code>b()</code>：<br>' +
+       '· b 同样<b>无参数、无返回值</b>（void）；<br>' +
+       '· 控制权交给 b，main 暂停在第 13 行等待返回；' +
+       '· b 与 a 是<b>两次相互独立的调用</b>，不是嵌套调用。' +
+       '<span class="tip"><b>调用栈：</b>main → b（b 即将压栈）</span>'
+});
+
+/* ---------------- 步骤 16：进入 b ---------------- */
+S.func = 'b';
+S.stack = ['main','b'];
+S.bCount = 1;
+snap(7, {
+  cls:'teal',
+  ctx:'b · 进入函数体',
+  expr:'void b()',
+  exprVal:'b 的函数体开始执行',
+  note:'b 成为当前函数，栈顶高亮',
+  title:'进入 <b>b()</b> 函数体',
+  desc:'控制权交给 b，函数体开始执行：<br>' +
+       '· 系统为 b 建立新的<b>栈帧</b>；<br>' +
+       '· b 内部<b>没有</b>声明任何局部变量；<br>' +
+       '· 因此 b 中的 x、y、z 直接引用<b>全局变量</b>。' +
+       '<span class="tip"><b>调用栈：</b>main → b（b 成为当前函数，栈顶高亮）</span>'
+});
+
+/* ---------------- 步骤 17：计算 x+y+z（b 中） ---------------- */
+snap(8, {
+  cls:'teal',
+  ctx:'b · 名称解析：无局部同名变量 → 使用全局变量',
+  expr:'x + y + z   →   10 + 11 + 12',
+  exprVal:'x+y+z = 33（用的是全局变量）',
+  note:'b 中没有局部 x/y/z → 直接使用全局（10、11、12）',
+  title:'计算 <code>x+y+z</code>：<b>b 中无局部 → 使用全局 → 10 + 11 + 12 = 33</b>',
+  desc:'<b>名称解析过程：</b><br>' +
+       '· 编译器在 b 中看到 <code>x</code>，先在本函数体内找；<br>' +
+       '· b 中<b>没有</b>局部变量 <code>x</code>，于是向外层找，找到<b>全局变量 x</b>；<br>' +
+       '· <code>y</code>、<code>z</code> 同理，都指向全局变量；<br>' +
+       '· 所以 <code>x + y + z = 10 + 11 + 12 = 33</code>。' +
+       '<span class="win"><b>与 a 中的 6 对比：</b><br>' +
+       '· a <b>有</b>同名局部变量 → 就近原则 → 用局部 → 1+2+3 = <b>6</b>；<br>' +
+       '· b <b>没有</b>同名局部变量 → 用全局 → 10+11+12 = <b>33</b>。<br>' +
+       '这就是"同名遮蔽"最直观的对比实验。</span>'
+});
+
+/* ---------------- 步骤 18：printf 输出 33（b 中） ---------------- */
+S.pCount = 2;
+outText += 'x+y+z=33 \n';
+snap(8, {
+  cls:'green',
+  ctx:'b · printf 输出（第 2 次 printf 调用）',
+  expr:'printf("x+y+z=%d \\n", x+y+z)   →   printf("x+y+z=%d \\n", 33)',
+  exprVal:'输出 "x+y+z=33 "（末尾一个空格），然后换行',
+  note:'屏幕追加 "x+y+z=33 "，末尾有一个空格，随后换行',
+  title:'printf("x+y+z=%d \\n", x+y+z);　→　输出 <b>"x+y+z=33 "</b> 并换行',
+  desc:'输出过程：<br>' +
+       '· 这里的 x、y、z 是<b>全局变量</b>（b 中没有同名局部变量）；<br>' +
+       '· <code>x + y + z = 10 + 11 + 12 = 33</code>；<br>' +
+       '· 格式串中的 <code>%d</code> 被替换成 <b>33</b>；<br>' +
+       '· <code>%d</code> 与 <code>\\n</code> 之间有一个空格，所以输出 <b>"x+y+z=33 "</b>；<br>' +
+       '· 末尾的 <code>\\n</code> 让光标换到下一行。' +
+       '<span class="win"><b>屏幕当前内容：</b><br><code>' +
+       outText.replace(/\n/g,'⏎<br>') + '</code></span>'
+});
+
+/* ---------------- 步骤 19：b 结束，栈帧销毁 ---------------- */
+S.func = 'main';
+S.stack = ['main'];
+snap(9, {
+  cls:'teal',
+  ctx:'b · 函数结束（栈帧销毁）',
+  expr:'}',
+  exprVal:'b 返回',
+  note:'b 中没有局部变量，栈帧干净地销毁',
+  title:'b 函数体结束 <code>}</code>　→　返回 main',
+  desc:'b 函数体执行完毕：<br>' +
+       '· b 中没有局部变量，栈帧干净地销毁；<br>' +
+       '· 控制权即将回到 main 的第 13 行之后。'
+});
+
+/* ---------------- 步骤 20：回到 main ---------------- */
+snap(13, {
+  cls:'blue',
+  ctx:'main · b() 返回，继续往下执行',
+  expr:'b() 调用结束',
+  exprVal:'void 函数，无返回值',
+  note:'b 已出栈，调用栈回到只有 main',
+  title:'b() 调用结束，回到 main',
+  desc:'<code>b</code> 执行完毕，控制权回到 main：<br>' +
+       '· main 继续执行第 14 行 <code>printf</code>。' +
+       '<span class="tip"><b>调用栈：</b>main（b 已出栈）</span>'
+});
+
+/* ---------------- 步骤 21：main 中计算 x+y+z ---------------- */
+snap(14, {
+  cls:'blue',
+  ctx:'main · 名称解析：无局部同名变量 → 使用全局变量',
+  expr:'x + y + z   →   10 + 11 + 12',
+  exprVal:'x+y+z = 33（用的是全局变量）',
+  note:'main 中也没有局部 x/y/z → 直接使用全局（10、11、12）',
+  title:'计算 <code>x+y+z</code>：<b>main 中无局部 → 使用全局 → 33</b>',
+  desc:'main 中也没有声明局部变量 x、y、z，所以这里的 x、y、z 是<b>全局变量</b>：<br>' +
+       '· <code>x = 10</code>，<code>y = 11</code>，<code>z = 12</code>；<br>' +
+       '· <code>x + y + z = 10 + 11 + 12 = 33</code>。' +
+       '<span class="tip"><b>与 b 中的结果完全相同</b>——因为它们访问的是<b>同一份全局变量</b>。' +
+       '全局变量在整个程序运行期间只有一份。</span>'
+});
+
+/* ---------------- 步骤 22：printf 输出 33（main 中） ---------------- */
+S.pCount = 3;
+outText += 'x+y+z=33 \n';
+snap(14, {
+  cls:'green',
+  ctx:'main · printf 输出（第 3 次 printf 调用）',
+  expr:'printf("x+y+z=%d \\n", x+y+z)   →   printf("x+y+z=%d \\n", 33)',
+  exprVal:'输出 "x+y+z=33 "（末尾一个空格），然后换行',
+  note:'屏幕追加 "x+y+z=33 "，末尾有一个空格，随后换行',
+  title:'printf("x+y+z=%d \\n", x+y+z);　→　输出 <b>"x+y+z=33 "</b> 并换行',
+  desc:'输出过程：<br>' +
+       '· 使用全局变量 x=10, y=11, z=12，和为 <b>33</b>；<br>' +
+       '· <code>%d</code> 被替换成 33；<br>' +
+       '· 格式串中 <code>%d</code> 与 <code>\\n</code> 之间的空格原样输出；<br>' +
+       '· 末尾 <code>\\n</code> 换行。' +
+       '<span class="win"><b>屏幕当前内容：</b><br><code>' +
+       outText.replace(/\n/g,'⏎<br>') + '</code></span>'
+});
+
+/* ---------------- 步骤 23：计算 l+m+n ---------------- */
+snap(15, {
+  cls:'orange',
+  ctx:'main · extern 声明在此生效，访问第 18 行定义的全局变量',
+  expr:'l + m + n   →   8 + 9 + 10',
+  exprVal:'l+m+n = 27',
+  note:'extern 声明让 main 能访问到写在文件后面的全局变量 l、m、n',
+  title:'计算 <code>l+m+n</code>：<b>extern 声明生效 → 8 + 9 + 10 = 27</b>',
+  desc:'<b>这里是 extern 声明真正发挥作用的地方：</b><br>' +
+       '· 第 11 行的 <code>extern l, m, n;</code> 告诉编译器"这三个是全局变量，定义在别处"；<br>' +
+       '· 编译器据此允许 main 使用 l、m、n 这三个名字；<br>' +
+       '· 链接时它们指向第 18 行定义的那一份全局变量；<br>' +
+       '· <code>l = 8</code>，<code>m = 9</code>，<code>n = 10</code>；<br>' +
+       '· <code>l + m + n = 8 + 9 + 10 = 27</code>。' +
+       '<span class="warn"><b>如果没有第 11 行的 extern 声明：</b>' +
+       'main 中直接写 l、m、n 会被编译器判为"未声明的标识符"而报错。' +
+       '（老式 C89 可能给隐式声明警告，但现代 C 编译器会直接报错。）</span>'
+});
+
+/* ---------------- 步骤 24：printf 输出 27（无换行） ---------------- */
+S.pCount = 4;
+outText += 'l+m+n=27';
+snap(15, {
+  cls:'green',
+  ctx:'main · printf 输出（第 4 次 printf 调用，末尾无 \\n）',
+  expr:'printf("l+m+n=%d", l+m+n)   →   printf("l+m+n=%d", 27)',
+  exprVal:'输出 "l+m+n=27"（<b>不换行</b>），光标停在原地',
+  note:'屏幕追加 "l+m+n=27"，格式串末尾没有 \\n，光标停在这一行末尾',
+  title:'printf("l+m+n=%d", l+m+n);　→　输出 <b>"l+m+n=27"</b>（<b>不换行</b>）',
+  desc:'输出过程：<br>' +
+       '· <code>l + m + n = 8 + 9 + 10 = 27</code>；<br>' +
+       '· <code>%d</code> 被替换成 <b>27</b>；<br>' +
+       '· 输出 <b>"l+m+n=27"</b>；<br>' +
+       '· <b>重点：</b>格式串 <code>"l+m+n=%d"</code> 的末尾<b>没有 \\n</b>，' +
+       '所以输出后光标停在这一行的末尾，<b>不会换行</b>。' +
+       '<span class="win"><b>屏幕当前内容（最终结果）：</b><br><code>' +
+       outText.replace(/\n/g,'⏎<br>') + '<span style="color:#4ade80">▊</span></code><br>' +
+       '整个屏幕一共 <b>4 行</b>，前三行末尾各有一个空格 + 换行，最后一行末尾无换行。</span>'
+});
+
+/* ---------------- 步骤 25：return 0 ---------------- */
+S.retVal = '0';
+snap(16, {
+  cls:'blue',
+  ctx:'main · return 0',
+  expr:'return 0;',
+  exprVal:'返回 0，程序正常结束',
+  note:'main 返回 0 表示程序正常结束（这个 0 不会打印到屏幕）',
+  title:'return 0;　结束 main 函数',
+  desc:'<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还给操作系统：<br>' +
+       '· 约定返回 <b>0</b> 表示程序<b>正常结束</b>；返回非 0 通常表示出错；<br>' +
+       '· 这个 0 <b>不会</b>被打印到屏幕上，它是给操作系统看的"退出码"；<br>' +
+       '· 所以屏幕输出仍然是那 4 行，不会有任何变化。'
+});
+
+/* ---------------- 步骤 26：程序结束 ---------------- */
+S.func = '—';
+S.stack = [];
+snap(17, {
+  cls:'blue',
+  ctx:'程序结束 · 调用栈清空',
+  expr:'}',
+  exprVal:'main 栈帧销毁，程序退出',
+  note:'所有全局变量随之销毁',
+  title:'main 函数体结束 <code>}</code>　→　程序结束',
+  desc:'main 的栈帧被销毁，调用栈清空，程序正常退出。' +
+       '<span class="win"><b>★ 程序最终运行结果（屏幕严格 4 行）：</b><br><code>' +
+       'x+y+z=6&nbsp;⏎<br>' +
+       'x+y+z=33&nbsp;⏎<br>' +
+       'x+y+z=33&nbsp;⏎<br>' +
+       'l+m+n=27&nbsp;▊</code><br>' +
+       '（前三行末尾各有一个空格 + 换行；最后一行末尾无换行，光标停在此处）</span>' +
+       '<b>本程序要点总结：</b><br>' +
+       '① <b>全局变量 vs 局部变量</b>：全局 x/y/z = 10/11/12，全局 l/m/n = 8/9/10，' +
+       '定义在函数外、程序启动即存在；a 的局部 x/y/z = 1/2/3，只在 a 内有效；<br>' +
+       '② <b>同名遮蔽（就近原则）</b>：a 中访问 x/y/z 时优先选择局部变量 → 输出 6；<br>' +
+       '③ <b>无同名变量时使用全局</b>：b 和 main 中没有局部 x/y/z → 用全局 → 输出 33；<br>' +
+       '④ <b>extern 声明</b>：<code>extern l, m, n;</code> 提前告知编译器这三个全局变量存在' +
+       '（定义在文件后半部分），<b>不分配内存</b>；<br>' +
+       '⑤ <b>函数定义 ≠ 执行</b>：a、b 只在被调用时才运行；<br>' +
+       '⑥ <b>调用栈</b>：main → a → main → b → main，函数返回时局部变量随栈帧销毁；<br>' +
+       '⑦ <b>printf 中的 \\n</b>：前三处有 \\n 所以输出到三行，且 %d 后有一个空格；' +
+       '最后一处没有 \\n，光标停在原地。'
+});
+
+/* ============================================================
+   二、DOM 引用
+   ============================================================ */
+var codeScroll = document.getElementById('codeScroll');
+var codeInner  = document.getElementById('codeInner');
+var codeLines  = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+var consoleBody= document.getElementById('consoleBody');
+var stackBody  = document.getElementById('stackBody');
+var explainBody= document.getElementById('explainBody');
+var mmBody     = document.getElementById('mmBody');
+var mmViewport = document.getElementById('mmViewport');
+var mmMark     = document.getElementById('mmMark');
+var mmHit      = document.getElementById('mmHit');
+var toast      = document.getElementById('toast');
+
+var vCtx   = document.getElementById('vCtx');
+var vFunc  = document.getElementById('vFunc');
+var vExpr  = document.getElementById('vExpr');
+var vExprVal= document.getElementById('vExprVal');
+var vNote  = document.getElementById('vNote');
+var vMainXYZ = document.getElementById('vMainXYZ');
+var vPC = document.getElementById('vPC');
+var vAC = document.getElementById('vAC');
+var vBC = document.getElementById('vBC');
+var vOL = document.getElementById('vOL');
+var vRet= document.getElementById('vRet');
+
+var btnPlay   = document.getElementById('btnPlay');
+var btnPrev   = document.getElementById('btnPrev');
+var btnNext   = document.getElementById('btnNext');
+var btnReset  = document.getElementById('btnReset');
+var btnFull   = document.getElementById('btnFull');
+var btnToggleMM = document.getElementById('btnToggleMM');
+var btnToggleAll= document.getElementById('btnToggleAll');
+var btnResetLayout = document.getElementById('btnResetLayout');
+var speedInput= document.getElementById('speed');
+var speedLabel= document.getElementById('speedLabel');
+
+/* ============================================================
+   三、缩略图构建
+   ★ 修复点：原实现直接把 .src 的 innerHTML 塞进 .mm-line，
+     而 .mm-line 是 flex 容器 —— 按 CSS Flexbox 规范，
+     匿名 flex 项的行首/行尾空白会被自动丢弃，
+     于是缩略图里的 4 个空格缩进全部消失。
+     现改为：
+       1) 从源码行文本中数出真实前导空格数 indent；
+       2) 去掉 innerHTML 里的前导空白；
+       3) 用 .mm-code 承载代码，并用 padding-left: indent ch
+          显式模拟缩进（ch 单位 = 缩略图等宽字体的一个字符宽）。
+   ============================================================ */
+var mmLines = [];
+function buildMinimap(){
+  var h = '';
+  for (var i=0;i<codeLines.length;i++){
+    var el = codeLines[i];
+    var n = el.dataset.line;
+    var srcEl = el.querySelector('.src');
+
+    /* 1) 数出真实前导空格数（tab 按 4 空格折算） */
+    var raw = srcEl.textContent || '';
+    var m = raw.match(/^[ \t]*/);
+    var indent = m ? m[0].replace(/\t/g, '    ').length : 0;
+
+    /* 2) 去掉 innerHTML 里的前导空白，避免与 padding 叠加 */
+    var inner = srcEl.innerHTML.replace(/^[ \t]+/, '');
+
+    /* 3) 用 padding-left 显式模拟缩进 */
+    h += '<div class="mm-line" data-line="'+n+'">' +
+           '<span class="mm-ln">'+n+'</span>' +
+           '<span class="mm-code" style="padding-left:'+indent+'ch">'+ inner +'</span>' +
+         '</div>';
+  }
+  mmBody.innerHTML = h;
+  mmLines = Array.prototype.slice.call(mmBody.querySelectorAll('.mm-line'));
+}
+buildMinimap();
+
+/* ============================================================
+   四、渲染
+   ============================================================ */
+var current = -1;
+var playing = false;
+var timer = null;
+var speed = Number(speedInput.value);
+var lastOutText = null;
+
+function disp(v){ return (v===null||v===undefined) ? '—' : String(v); }
+
+/* ---- 变量表 ---- */
+var VAR_ROWS = [
+  {k:'gx', row:'gx'}, {k:'gy', row:'gy'}, {k:'gz', row:'gz'},
+  {k:'gl', row:'gl'}, {k:'gm', row:'gm'}, {k:'gn', row:'gn'},
+  {k:'aX', row:'aX'}, {k:'aY', row:'aY'}, {k:'aZ', row:'aZ'}
+];
+var rowEls = {};
+VAR_ROWS.forEach(function(r){
+  rowEls[r.k] = document.querySelector('.vrow[data-k="'+r.row+'"]');
+});
+
+function setRow(k, val, prevVal, animate){
+  var row = rowEls[k];
+  if (!row) return;
+  var v = row.querySelector('.v');
+  var newText = disp(val);
+  if (v.textContent !== newText){
+    v.textContent = newText;
+    if (val === null || val === undefined) v.classList.add('dim');
+    else v.classList.remove('dim');
+    if (animate){
+      v.classList.remove('pop');
+      void v.offsetWidth;
+      v.classList.add('pop');
+    }
+  }
+}
+
+function updateVars(step, prev){
+  var animate = speed >= 300;
+  VAR_ROWS.forEach(function(r){
+    var val = step ? step[r.k] : null;
+    var pv  = prev ? prev[r.k] : null;
+    setRow(r.k, val, pv, animate && pv !== val);
+  });
+
+  if (step){
+    vCtx.textContent = step.ctx;
+    vFunc.textContent = step.func;
+    vExpr.textContent = step.expr;
+    vExprVal.textContent = step.exprVal;
+    vNote.textContent = step.note;
+    vPC.textContent = step.pCount;
+    vAC.textContent = step.aCount;
+    vBC.textContent = step.bCount;
+    vOL.textContent = step.out === '' ? 0 : step.out.split('\n').length;
+    vRet.textContent = step.retVal;
+    var gx = step.gx, gy = step.gy, gz = step.gz;
+    if (gx === null) vMainXYZ.textContent = '—';
+    else vMainXYZ.textContent = gx + ' / ' + gy + ' / ' + gz;
+    vMainXYZ.classList.toggle('dim', gx === null);
+  } else {
+    vCtx.textContent = '—'; vFunc.textContent = '—';
+    vExpr.textContent = '—'; vExprVal.textContent = '—'; vNote.textContent = '—';
+    vPC.textContent = '0'; vAC.textContent = '0'; vBC.textContent = '0';
+    vOL.textContent = '0'; vRet.textContent = '—';
+    vMainXYZ.textContent = '—'; vMainXYZ.classList.add('dim');
+  }
+}
+
+/* ---- 调用栈 ---- */
+function updateStack(step){
+  var stk = step ? step.stack : [];
+  if (!stk || stk.length === 0){
+    stackBody.innerHTML = '<span class="stack-empty">（空）</span>';
+    return;
+  }
+  var h = '';
+  for (var i=0;i<stk.length;i++){
+    if (i>0) h += '<span class="arrow">→</span>';
+    var top = (i === stk.length-1);
+    h += '<span class="frame' + (top ? ' top' : '') + '">' + stk[i] + '</span>';
+  }
+  stackBody.innerHTML = h;
+}
+
+/* ---- 代码高亮 ---- */
+function updateCode(step){
+  var activeLine = step ? step.line : null;
+  var seen = step ? step.seen : [];
+  for (var i=0;i<codeLines.length;i++){
+    var el = codeLines[i];
+    var n = Number(el.dataset.line);
+    var isActive = (activeLine !== null && n === activeLine);
+    var isSeen = (seen.indexOf(n) >= 0);
+    el.classList.toggle('active', isActive);
+    el.classList.toggle('done', !isActive && isSeen);
+    el.classList.toggle('pending', activeLine !== null && !isSeen && !isActive);
+  }
+  centerActiveLine();
+  syncMinimap();
+}
+
+function centerActiveLine(){
+  var el = codeInner.querySelector('.code-line.active');
+  if (!el) return;
+  var target = el.offsetTop - (codeScroll.clientHeight - el.offsetHeight)/2;
+  var maxTop = codeScroll.scrollHeight - codeScroll.clientHeight;
+  target = Math.max(0, Math.min(target, maxTop));
+  codeScroll.scrollTop = target;
+}
+
+/* ---- 输出 ---- */
+function updateOutput(idx){
+  var text = (idx >= 0 && STEPS[idx]) ? STEPS[idx].out : '';
+  if (text === lastOutText) return;
+  lastOutText = text;
+  consoleBody.innerHTML = '';
+
+  if (text === ''){
+    var ph = document.createElement('div');
+    ph.className = 'out-line out-empty';
+    ph.textContent = '（等待程序输出…）';
+    consoleBody.appendChild(ph);
+    return;
+  }
+
+  var parts = text.split('\n');
+  for (var i=0;i<parts.length;i++){
+    var isLast = (i === parts.length-1);
+    var line = parts[i];
+    var d = document.createElement('div');
+    d.className = 'out-line';
+
+    if (line === ''){
+      if (isLast){
+        var cur0 = document.createElement('span');
+        cur0.className = 'cursor'; cur0.textContent = '▊';
+        d.appendChild(cur0);
+      } else {
+        d.innerHTML = '&nbsp;';
+      }
+    } else {
+      var m = line.match(/\s+$/);
+      var core = line, tail = '';
+      if (m){ core = line.slice(0, line.length - m[0].length); tail = m[0]; }
+      d.appendChild(document.createTextNode(core));
+      if (tail){
+        var s = document.createElement('span');
+        s.className = 'ws-mark';
+        s.textContent = tail;
+        d.appendChild(s);
+      }
+      if (isLast){
+        var cur = document.createElement('span');
+        cur.className = 'cursor'; cur.textContent = '▊';
+        d.appendChild(cur);
+      } else {
+        /* 行尾换行标记 */
+        var nl = document.createElement('span');
+        nl.className = 'nl-mark';
+        nl.textContent = '⏎';
+        d.appendChild(nl);
+      }
+    }
+    consoleBody.appendChild(d);
+  }
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+/* ---- 说明 ---- */
+function updateExplain(step){
+  if (step){
+    explainBody.innerHTML =
+      '<span class="ex-line ' + (step.cls||'') + '">第 ' + step.line + ' 行</span>' +
+      '<strong>' + step.title + '</strong><br>' + step.desc;
+  } else {
+    explainBody.innerHTML =
+      '<em>点击「▶ 播放」或「下一步 ▶」，开始逐条执行程序。<br>' +
+      '本程序演示 <b>全局/局部变量作用域</b> 与 <b>同名遮蔽</b>：<br>' +
+      '· <b>全局 x/y/z</b> = 10/11/12；<b>全局 l/m/n</b> = 8/9/10（都在 main 之前完成初始化）；<br>' +
+      '· <b>a()</b> 有局部 x/y/z = 1/2/3，<b>遮蔽</b>全局同名变量 → 输出 6；<br>' +
+      '· <b>b()</b> 没有局部同名变量 → 使用全局 → 输出 33；<br>' +
+      '· <b>main</b> 中 <code>extern l, m, n;</code> 声明引用写在文件后面的全局变量 → 输出 27；<br>' +
+      '· 最终输出 4 行：<b>6 / 33 / 33 / 27</b>。<br>' +
+      '共 ' + STEPS.length + ' 个执行步骤，请用「播放」或方向键逐步查看。</em>';
+  }
+}
+
+/* ---- 缩略图同步 ---- */
+var rafPending = false;
+function syncMinimap(){
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(function(){
+    rafPending = false;
+    var contentH = codeInner.scrollHeight || 1;
+    var viewH = codeScroll.clientHeight;
+    var miniH = mmBody.clientHeight || 1;
+    var st = codeScroll.scrollTop;
+
+    var vTop = (st / contentH) * miniH;
+    var vH = (viewH / contentH) * miniH;
+    if (vH > miniH) vH = miniH;
+    mmViewport.style.top = vTop + 'px';
+    mmViewport.style.height = Math.max(4, vH) + 'px';
+
+    var activeIdx = -1;
+    for (var i=0;i<codeLines.length;i++){
+      if (codeLines[i].classList.contains('active')){ activeIdx = i; break; }
+    }
+    if (activeIdx >= 0){
+      var miniLine = miniH / codeLines.length;
+      mmMark.style.top = (activeIdx * miniLine) + 'px';
+      mmMark.style.height = miniLine + 'px';
+      mmMark.style.display = 'block';
+    } else {
+      mmMark.style.display = 'none';
+    }
+
+    /* 缩略图行高亮 */
+    for (var j=0;j<mmLines.length;j++){
+      var ln = Number(mmLines[j].dataset.line);
+      mmLines[j].classList.toggle('act', codeLines[activeIdx] && ln === Number(codeLines[activeIdx].dataset.line));
+      mmLines[j].classList.toggle('done', codeLines[activeIdx] &&
+        (STEPS[current] && STEPS[current].seen.indexOf(ln) >= 0) &&
+        !mmLines[j].classList.contains('act'));
+    }
+  });
+}
+codeScroll.addEventListener('scroll', syncMinimap, {passive:true});
+window.addEventListener('resize', function(){ syncMinimap(); });
+
+/* 点击缩略图跳转 */
+mmHit.addEventListener('click', function(e){
+  var r = mmBody.getBoundingClientRect();
+  var y = e.clientY - r.top;
+  var ratio = Math.max(0, Math.min(1, y / r.height));
+  var target = ratio * (codeScroll.scrollHeight - codeScroll.clientHeight);
+  codeScroll.scrollTop = target;
+  syncMinimap();
+});
+
+/* ---- 总渲染 ---- */
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+  var prev = current > 0 ? STEPS[current-1] : null;
+  updateCode(step);
+  updateVars(step, prev);
+  updateStack(step);
+  updateOutput(current);
+  updateExplain(step);
+  syncMinimap();
+
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length-1;
+}
+
+/* ============================================================
+   五、播放控制
+   ============================================================ */
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+
+function tick(){
+  if (current >= STEPS.length-1){ pause(); return; }
+  current += 1;
+  render();
+  if (current >= STEPS.length-1) pause();
+}
+
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length-1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  clearInterval(timer);
+  timer = setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){
+  pause();
+  if (current < STEPS.length-1){ current += 1; render(); }
+}
+
+function prevStep(){
+  pause();
+  if (current > -1){ current -= 1; render(); }
+}
+
+function resetAll(){
+  pause();
+  current = -1;
+  lastOutText = null;
+  consoleBody.innerHTML = '';
+  codeScroll.scrollTop = 0;
+  render();
+}
+
+btnPlay.addEventListener('click', function(){ if (playing) pause(); else play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+  if (playing){
+    clearInterval(timer);
+    timer = setInterval(tick, speed);
+  }
+});
+
+/* ============================================================
+   六、面板：拖动 / 缩放 / 置顶 / 关闭 / 重置布局
+   ============================================================ */
+var zTop = 20;
+function bringToFront(panel){
+  zTop += 1;
+  panel.style.zIndex = zTop;
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('front'); });
+  panel.classList.add('front');
+}
+
+var LAYOUT = {
+  toolbar:  {left:'50%', top:'14px', right:'auto', bottom:'auto', transform:'translateX(-50%)', width:'auto', height:'auto'},
+  vars:     {left:'14px', top:'14px', right:'auto', bottom:'auto', transform:'none', width:'640px', height:'640px'},
+  output:   {right:'180px', top:'14px', left:'auto', bottom:'auto', transform:'none', width:'660px', height:'440px'},
+  explain:  {left:'50%', bottom:'14px', right:'auto', top:'auto', transform:'translateX(-50%)', width:'1160px', height:'400px'},
+  minimap:  {right:'14px', bottom:'14px', left:'auto', top:'auto', transform:'none', width:'170px', height:'520px'}
+};
+
+function applyLayout(key){
+  var p = document.querySelector('.panel[data-panel="'+key+'"]');
+  if (!p) return;
+  var L = LAYOUT[key];
+  p.style.left = L.left;
+  p.style.top = L.top;
+  p.style.right = L.right;
+  p.style.bottom = L.bottom;
+  p.style.width = L.width;
+  p.style.height = L.height;
+  p.style.transform = L.transform;
+}
+
+function resetLayout(){
+  Object.keys(LAYOUT).forEach(applyLayout);
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('hidden'); p.classList.remove('front'); });
+  zTop = 20;
+  document.querySelectorAll('.panel').forEach(function(p, i){ p.style.zIndex = 10 + i; });
+  syncMinimap();
+}
+
+document.querySelectorAll('.panel').forEach(function(panel){
+  var key = panel.dataset.panel;
+
+  /* 点击置顶 */
+  panel.addEventListener('pointerdown', function(){ bringToFront(panel); }, true);
+  panel.addEventListener('focusin', function(){ bringToFront(panel); });
+
+  /* 拖动 */
+  var head = panel.querySelector('.p-head');
+  head.addEventListener('pointerdown', function(e){
+    if (e.target.closest('.p-close')) return;
+    bringToFront(panel);
+    var r = panel.getBoundingClientRect();
+    panel.style.left = r.left + 'px';
+    panel.style.top = r.top + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.transform = 'none';
+
+    var sx = e.clientX, sy = e.clientY;
+    var ox = r.left, oy = r.top;
+    try { head.setPointerCapture(e.pointerId); } catch(_){}
+
+    function onMove(ev){
+      var nx = ox + (ev.clientX - sx);
+      var ny = oy + (ev.clientY - sy);
+      panel.style.left = nx + 'px';
+      panel.style.top = ny + 'px';
+    }
+    function onUp(ev){
+      head.removeEventListener('pointermove', onMove);
+      head.removeEventListener('pointerup', onUp);
+      head.removeEventListener('pointercancel', onUp);
+      try { head.releasePointerCapture(ev.pointerId); } catch(_){}
+      syncMinimap();
+    }
+    head.addEventListener('pointermove', onMove);
+    head.addEventListener('pointerup', onUp);
+    head.addEventListener('pointercancel', onUp);
+    e.preventDefault();
+  });
+
+  /* 缩放（不设最小/最大限制） */
+  var rz = panel.querySelector('.p-resize');
+  rz.addEventListener('pointerdown', function(e){
+    e.stopPropagation();
+    bringToFront(panel);
+    var r = panel.getBoundingClientRect();
+    panel.style.left = r.left + 'px';
+    panel.style.top = r.top + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.transform = 'none';
+
+    var sx = e.clientX, sy = e.clientY;
+    var ow = r.width, oh = r.height;
+    try { rz.setPointerCapture(e.pointerId); } catch(_){}
+
+    function onMove(ev){
+      var nw = ow + (ev.clientX - sx);
+      var nh = oh + (ev.clientY - sy);
+      /* 完全不做最小值/最大值限制，拖多小就多小，拖多大就多大 */
+      panel.style.width = nw + 'px';
+      panel.style.height = nh + 'px';
+    }
+    function onUp(ev){
+      rz.removeEventListener('pointermove', onMove);
+      rz.removeEventListener('pointerup', onUp);
+      rz.removeEventListener('pointercancel', onUp);
+      try { rz.releasePointerCapture(ev.pointerId); } catch(_){}
+      syncMinimap();
+    }
+    rz.addEventListener('pointermove', onMove);
+    rz.addEventListener('pointerup', onUp);
+    rz.addEventListener('pointercancel', onUp);
+    e.preventDefault();
+  });
+
+  /* 关闭按钮 */
+  var cb = panel.querySelector('.p-close');
+  if (cb){
+    cb.addEventListener('click', function(e){
+      e.stopPropagation();
+      panel.classList.add('hidden');
+      syncMinimap();
+    });
+  }
+});
+
+/* ============================================================
+   七、工具栏按钮
+   ============================================================ */
+function toastMsg(t){
+  toast.textContent = t;
+  toast.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(function(){ toast.classList.remove('show'); }, 1100);
+}
+
+btnFull.addEventListener('click', function(){
+  if (!document.fullscreenElement){
+    document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+    toastMsg('进入全屏');
+  } else {
+    document.exitFullscreen && document.exitFullscreen();
+    toastMsg('退出全屏');
+  }
+});
+
+btnToggleMM.addEventListener('click', function(){
+  var p = document.querySelector('.panel[data-panel="minimap"]');
+  p.classList.toggle('hidden');
+  if (!p.classList.contains('hidden')){ bringToFront(p); syncMinimap(); }
+});
+
+btnToggleAll.addEventListener('click', function(){
+  var panels = document.querySelectorAll('.panel');
+  var anyVisible = Array.prototype.some.call(panels, function(p){ return !p.classList.contains('hidden'); });
+  panels.forEach(function(p){ p.classList.toggle('hidden', anyVisible); });
+  if (anyVisible) toastMsg('已隐藏全部面板（按 H 恢复）');
+  else { toastMsg('已显示全部面板'); syncMinimap(); }
+});
+
+btnResetLayout.addEventListener('click', function(){
+  resetLayout();
+  toastMsg('布局已重置');
+});
+
+/* ============================================================
+   八、全局快捷键
+   ============================================================ */
+document.addEventListener('keydown', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+
+  if (e.code === 'Space'){ e.preventDefault(); if (playing) pause(); else play(); }
+  else if (e.code === 'ArrowRight'){ e.preventDefault(); nextStep(); }
+  else if (e.code === 'ArrowLeft'){ e.preventDefault(); prevStep(); }
+  else if (e.code === 'KeyR'){ e.preventDefault(); resetAll(); }
+  else if (e.code === 'KeyF'){
+    e.preventDefault();
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+    else document.exitFullscreen && document.exitFullscreen();
+  }
+  else if (e.code === 'KeyM'){
+    e.preventDefault();
+    var p = document.querySelector('.panel[data-panel="minimap"]');
+    p.classList.toggle('hidden');
+    if (!p.classList.contains('hidden')){ bringToFront(p); syncMinimap(); }
+  }
+  else if (e.code === 'KeyH'){
+    e.preventDefault();
+    var panels = document.querySelectorAll('.panel');
+    var anyVisible = Array.prototype.some.call(panels, function(p){ return !p.classList.contains('hidden'); });
+    panels.forEach(function(p){ p.classList.toggle('hidden', anyVisible); });
+    if (!anyVisible) syncMinimap();
+  }
+});
+
+/* ============================================================
+   九、初始化
+   ============================================================ */
+speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+document.querySelectorAll('.panel').forEach(function(p, i){ p.style.zIndex = 10 + i; });
+render();
+window.addEventListener('load', function(){ syncMinimap(); });
+
+})();
+</script>
+</body>
+</html>

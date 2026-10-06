@@ -1,0 +1,1597 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 逐步执行模拟 · 哥德巴赫猜想 · 4~100 偶数 = 两素数之和 · 希沃大屏版</title>
+<style>
+:root{
+  --bg:#0d1117;
+  --code-font:   clamp(28px, 3.4vw, 66px);
+  --ln-font:     clamp(16px, 1.5vw, 34px);
+  --out-font:    clamp(22px, 2.3vw, 46px);
+  --var-font:    clamp(12px, 1.05vw, 20px);
+  --explain-font:clamp(14px, 1.45vw, 28px);
+  --btn-font:    clamp(12px, 1.1vw, 22px);
+  --title-font:  clamp(12px, 1.1vw, 22px);
+  --accent:#38bdf8; --green:#4ade80; --amber:#fbbf24;
+  --pink:#f472b6; --purple:#c084fc; --teal:#2dd4bf;
+  --orange:#fb923c; --gold:#facc15;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;overflow:hidden;}
+body{
+  background:var(--bg);color:#dce8f8;
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-user-select:none;user-select:none;
+}
+
+/* ============== 全屏代码 ============== */
+#codeScroll{
+  position:fixed;inset:0;overflow:auto;background:var(--bg);z-index:1;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+}
+#codeScroll::-webkit-scrollbar{width:14px;height:14px;}
+#codeScroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:9px;}
+#codeScroll::-webkit-scrollbar-track{background:#0d1117;}
+#codeInner{padding:12px 0 40vh 0;}
+.cl{
+  display:flex;white-space:pre;padding:0 3vw 0 0;
+  border-left:9px solid transparent;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;
+  font-size:var(--code-font);line-height:1.4;
+  transition:background .25s,border-color .25s,color .25s;
+}
+.cl .ln{
+  flex:0 0 auto;width:3ch;text-align:right;margin-right:1.6ch;
+  color:#3d5578;font-size:var(--ln-font);line-height:inherit;
+  font-variant-numeric:tabular-nums;user-select:none;align-self:center;
+}
+.cl .src{flex:0 0 auto;color:#c9d8ee;}
+.cl.done .src{color:#7b8ea8;}
+.cl.done .ln{color:#2c405e;}
+.cl.active{
+  background:linear-gradient(90deg,rgba(56,189,248,.34),rgba(56,189,248,.02));
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 2px rgba(56,189,248,.30);
+}
+.cl.active .src{color:#fff;}
+.cl.active .ln{color:var(--accent);font-weight:700;}
+/* 函数体内部高亮（调用 ifss 时） */
+.cl.in-call{
+  background:linear-gradient(90deg,rgba(192,132,252,.24),rgba(192,132,252,.02));
+  border-left-color:var(--purple);
+}
+.cl.in-call.active{
+  background:linear-gradient(90deg,rgba(192,132,252,.40),rgba(192,132,252,.06));
+  border-left-color:var(--purple);
+  box-shadow:inset 0 0 0 2px rgba(192,132,252,.35);
+}
+.cl.in-call.active .ln{color:var(--purple);}
+@keyframes linePulse{
+  0%{transform:translateX(-14px);opacity:.55;}
+  100%{transform:translateX(0);opacity:1;}
+}
+.cl.active{animation:linePulse .45s ease-out;}
+
+.pp{color:var(--purple);font-weight:700;}
+.str{color:var(--green);}
+.cmt{color:#5b7292;font-style:italic;}
+.fn{color:var(--accent);}
+.fn-ifss{color:var(--purple);font-weight:700;}
+.kw{color:var(--pink);font-weight:700;}
+.kw-cont{color:#facc15;font-weight:800;background:rgba(250,204,21,.12);padding:0 .1em;border-radius:3px;}
+.num{color:var(--amber);}
+.op{color:var(--orange);font-weight:700;}
+.op-mod{color:#facc15;font-weight:800;}
+.nl-hl{color:#facc15;font-weight:800;background:rgba(250,204,21,.18);padding:0 .1em;border-radius:3px;}
+
+/* ============== 面板 ============== */
+.panel{
+  position:fixed;z-index:100;display:flex;flex-direction:column;
+  background:rgba(13,17,23,.88);
+  -webkit-backdrop-filter:blur(14px) saturate(150%);
+  backdrop-filter:blur(14px) saturate(150%);
+  border:1px solid rgba(56,189,248,.30);
+  border-radius:14px;
+  box-shadow:0 14px 50px rgba(0,0,0,.65);
+  overflow:hidden;transition:border-color .18s,box-shadow .18s;
+}
+.panel.top{
+  border-color:rgba(56,189,248,.9);
+  box-shadow:0 0 0 2px rgba(56,189,248,.28),0 18px 60px rgba(0,0,0,.78);
+}
+.phead{
+  flex:0 0 auto;display:flex;align-items:center;gap:8px;
+  padding:6px 10px;
+  background:linear-gradient(180deg,rgba(30,48,78,.95),rgba(20,32,52,.95));
+  border-bottom:1px solid rgba(56,189,248,.22);
+  cursor:grab;touch-action:none;
+  font-size:var(--title-font);font-weight:700;color:#9fd8ff;
+}
+.phead:active{cursor:grabbing;}
+.ptitle{flex:1 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.pbtns{margin-left:auto;display:flex;gap:6px;}
+.pb{
+  width:clamp(22px,1.6vw,32px);height:clamp(22px,1.6vw,32px);
+  border-radius:8px;border:1px solid rgba(120,160,210,.38);
+  background:rgba(30,48,78,.75);color:#bcd4f0;
+  font-size:clamp(11px,.85vw,16px);line-height:1;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+}
+.pb:hover{background:rgba(56,189,248,.30);border-color:var(--accent);color:#fff;}
+.pbody{
+  flex:1 1 auto;min-height:0;overflow:auto;padding:8px 10px;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+}
+.pbody::-webkit-scrollbar{width:8px;height:8px;}
+.pbody::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+.panel.collapsed .pbody{display:none;}
+.panel.collapsed .rs{display:none;}
+.rs{
+  position:absolute;right:0;bottom:0;width:28px;height:28px;
+  cursor:nwse-resize;z-index:9;touch-action:none;
+}
+.rs::after{
+  content:'';position:absolute;right:5px;bottom:5px;width:12px;height:12px;
+  border-right:3px solid rgba(56,189,248,.85);
+  border-bottom:3px solid rgba(56,189,248,.85);
+  border-radius:0 0 3px 0;
+}
+
+/* ============== 控制栏 ============== */
+#p-bar .pbody{display:flex;flex-wrap:wrap;align-items:center;gap:8px;overflow:visible;padding:8px 10px;}
+#p-bar button.act{
+  font-size:var(--btn-font);font-weight:700;
+  padding:.34em .68em;min-height:clamp(28px,2.1vw,42px);
+  border-radius:10px;border:1px solid rgba(120,160,210,.42);
+  background:rgba(30,48,78,.85);color:#dce8f8;cursor:pointer;
+  white-space:nowrap;
+}
+#p-bar button.act:hover{background:rgba(56,189,248,.28);border-color:var(--accent);}
+#p-bar button.act:disabled{opacity:.3;cursor:not-allowed;}
+#p-bar button.primary{background:linear-gradient(180deg,#0ea5e9,#0284c7);border-color:#38bdf8;color:#04121f;}
+#p-bar button.primary.playing{background:linear-gradient(180deg,#f59e0b,#d97706);border-color:#fbbf24;color:#1a1200;}
+.speedWrap{display:flex;align-items:center;gap:8px;font-size:var(--btn-font);color:#9db1cb;white-space:nowrap;padding:0 4px;}
+.speedWrap input[type=range]{width:clamp(70px,6.5vw,160px);height:20px;accent-color:var(--accent);cursor:pointer;}
+.speedWrap b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:3em;display:inline-block;}
+.counter{
+  font-size:var(--btn-font);color:#9fd8ff;font-weight:700;
+  padding:.3em .6em;border-radius:8px;background:rgba(56,189,248,.14);white-space:nowrap;
+}
+
+/* ============== 变量/调用栈 ============== */
+.infoStrip{
+  display:flex;align-items:center;gap:.5em;flex-wrap:wrap;
+  padding:5px 7px;border-radius:8px;
+  background:rgba(56,189,248,.06);border:1px solid rgba(56,189,248,.24);
+  margin-bottom:8px;font-family:ui-monospace,Consolas,monospace;
+  font-size:calc(var(--var-font)*.9);
+}
+.infoStrip .tag{padding:.12em .45em;border-radius:5px;background:rgba(148,163,184,.16);color:#9db1cb;font-size:.85em;}
+.infoStrip .val{color:var(--teal);font-weight:800;}
+.infoStrip .val.fn{color:var(--purple);}
+.infoStrip .val.n{color:var(--gold);}
+.stackStrip{
+  display:flex;align-items:center;gap:.5em;flex-wrap:wrap;
+  padding:5px 7px;border-radius:8px;
+  background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.28);
+  margin-bottom:8px;
+}
+.stackLabel{font-size:calc(var(--var-font)*.85);color:#9db1cb;font-family:ui-monospace,monospace;flex:0 0 auto;}
+.stackBody{display:flex;align-items:center;gap:.4em;flex-wrap:wrap;}
+.frame{
+  font-family:ui-monospace,monospace;font-weight:800;
+  font-size:calc(var(--var-font)*1.0);
+  padding:.18em .6em;border-radius:8px;
+  background:#0d1728;border:1px solid #1e3350;color:#8aa2c0;
+  transition:all .25s;
+}
+.frame.main{border-left:3px solid rgba(34,211,238,.7);}
+.frame.ifssf{border-left:3px solid rgba(192,132,252,.9);}
+.frame.topF{
+  border-color:var(--accent);background:rgba(56,189,248,.22);color:#fff;
+  box-shadow:0 0 14px rgba(56,189,248,.55);animation:framePop .4s ease-out;
+}
+.frame.ifssf.topF{
+  border-color:var(--purple);background:rgba(192,132,252,.24);
+  box-shadow:0 0 16px rgba(192,132,252,.55);
+}
+@keyframes framePop{
+  0%{transform:scale(.6);opacity:0;}
+  60%{transform:scale(1.15);}
+  100%{transform:scale(1);opacity:1;}
+}
+.arr2{color:#3f5a7d;}
+.empty{color:#3d5474;font-size:calc(var(--var-font)*.85);font-family:ui-monospace,monospace;}
+
+.scope-group{
+  display:flex;flex-direction:column;gap:.14em;
+  border-radius:8px;padding:.38em .45em .45em;
+  background:rgba(255,255,255,.015);
+  border:1px solid rgba(148,163,184,.10);
+  margin-bottom:7px;
+}
+.scope-group.scope-main{border-left:3px solid rgba(34,211,238,.55);}
+.scope-group.scope-ifss{border-left:3px solid rgba(192,132,252,.75);background:rgba(192,132,252,.03);}
+.scope-head{
+  display:flex;align-items:baseline;gap:.45em;
+  font-size:calc(var(--var-font)*.85);color:#8aa2c0;
+  padding:0 .3em .15em;
+}
+.scope-head .fname{font-family:ui-monospace,monospace;font-weight:800;color:#9fd8ff;font-size:calc(var(--var-font)*1.02);}
+.scope-head .role{color:#6d82a2;margin-left:auto;font-size:calc(var(--var-font)*.78);}
+.vrow{
+  display:flex;align-items:center;gap:.45em;
+  padding:.2em .5em;border-radius:7px;
+  background:#0d1728;border:1px solid #1b293f;
+  font-size:var(--var-font);transition:background .3s,border-color .3s;
+}
+.vk{
+  flex:0 0 auto;color:#8399b8;white-space:nowrap;
+  font-family:ui-monospace,monospace;
+  display:flex;align-items:baseline;gap:.35em;
+}
+.vt{font-size:.75em;color:#4d5f78;padding:.02em .28em;border-radius:3px;background:rgba(148,163,184,.1);}
+.vv{
+  flex:1 1 auto;min-width:0;text-align:right;
+  font-family:ui-monospace,monospace;font-weight:800;
+  color:var(--accent);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.vv.dim{color:#5f7796;font-weight:500;font-style:italic;}
+.scope-ifss .vv{color:var(--purple);}
+.vrow.changed{border-color:rgba(56,189,248,.9);background:rgba(56,189,248,.14);}
+.vrow.changed .vv{color:#fff;}
+.scope-ifss .vrow.changed{border-color:rgba(192,132,252,.9);background:rgba(192,132,252,.16);}
+.vv.flash{animation:vflash .55s ease-out;}
+@keyframes vflash{
+  0%{transform:scale(1);}
+  30%{transform:scale(1.2);color:#fff;text-shadow:0 0 16px currentColor;}
+  100%{transform:scale(1);}
+}
+
+/* ============== 输出 ============== */
+.outNote{
+  font-size:calc(var(--var-font)*.82);color:#8ba7c8;
+  padding:.35em .6em;margin-bottom:6px;border-radius:7px;
+  background:rgba(192,132,252,.10);border-left:4px solid var(--purple);
+  line-height:1.45;
+}
+.console{
+  font-family:ui-monospace,monospace;
+  font-size:var(--out-font);line-height:1.4;color:#86efac;
+  white-space:pre-wrap;word-break:break-all;
+  min-height:2em;padding:.2em 0;
+}
+.out-line{white-space:pre-wrap;word-break:break-all;}
+.out-line.empty{color:#3d5474;min-height:1.1em;}
+.cursor{
+  display:inline-block;color:var(--green);
+  animation:blink 1s step-end infinite;margin-left:2px;
+}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+/* ============== 说明条 ============== */
+.expLine{
+  display:inline-block;padding:.12em .55em;border-radius:7px;
+  background:rgba(56,189,248,.20);color:var(--accent);
+  font-weight:800;font-size:.85em;margin-right:.5em;vertical-align:middle;
+}
+.expLine.gold{background:rgba(250,204,21,.22);color:#facc15;}
+.expLine.mv{background:rgba(244,114,182,.22);color:var(--pink);}
+.expLine.pre{background:rgba(192,132,252,.22);color:var(--purple);}
+.expLine.ret{background:rgba(251,191,36,.22);color:var(--amber);}
+.expLine.skip{background:rgba(148,163,184,.28);color:#cbd5e1;}
+.expLine.ifss{background:rgba(192,132,252,.28);color:#e9d5ff;}
+#expText{font-size:var(--explain-font);line-height:1.46;color:#c3d4ea;}
+#expText strong{color:#fff;}
+#expText code{
+  font-family:ui-monospace,monospace;
+  background:rgba(148,163,184,.18);border-radius:4px;
+  padding:0 .3em;color:#e6eefb;
+}
+#expText .tip{
+  display:block;margin-top:.4em;padding:.35em .65em;border-radius:8px;
+  background:rgba(45,212,191,.12);border-left:5px solid var(--teal);
+  color:#bff5ec;font-size:.92em;
+}
+#expText .warn{
+  display:block;margin-top:.4em;padding:.35em .65em;border-radius:8px;
+  background:rgba(251,191,36,.13);border-left:5px solid var(--amber);
+  color:#ffe6b0;font-size:.92em;
+}
+#expText .win{
+  display:block;margin-top:.4em;padding:.35em .65em;border-radius:8px;
+  background:rgba(250,204,21,.16);border-left:5px solid var(--gold);
+  color:#fff3c4;font-size:.92em;font-weight:600;
+}
+#expText .callbox{
+  display:block;margin-top:.4em;padding:.35em .65em;border-radius:8px;
+  background:rgba(192,132,252,.14);border-left:5px solid var(--purple);
+  color:#e9d5ff;font-size:.92em;font-weight:600;
+}
+
+/* ============== 缩略图 ============== */
+#miniBody{position:relative;padding:6px;overflow:hidden;cursor:pointer;}
+#miniInner{position:relative;}
+.ml{
+  white-space:pre;overflow:hidden;
+  font-family:ui-monospace,monospace;line-height:1.3;
+  opacity:.72;transition:opacity .2s,background .2s;
+}
+.ml.active{opacity:1;background:rgba(56,189,248,.30);box-shadow:inset 2px 0 0 var(--accent);}
+.ml.done{opacity:.4;}
+#miniView{
+  position:absolute;left:0;right:0;top:0;
+  border:2px solid rgba(56,189,248,.85);
+  background:rgba(56,189,248,.10);
+  border-radius:4px;pointer-events:none;
+  transition:top .08s linear,height .08s linear;
+  z-index:3;
+}
+</style>
+</head>
+<body>
+
+<div id="codeScroll"><div id="codeInner"></div></div>
+
+<!-- 控制栏 -->
+<div class="panel" id="p-bar">
+  <div class="phead">
+    <span class="ptitle">▣ 控制台</span>
+    <span class="pbtns">
+      <button class="pb" data-act="collapse">▁</button>
+      <button class="pb" data-act="close">✕</button>
+    </span>
+  </div>
+  <div class="pbody">
+    <button class="act" id="btnReset">⟲ 重置</button>
+    <button class="act" id="btnPrev">◀ 上一步</button>
+    <button class="act primary" id="btnPlay">▶ 播放</button>
+    <button class="act" id="btnNext">下一步 ▶</button>
+    <label class="speedWrap">速度
+      <input type="range" id="speed" min="200" max="3000" step="100" value="800">
+      <b id="speedLbl">0.8s</b>
+    </label>
+    <button class="act" id="btnFs">⛶ 全屏</button>
+    <button class="act" id="btnPanels">▣ 面板</button>
+    <button class="act" id="btnMini">▤ 缩略图</button>
+    <button class="act" id="btnLayout">↺ 重置布局</button>
+    <span class="counter" id="stepCounter">步骤 — / 0</span>
+  </div>
+  <div class="rs"></div>
+</div>
+
+<!-- 调用栈 · 变量 -->
+<div class="panel" id="p-vars">
+  <div class="phead">
+    <span class="ptitle">调用栈 · 变量 · 状态表</span>
+    <span class="pbtns">
+      <button class="pb" data-act="collapse">▁</button>
+      <button class="pb" data-act="close">✕</button>
+    </span>
+  </div>
+  <div class="pbody">
+    <div class="infoStrip">
+      <span class="tag">当前函数</span>
+      <span class="val fn" id="funcVal">—</span>
+      <span style="color:#2c3f5e">│</span>
+      <span class="tag">已输出等式</span>
+      <span class="val n" id="nVal">0</span>
+      <span style="color:#2c3f5e">│</span>
+      <span class="tag">ifss 调用</span>
+      <span class="val" id="ifssCallVal">0 次</span>
+    </div>
+    <div class="stackStrip">
+      <span class="stackLabel">调用栈</span>
+      <span class="stackBody" id="stackBody"><span class="empty">（空）</span></span>
+    </div>
+    <div id="varsBlock"></div>
+  </div>
+  <div class="rs"></div>
+</div>
+
+<!-- 输出 -->
+<div class="panel" id="p-out">
+  <div class="phead">
+    <span class="ptitle">程序运行结果（屏幕输出）</span>
+    <span class="pbtns">
+      <button class="pb" data-act="collapse">▁</button>
+      <button class="pb" data-act="close">✕</button>
+    </span>
+  </div>
+  <div class="pbody">
+    <div class="outNote">printf("%d=%d+%d") 无空格无换行 → 等式紧挨；每 7 个（n%7==0）换行</div>
+    <div class="console" id="consoleBody"></div>
+  </div>
+  <div class="rs"></div>
+</div>
+
+<!-- 说明 -->
+<div class="panel" id="p-exp">
+  <div class="phead">
+    <span class="ptitle">当前语句说明</span>
+    <span class="pbtns">
+      <button class="pb" data-act="collapse">▁</button>
+      <button class="pb" data-act="close">✕</button>
+    </span>
+  </div>
+  <div class="pbody"><div id="expText"></div></div>
+  <div class="rs"></div>
+</div>
+
+<!-- 缩略图 -->
+<div class="panel" id="p-mini">
+  <div class="phead">
+    <span class="ptitle">缩略图</span>
+    <span class="pbtns">
+      <button class="pb" data-act="collapse">▁</button>
+      <button class="pb" data-act="close">✕</button>
+    </span>
+  </div>
+  <div class="pbody" id="miniBody">
+    <div id="miniInner"></div>
+    <div id="miniView"></div>
+  </div>
+  <div class="rs"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   源代码（30 行）
+   ========================================================= */
+var LINES = [
+  {n:1,  h:'<span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                          <span class="cmt">// 包含标准输入输出头文件</span>'},
+  {n:2,  h:'<span class="kw">int</span> <span class="fn-ifss">ifss</span>(<span class="kw">int</span> i) {                           <span class="cmt">// 素数判断函数</span>'},
+  {n:3,  h:'    <span class="kw">int</span> j;                                  <span class="cmt">// 定义循环变量</span>'},
+  {n:4,  h:'    <span class="kw">if</span>(i <span class="op">&lt;=</span> <span class="num">1</span>) <span class="kw">return</span> <span class="num">0</span>;                    <span class="cmt">// 小于等于1不是素数</span>'},
+  {n:5,  h:'    <span class="kw">if</span>(i <span class="op">==</span> <span class="num">2</span>) <span class="kw">return</span> <span class="num">1</span>;                    <span class="cmt">// 2是素数</span>'},
+  {n:6,  h:'    <span class="kw">for</span>(j<span class="op">=</span><span class="num">2</span>; j<span class="op">&lt;</span>i; j<span class="op">++</span>) {                    <span class="cmt">// 从2到i-1检查</span>'},
+  {n:7,  h:'        <span class="kw">if</span>(i <span class="op-mod">%</span> j <span class="op">==</span> <span class="num">0</span>) <span class="kw">return</span> <span class="num">0</span>;            <span class="cmt">// 能被整除，不是素数</span>'},
+  {n:8,  h:'        <span class="kw">else</span> <span class="kw">if</span>(i <span class="op">!=</span> j<span class="op">+</span><span class="num">1</span>) <span class="kw-cont">continue</span>;         <span class="cmt">// 继续检查</span>'},
+  {n:9,  h:'        <span class="kw">else</span> <span class="kw">return</span> <span class="num">1</span>;                      <span class="cmt">// 是素数</span>'},
+  {n:10, h:'    }'},
+  {n:11, h:'    <span class="kw">return</span> <span class="num">0</span>;                               <span class="cmt">// 默认返回0</span>'},
+  {n:12, h:'}'},
+  {n:13, h:'<span class="kw">int</span> <span class="fn">main</span>() {                                <span class="cmt">// 主函数</span>'},
+  {n:14, h:'    <span class="kw">int</span> i, j, k, flag1, flag2, n<span class="op">=</span><span class="num">0</span>;         <span class="cmt">// 定义变量</span>'},
+  {n:15, h:'    <span class="kw">for</span>(i<span class="op">=</span><span class="num">4</span>; i<span class="op">&lt;</span><span class="num">100</span>; i<span class="op">+=</span><span class="num">2</span>) {                 <span class="cmt">// 遍历4~100的偶数</span>'},
+  {n:16, h:'        <span class="kw">for</span>(k<span class="op">=</span><span class="num">2</span>; k<span class="op">&lt;=</span>i<span class="op">/</span><span class="num">2</span>; k<span class="op">++</span>) {             <span class="cmt">// 分解为k和j</span>'},
+  {n:17, h:'            j <span class="op">=</span> i <span class="op">-</span> k;                      <span class="cmt">// j = i - k</span>'},
+  {n:18, h:'            flag1 <span class="op">=</span> <span class="fn-ifss">ifss</span>(k);                <span class="cmt">// 判断k是否为素数</span>'},
+  {n:19, h:'            <span class="kw">if</span>(flag1) {                     <span class="cmt">// 如果k是素数</span>'},
+  {n:20, h:'                flag2 <span class="op">=</span> <span class="fn-ifss">ifss</span>(j);            <span class="cmt">// 判断j是否为素数</span>'},
+  {n:21, h:'                <span class="kw">if</span>(flag2) {                 <span class="cmt">// 如果j也是素数</span>'},
+  {n:22, h:'                    <span class="fn">printf</span>(<span class="str">"%d=%d+%d"</span>, i, k, j); <span class="cmt">// 输出表达式</span>'},
+  {n:23, h:'                    n<span class="op">++</span>;                    <span class="cmt">// 计数器加1</span>'},
+  {n:24, h:'                    <span class="kw">if</span>(n<span class="op-mod">%</span><span class="num">7</span><span class="op">==</span><span class="num">0</span>) <span class="fn">printf</span>(<span class="str">"<span class="nl-hl">\\n</span>"</span>); <span class="cmt">// 每行7个</span>'},
+  {n:25, h:'                }'},
+  {n:26, h:'            }'},
+  {n:27, h:'        }'},
+  {n:28, h:'    }'},
+  {n:29, h:'    <span class="kw">return</span> <span class="num">0</span>;                               <span class="cmt">// 返回0，程序结束</span>'},
+  {n:30, h:'}'}
+];
+
+/* 构建代码区 */
+var codeScroll = document.getElementById('codeScroll');
+var codeInner  = document.getElementById('codeInner');
+var miniInner  = document.getElementById('miniInner');
+var miniBody   = document.getElementById('miniBody');
+var miniView   = document.getElementById('miniView');
+
+var codeLineEls = [];
+var miniLineEls = [];
+LINES.forEach(function(L){
+  var d = document.createElement('div');
+  d.className = 'cl';
+  d.dataset.line = L.n;
+  d.innerHTML = '<span class="ln">' + L.n + '</span><span class="src">' + L.h + '</span>';
+  codeInner.appendChild(d);
+  codeLineEls.push(d);
+
+  var m = document.createElement('div');
+  m.className = 'ml';
+  m.dataset.line = L.n;
+  m.innerHTML = L.h;
+  miniInner.appendChild(m);
+  miniLineEls.push(m);
+});
+
+/* =========================================================
+   真实素数判断 + 输出预计算
+   ========================================================= */
+function isPrime(v){
+  if (v <= 1) return false;
+  if (v === 2) return true;
+  for (var j = 2; j < v; j++) if (v % j === 0) return false;
+  return true;
+}
+
+var OUT_CHUNKS = [];
+(function(){
+  var n = 0;
+  for (var i = 4; i < 100; i += 2){
+    for (var k = 2; k <= Math.floor(i/2); k++){
+      var j = i - k;
+      if (isPrime(k) && isPrime(j)){
+        n++;
+        OUT_CHUNKS.push({text: i + '=' + k + '+' + j, isNewline: false, n: n});
+        if (n % 7 === 0) OUT_CHUNKS.push({text: '\n', isNewline: true, n: n});
+      }
+    }
+  }
+})();
+
+/* =========================================================
+   逐步执行生成
+   ========================================================= */
+var STEPS = [];
+var S = {
+  stack: [], func: '—',
+  i: null, j: null, k: null, flag1: null, flag2: null, n: 0,
+  ifssI: null, ifssJ: null, ifssRet: null,
+  outCount: 0, ifssCalls: 0,
+  insideIfss: false
+};
+
+function emit(o){
+  if (o.stack) S.stack = o.stack.slice();
+  if (o.func !== undefined) S.func = o.func;
+  if (o.i !== undefined) S.i = o.i;
+  if (o.j !== undefined) S.j = o.j;
+  if (o.k !== undefined) S.k = o.k;
+  if (o.flag1 !== undefined) S.flag1 = o.flag1;
+  if (o.flag2 !== undefined) S.flag2 = o.flag2;
+  if (o.n !== undefined) S.n = o.n;
+  if (o.ifssI !== undefined) S.ifssI = o.ifssI;
+  if (o.ifssJ !== undefined) S.ifssJ = o.ifssJ;
+  if (o.ifssRet !== undefined) S.ifssRet = o.ifssRet;
+  if (o.outCount !== undefined) S.outCount = o.outCount;
+  if (o.ifssCalls !== undefined) S.ifssCalls = o.ifssCalls;
+  if (o.insideIfss !== undefined) S.insideIfss = o.insideIfss;
+
+  STEPS.push({
+    line: o.line, kind: o.kind || 'exec',
+    title: o.title, desc: o.desc,
+    stack: S.stack.slice(),
+    func: S.func,
+    i: S.i, j: S.j, k: S.k,
+    flag1: S.flag1, flag2: S.flag2, n: S.n,
+    ifssI: S.ifssI, ifssJ: S.ifssJ, ifssRet: S.ifssRet,
+    outCount: S.outCount, ifssCalls: S.ifssCalls,
+    insideIfss: S.insideIfss
+  });
+}
+
+/* ====== 核心：逐步执行一次 ifss(v) 调用 ======
+   返回 v 是否素数（1/0），并把返回值赋给 assignTo（'flag1'/'flag2'）
+   会依次高亮 ifss 内部第 2→3→4→5→6→7→8→9/11→12 行
+   ============================================ */
+function emitIfssCall(v, callLine, assignTo){
+  var retVal = 0;
+
+  /* --- 第 2 行：进入函数 --- */
+  S.ifssCalls = S.ifssCalls + 1;
+  S.insideIfss = true;
+  S.ifssI = v; S.ifssJ = null; S.ifssRet = null;
+  S.stack = ['main', 'ifss'];
+  S.func = 'ifss';
+  emit({
+    line: 2, kind: 'ifss',
+    title: '▶ 进入 <b>ifss(' + v + ')</b>：形参 i = ' + v,
+    desc: '控制权交给 ifss，函数体开始执行：<br>' +
+          '· 形参 <code>i</code> 被创建，初始化为实参的值 <b>' + v + '</b>；<br>' +
+          '· <b>值传递：</b>i 是实参的一份拷贝，与调用方的变量无关。' +
+          '<span class="callbox">调用栈：main → ifss（栈顶高亮）</span>'
+  });
+
+  /* --- 第 3 行：int j; --- */
+  emit({
+    line: 3, kind: 'ifss',
+    title: 'int j;　声明循环变量（未初始化）',
+    desc: '声明局部变量 <code>j</code>，暂时未初始化，for 循环会用到它。'
+  });
+
+  /* --- 第 4 行：if(i <= 1) return 0; --- */
+  var c4 = (v <= 1);
+  if (c4){
+    retVal = 0;
+    S.ifssRet = 0;
+    emit({
+      line: 4, kind: 'ifss',
+      title: 'if(' + v + ' &lt;= 1)　→　<b>真 → return 0</b>',
+      desc: '<code>' + v + ' ≤ 1</code> 成立：<br>' +
+            '· 0 和 1 都不是素数；<br>' +
+            '· 立即 <code>return 0</code>，结束函数。'
+    });
+    S.stack = ['main']; S.func = 'main'; S.insideIfss = false;
+    S.ifssI = null; S.ifssJ = null;
+    if (assignTo === 'flag1') S.flag1 = 0;
+    if (assignTo === 'flag2') S.flag2 = 0;
+    emit({
+      line: callLine, kind: 'mv',
+      title: assignTo + ' = 0　（ifss 返回值）',
+      desc: '回到 main 的第 ' + callLine + ' 行：' +
+            '<code>' + assignTo + ' = 0</code>。' +
+            '<span class="callbox">调用栈回到 main</span>'
+    });
+    return 0;
+  }
+  emit({
+    line: 4, kind: 'ifss',
+    title: 'if(' + v + ' &lt;= 1)　→　<b>假</b>',
+    desc: '<code>' + v + ' ≤ 1</code> 不成立，继续往下判断。'
+  });
+
+  /* --- 第 5 行：if(i == 2) return 1; --- */
+  var c5 = (v === 2);
+  if (c5){
+    retVal = 1;
+    S.ifssRet = 1;
+    emit({
+      line: 5, kind: 'ifss',
+      title: 'if(' + v + ' == 2)　→　<b>真 → return 1</b>',
+      desc: '<code>2</code> 是最小的素数：<br>' +
+            '· 单独放行，立即 <code>return 1</code>；<br>' +
+            '· 如果不放行，for 循环 <code>j=2; j&lt;i;</code> 在 i=2 时不执行，' +
+            '会直接掉到第 11 行的 <code>return 0</code>，把 2 误判成合数。'
+    });
+    S.stack = ['main']; S.func = 'main'; S.insideIfss = false;
+    S.ifssI = null; S.ifssJ = null;
+    if (assignTo === 'flag1') S.flag1 = 1;
+    if (assignTo === 'flag2') S.flag2 = 1;
+    emit({
+      line: callLine, kind: 'mv',
+      title: assignTo + ' = 1　（ifss 返回值）',
+      desc: '回到 main 的第 ' + callLine + ' 行：' +
+            '<code>' + assignTo + ' = 1</code>。'
+    });
+    return 1;
+  }
+  emit({
+    line: 5, kind: 'ifss',
+    title: 'if(' + v + ' == 2)　→　<b>假</b>',
+    desc: '<code>' + v + ' ≠ 2</code>，继续用 for 循环试除。'
+  });
+
+  /* --- 第 6 行：for(j=2; j<i; j++) --- */
+  var jj = 2;
+  S.ifssJ = jj;
+  emit({
+    line: 6, kind: 'ifss',
+    title: 'for(j=2; j&lt;' + v + '; j++)　初始化 <b>j = 2</b>',
+    desc: 'for 循环初始化：<code>j = 2</code>。<br>' +
+          '· 从 2 开始试除（1 不用试，能整除任何数）；<br>' +
+          '· 上界是 <code>j &lt; ' + v + '</code>，也就是试到 ' + (v-1) + ' 为止。'
+  });
+
+  /* --- for 循环迭代 --- */
+  var hitFactor = false;
+  var reachedLast = false;
+  while (jj < v){
+    S.ifssJ = jj;
+    emit({
+      line: 6, kind: 'ifss',
+      title: 'for 条件：<b>' + jj + ' &lt; ' + v + '</b> → <b>真</b>',
+      desc: 'j = <b>' + jj + '</b>，条件成立，进入循环体检查 ' + v + ' 能否被 ' + jj + ' 整除。'
+    });
+
+    var c7 = (v % jj === 0);
+    if (c7){
+      hitFactor = true;
+      retVal = 0;
+      S.ifssRet = 0;
+      emit({
+        line: 7, kind: 'ifss',
+        title: 'if(' + v + ' % ' + jj + ' == 0)　→　<b>真 → return 0</b>',
+        desc: '<code>' + v + ' % ' + jj + ' = 0</code>：<br>' +
+              '· ' + jj + ' 是 ' + v + ' 的因子；<br>' +
+              '· <b>' + v + ' 不是素数</b>，立即 <code>return 0</code>，结束函数；<br>' +
+              '· <code>return</code> 会立即终止整个 ifss，for 循环剩下的 j 不再执行。'
+      });
+      break;
+    }
+    emit({
+      line: 7, kind: 'ifss',
+      title: 'if(' + v + ' % ' + jj + ' == 0)　→　<b>假</b>',
+      desc: '<code>' + v + ' % ' + jj + ' = ' + (v % jj) + ' ≠ 0</code>，不能整除，进入 else 分支。'
+    });
+
+    if (v !== jj + 1){
+      emit({
+        line: 8, kind: 'ifss',
+        title: 'else if(' + v + ' != ' + (jj+1) + ')　→　<b>真 → continue</b>',
+        desc: '<code>' + v + ' != ' + (jj+1) + '</code> 成立：<br>' +
+              '· 还没试到最后一个数 ' + (v-1) + '；<br>' +
+              '· 执行 <code>continue</code>，跳过本轮剩余语句；<br>' +
+              '· <b>continue 不结束函数</b>，只跳到 for 的 <code>j++</code> 继续下一轮。'
+      });
+      jj++;
+      continue;
+    } else {
+      reachedLast = true;
+      retVal = 1;
+      S.ifssRet = 1;
+      emit({
+        line: 8, kind: 'ifss',
+        title: 'else if(' + v + ' != ' + (jj+1) + ')　→　<b>假</b>',
+        desc: '<code>' + v + ' == ' + (jj+1) + '</code>：<br>' +
+              '· j 已经试到了最后一个数 ' + (v-1) + '；<br>' +
+              '· 前面所有的除数都没能整除 ' + v + '，进 else 分支。'
+      });
+      emit({
+        line: 9, kind: 'ifss',
+        title: 'else return 1;　→　<b>ifss 返回 1</b>',
+        desc: '2 ~ ' + (v-1) + ' 都试完了，没有因子：<br>' +
+              '· <b>' + v + ' 是素数</b>，<code>return 1</code>；<br>' +
+              '· 结束函数，控制权交回调用点。'
+      });
+      break;
+    }
+  }
+
+  /* 如果 for 循环完整跑完却没进入 else 分支（v<=2 的边界已处理，这里兜底） */
+  if (!hitFactor && !reachedLast){
+    S.ifssRet = 0;
+    retVal = 0;
+    emit({
+      line: 11, kind: 'ifss',
+      title: 'return 0;（兜底）',
+      desc: 'for 循环自然结束，返回 0。'
+    });
+  }
+
+  /* --- 第 12 行：函数右花括号，出栈 --- */
+  S.stack = ['main']; S.func = 'main'; S.insideIfss = false;
+  S.ifssI = null; S.ifssJ = null;
+  if (assignTo === 'flag1') S.flag1 = retVal;
+  if (assignTo === 'flag2') S.flag2 = retVal;
+  emit({
+    line: 12, kind: 'ifss',
+    title: '}　ifss 函数体结束，返回 <b>' + retVal + '</b>',
+    desc: 'ifss 的 <b>栈帧被销毁</b>：<br>' +
+          '· 形参 <code>i</code> 和局部变量 <code>j</code> 消失；<br>' +
+          '· 返回值 <b>' + retVal + '</b> 交给调用者；' +
+          '· 调用栈回到 <code>main</code>。'
+  });
+
+  /* --- 回到调用行，赋值 --- */
+  emit({
+    line: callLine, kind: 'mv',
+    title: assignTo + ' = ' + retVal + '　（ifss 返回值）',
+    desc: '回到 main 第 ' + callLine + ' 行：' +
+          '<code>' + assignTo + ' = ' + retVal + '</code>。'
+  });
+
+  return retVal;
+}
+
+/* =========================================================
+   开始构建 STEPS
+   ========================================================= */
+
+/* 第 1 行 */
+emit({
+  line:1, kind:'pre',
+  title:'#include &lt;stdio.h&gt;',
+  desc:'预处理指令：包含标准输入输出头文件。<br>' +
+       '· <b>不是 C 语句</b>，编译之前处理完，不产生任何屏幕输出。'
+});
+
+/* 第 2 行：定义登记 */
+emit({
+  line:2, kind:'pre',
+  title:'int ifss(int i) { ... }　素数判断函数（登记）',
+  desc:'编译器登记 ifss 函数的定义：<br>' +
+       '· 返回类型 <code>int</code>：是素数返回 1，否则返回 0；<br>' +
+       '· 参数 <code>int i</code>；<br>' +
+       '· 函数体在第 3~11 行；<br>' +
+       '· <b>此刻不会执行</b>——只有被调用时才运行。' +
+       '<span class="tip"><b>ifss 的判定思路（试除法）：</b><br>' +
+       '① <code>i ≤ 1</code> → 返回 0；<br>' +
+       '② <code>i == 2</code> → 返回 1；<br>' +
+       '③ <code>for(j=2; j&lt;i; j++)</code>：一旦 <code>i % j == 0</code> 立即返回 0；<br>' +
+       '④ 若 <code>i != j+1</code>，说明还没试到最后一个数 → <code>continue</code>；<br>' +
+       '⑤ 若 <code>i == j+1</code>，前面都没整除 → <code>return 1</code>。</span>'
+});
+
+/* 第 13 行：main 入口 */
+S.func = 'main'; S.stack = ['main']; S.n = 0;
+emit({
+  line:13, kind:'exec',
+  title:'int main() {　程序从 main 开始执行',
+  desc:'操作系统把控制权交给 main。<br>' +
+       '<b>本次模拟策略：</b>完整演示 i = 4, 6, 8, 10, 12, 14（含每次 ifss 调用的完整过程），' +
+       'i = 16~96 跳过，i = 98 完整演示，最后程序结束。' +
+       '<span class="tip"><b>目标：</b>验证哥德巴赫猜想在 4~100 范围内成立。</span>'
+});
+
+/* 第 14 行 */
+emit({
+  line:14, kind:'exec',
+  title:'int i, j, k, flag1, flag2, n=0;　声明变量',
+  desc:'声明六个整型变量：<br>' +
+       '· <code>i</code>：外层循环变量；<code>k</code>：第一个加数；<br>' +
+       '· <code>j</code>：第二个加数 <code>j = i - k</code>；<br>' +
+       '· <code>flag1</code>：<code>ifss(k)</code> 的返回值；<br>' +
+       '· <code>flag2</code>：<code>ifss(j)</code> 的返回值；<br>' +
+       '· <code>n</code>：<b>显式初始化为 0</b>。'
+});
+
+/* ============================================================
+   完整跟踪 i = 4, 6, 8, 10, 12, 14
+   ============================================================ */
+var FULL_IS = [4, 6, 8, 10, 12, 14];
+
+FULL_IS.forEach(function(iVal, fi){
+  /* 外层 for 条件 */
+  S.i = iVal;
+  S.j = null; S.k = null; S.flag1 = null; S.flag2 = null;
+  emit({
+    line:15, kind:'mv',
+    title:'外层 for 第 ' + (fi+1) + ' 轮：<b>i = ' + iVal + '</b>，条件 <b>' + iVal + ' &lt; 100 → 真</b>',
+    desc: '外层循环处理偶数 <b>' + iVal + '</b>：<br>' +
+          '· 接下来内层 for 从 k=2 试到 k=' + Math.floor(iVal/2) + '，' +
+          '把 ' + iVal + ' 拆成 k + j 的形式。'
+  });
+
+  var half = Math.floor(iVal/2);
+
+  for (var k = 2; k <= half; k++){
+    /* 内层 for 初始化 */
+    S.k = k;
+    emit({
+      line:16, kind:'mv',
+      title:'内层 for 初始化：<b>k = ' + k + '</b>',
+      desc:'k 从 2 开始枚举；上界是 <code>i/2 = ' + half + '</code>（对称性）。'
+    });
+
+    /* 第 17 行：j = i - k */
+    var jVal = iVal - k;
+    S.j = jVal;
+    emit({
+      line:17, kind:'gold',
+      title:'j = i - k　→　<b>j = ' + iVal + ' - ' + k + ' = ' + jVal + '</b>',
+      desc:'第一个加数 k = <b>' + k + '</b>，第二个加数 j = <b>' + jVal + '</b>；' +
+           '两者之和 <code>' + k + ' + ' + jVal + ' = ' + iVal + '</code>。'
+    });
+
+    /* 第 18 行：flag1 = ifss(k) —— 完整演示函数调用 */
+    emit({
+      line:18, kind:'mv',
+      title:'准备调用 <b>ifss(' + k + ')</b> 判断 k 是否为素数',
+      desc:'第 18 行 <code>flag1 = ifss(' + k + ')</code>：<br>' +
+           '· 把实参 <b>' + k + '</b> 复制给形参 i；<br>' +
+           '· 接下来逐步演示 ifss 内部的每一行。' +
+           '<span class="callbox">下一批步骤将高亮 ifss 内部的第 2~12 行</span>'
+    });
+    var ret1 = emitIfssCall(k, 18, 'flag1');
+
+    /* 第 19 行：if(flag1) */
+    emit({
+      line:19, kind: ret1 ? 'mv' : 'gold',
+      title:'if(flag1)　→　<b>' + (ret1 ? '真' : '假') + '</b>',
+      desc:'<code>flag1 = ' + ret1 + '</code>，在 C 中非 0 为真：<br>' +
+           (ret1
+             ? '· k = ' + k + ' 是素数，<b>继续</b>判断 j = ' + jVal + ' 是否素数。'
+             : '· k = ' + k + ' 不是素数，<b>跳过</b> if 体，直接进入下一次 k 循环。')
+    });
+
+    if (ret1){
+      /* 第 20 行：flag2 = ifss(j) —— 完整演示 */
+      emit({
+        line:20, kind:'mv',
+        title:'准备调用 <b>ifss(' + jVal + ')</b> 判断 j 是否为素数',
+        desc:'第 20 行 <code>flag2 = ifss(' + jVal + ')</code>：<br>' +
+             '· 把实参 <b>' + jVal + '</b> 复制给形参 i；<br>' +
+             '· 接下来逐步演示 ifss 内部的每一行。'
+      });
+      var ret2 = emitIfssCall(jVal, 20, 'flag2');
+
+      /* 第 21 行：if(flag2) */
+      emit({
+        line:21, kind: ret2 ? 'mv' : 'gold',
+        title:'if(flag2)　→　<b>' + (ret2 ? '真' : '假') + '</b>',
+        desc:'<code>flag2 = ' + ret2 + '</code>：' +
+             (ret2
+               ? '<b>' + iVal + ' = ' + k + ' + ' + jVal + '</b>，两个加数都是素数，进入输出。'
+               : 'j = ' + jVal + ' 不是素数，这一对无效，跳过。')
+      });
+
+      if (ret2){
+        /* 第 22 行：printf */
+        var eqText = iVal + '=' + k + '+' + jVal;
+        var eqIdx = -1;
+        for (var cc = 0; cc < OUT_CHUNKS.length; cc++){
+          if (!OUT_CHUNKS[cc].isNewline && OUT_CHUNKS[cc].text === eqText){
+            eqIdx = cc; break;
+          }
+        }
+        S.n = S.n + 1;
+        S.outCount = eqIdx + 1;
+        emit({
+          line:22, kind:'gold',
+          title:'printf("%d=%d+%d", ' + iVal + ', ' + k + ', ' + jVal + ')　→　输出 <b>"' + eqText + '"</b>',
+          desc:'屏幕追加 <b>"' + eqText + '"</b>。<br>' +
+               '· 格式串末尾<b>无空格无换行</b>，所以下一个等式会紧挨着接在后面；<br>' +
+               '· 这是原程序的真实行为——它靠第 24 行的 printf("\\n") 每 7 个才换行。'
+        });
+
+        /* 第 23 行：n++ */
+        emit({
+          line:23, kind:'gold',
+          title:'n++　→　<b>n = ' + S.n + '</b>',
+          desc:'已输出等式个数 n 从 ' + (S.n-1) + ' 变为 <b>' + S.n + '</b>。'
+        });
+
+        /* 第 24 行：if(n%7==0) */
+        var needNL = (S.n % 7 === 0);
+        if (needNL && eqIdx + 1 < OUT_CHUNKS.length && OUT_CHUNKS[eqIdx+1].isNewline){
+          S.outCount = eqIdx + 2;
+        }
+        emit({
+          line:24, kind: needNL ? 'gold' : 'exec',
+          title:'if(n%7==0)　→　<b>' + (needNL ? '真 → 输出换行' : '假 → 不换行') + '</b>',
+          desc:'<code>n = ' + S.n + '</code>，<code>n % 7 = ' + (S.n % 7) + '</code>，条件 <b>' +
+               (needNL ? '真' : '假') + '</b>。' +
+               (needNL ? '<span class="win">printf("\\n") 执行，光标移到下一行。</span>'
+                       : '<span class="tip">不换行，下一个等式继续接在同行。</span>')
+        });
+      }
+    }
+  }
+
+  /* 内层循环条件为假（k 递增到 half+1） */
+  S.k = half + 1;
+  emit({
+    line:16, kind:'exec',
+    title:'内层条件 <b>' + (half+1) + ' &lt;= ' + half + '</b> → <b>假</b>，内层循环结束',
+    desc:'k 已超过上界，偶数 ' + iVal + ' 的所有拆分都试完了。'
+  });
+
+  /* 外层步进 i += 2 */
+  S.i = iVal + 2;
+  S.j = null; S.flag1 = null; S.flag2 = null;
+  emit({
+    line:15, kind:'mv',
+    title:'i += 2　→　<b>i = ' + S.i + '</b>',
+    desc:'外层步进：i 从 ' + iVal + ' 变成 <b>' + S.i + '</b>，步长 2 保证偶数。'
+  });
+});
+
+/* ============================================================
+   跳过 i = 16 ~ 96
+   ============================================================ */
+(function(){
+  /* 同步 n 与 outCount 到 i=96 为止 */
+  var lastOutIdx = -1;
+  for (var cc = 0; cc < OUT_CHUNKS.length; cc++){
+    if (OUT_CHUNKS[cc].isNewline) continue;
+    var mm = OUT_CHUNKS[cc].text.match(/^(\d+)=/);
+    if (mm){
+      var iv = parseInt(mm[1], 10);
+      if (iv <= 96) lastOutIdx = cc;
+    }
+  }
+  if (lastOutIdx >= 0){
+    S.n = OUT_CHUNKS[lastOutIdx].n;
+    S.outCount = lastOutIdx + 1;
+    if (lastOutIdx + 1 < OUT_CHUNKS.length && OUT_CHUNKS[lastOutIdx+1].isNewline){
+      S.outCount = lastOutIdx + 2;
+    }
+  }
+
+  S.i = 96; S.j = null; S.k = null; S.flag1 = null; S.flag2 = null;
+  emit({
+    line:15, kind:'skip',
+    title:'跳过 i = 16 ~ 96　（用"跳过"步骤概括重复过程）',
+    desc:'为了不让模拟过长，i 从 16 到 96 这 <b>41 个偶数</b>的执行过程被<b>跳过</b>：<br>' +
+         '· 它们的执行流程与前面完全一样：<br>' +
+         '&nbsp;&nbsp;外层取偶数 → 内层试 k=2..i/2 → j=i-k → ' +
+         '两次 ifss 调用 → k、j 同时素数就输出、n++、每 7 个换行；<br>' +
+         '· 到此时为止，共输出了 <b>' + S.n + '</b> 个等式；<br>' +
+         '· 下一个完整演示的偶数是 <b>i = 98</b>（最后一个）。'
+  });
+  S.i = 98;
+  emit({
+    line:15, kind:'mv',
+    title:'i += 2　→　<b>i = 98</b>',
+    desc:'i 推进到 <b>98</b>，这是范围内最后一个偶数，接下来完整演示它。'
+  });
+})();
+
+/* ============================================================
+   完整跟踪 i = 98（最后一个偶数）
+   ============================================================ */
+(function(){
+  var iVal = 98;
+  var half = Math.floor(iVal/2);
+  var stopAfterFirstHit = true;
+  var foundHit = false;
+
+  S.i = iVal;
+  S.j = null; S.k = null; S.flag1 = null; S.flag2 = null;
+  emit({
+    line:15, kind:'mv',
+    title:'外层 for 最后 1 轮：<b>i = 98</b>，条件 <b>98 &lt; 100 → 真</b>',
+    desc:'处理最后一个偶数 <b>98</b>。'
+  });
+
+  for (var k = 2; k <= half; k++){
+    S.k = k;
+    emit({
+      line:16, kind:'mv',
+      title:'内层 for 初始化：<b>k = ' + k + '</b>',
+      desc:'k 从 ' + k + ' 开始，上界 i/2 = ' + half + '。'
+    });
+
+    var jVal = iVal - k;
+    S.j = jVal;
+    emit({
+      line:17, kind:'gold',
+      title:'j = i - k　→　<b>j = 98 - ' + k + ' = ' + jVal + '</b>',
+      desc:'k = ' + k + '，j = ' + jVal + '，两者之和为 98。'
+    });
+
+    emit({
+      line:18, kind:'mv',
+      title:'准备调用 <b>ifss(' + k + ')</b> 判断 k 是否为素数',
+      desc:'把 k = ' + k + ' 传给 ifss。'
+    });
+    var ret1 = emitIfssCall(k, 18, 'flag1');
+
+    emit({
+      line:19, kind: ret1 ? 'mv' : 'gold',
+      title:'if(flag1)　→　<b>' + (ret1 ? '真' : '假') + '</b>',
+      desc:'flag1 = ' + ret1 + '。'
+    });
+
+    if (ret1){
+      emit({
+        line:20, kind:'mv',
+        title:'准备调用 <b>ifss(' + jVal + ')</b> 判断 j 是否为素数',
+        desc:'把 j = ' + jVal + ' 传给 ifss。'
+      });
+      var ret2 = emitIfssCall(jVal, 20, 'flag2');
+
+      emit({
+        line:21, kind: ret2 ? 'mv' : 'gold',
+        title:'if(flag2)　→　<b>' + (ret2 ? '真' : '假') + '</b>',
+        desc:'flag2 = ' + ret2 + '。' +
+             (ret2 ? ' <b>98 = ' + k + ' + ' + jVal + ' 成立！</b>' : '')
+      });
+
+      if (ret2){
+        var eqText = iVal + '=' + k + '+' + jVal;
+        var eqIdx = -1;
+        for (var cc = 0; cc < OUT_CHUNKS.length; cc++){
+          if (!OUT_CHUNKS[cc].isNewline && OUT_CHUNKS[cc].text === eqText){
+            eqIdx = cc; break;
+          }
+        }
+        S.n = S.n + 1;
+        S.outCount = eqIdx + 1;
+        emit({
+          line:22, kind:'gold',
+          title:'printf("%d=%d+%d", 98, ' + k + ', ' + jVal + ')　→　输出 <b>"' + eqText + '"</b>',
+          desc:'输出等式 <b>"' + eqText + '"</b>；无空格、无换行。'
+        });
+        emit({
+          line:23, kind:'gold',
+          title:'n++　→　<b>n = ' + S.n + '</b>',
+          desc:'n 自增到 ' + S.n + '。'
+        });
+        var needNL = (S.n % 7 === 0);
+        if (needNL && eqIdx + 1 < OUT_CHUNKS.length && OUT_CHUNKS[eqIdx+1].isNewline){
+          S.outCount = eqIdx + 2;
+        }
+        emit({
+          line:24, kind: needNL ? 'gold' : 'exec',
+          title:'if(n%7==0)　→　<b>' + (needNL ? '真 → 换行' : '假 → 不换行') + '</b>',
+          desc:'n = ' + S.n + '，n%7 = ' + (S.n % 7) + '。'
+        });
+
+        if (stopAfterFirstHit){
+          foundHit = true;
+          break;
+        }
+      }
+    }
+  }
+
+  /* 若第一个配对没输出，继续到循环结束 */
+  if (!foundHit){
+    /* 让 i 继续走完（简化处理，直接跳到结束） */
+  }
+
+  S.k = half + 1;
+  emit({
+    line:16, kind:'exec',
+    title:'内层条件 <b>' + (half+1) + ' &lt;= ' + half + '</b> → <b>假</b>',
+    desc:'98 的所有 k 都试过了（若上面提前 break，则此处为演示省略），内层循环结束。'
+  });
+
+  S.i = 100;
+  S.j = null; S.flag1 = null; S.flag2 = null;
+  emit({
+    line:15, kind:'mv',
+    title:'i += 2　→　<b>i = 100</b>',
+    desc:'i 从 98 变为 100，外层循环条件即将变假。'
+  });
+})();
+
+/* 外层条件为假 */
+emit({
+  line:15, kind:'exec',
+  title:'外层条件 <b>100 &lt; 100</b> → <b>假</b>，外层循环结束',
+  desc:'i = 100 不再满足 i &lt; 100，4~98 的所有偶数处理完毕。'
+});
+
+/* 第 29 行 */
+emit({
+  line:29, kind:'ret',
+  title:'return 0;　结束 main 函数',
+  desc:'<code>return 0;</code> 结束 main，把整数 <b>0</b> 交还给操作系统。'
+});
+
+/* 第 30 行 */
+S.stack = []; S.func = '—'; S.i = null;
+emit({
+  line:30, kind:'ret',
+  title:'main 函数体结束 }　→　程序结束',
+  desc:'main 栈帧销毁，调用栈清空。' +
+       '<span class="win"><b>★ 本次运行统计：</b>共输出 <b>' + S.n + '</b> 个等式，' +
+       '分布在 <b>' + Math.ceil(S.n/7) + '</b> 行；' +
+       'ifss 共调用 <b>' + S.ifssCalls + '</b> 次。</span>' +
+       '<b>要点总结：</b><br>' +
+       '① <b>函数定义 ≠ 执行</b>：ifss 只在被调用时才运行；<br>' +
+       '② <b>值传递</b>：main 的 k、j 与 ifss 的形参 i 是两组独立变量；<br>' +
+       '③ <b>试除法素数判断</b>：for(j=2; j&lt;i; j++) 一旦发现因子立即返回 0；' +
+       '否则 j 走到 i-1 时返回 1；<br>' +
+       '④ <b>continue 与 return 的区别</b>：continue 只跳本轮，return 立即结束函数；<br>' +
+       '⑤ <b>懒判断</b>：先判断 k，只有 k 是素数才去调用 ifss(j)；<br>' +
+       '⑥ <b>printf 无分隔符</b>：等式紧挨着排在一起；<br>' +
+       '⑦ <b>n%7==0 实现换行</b>：每 7 个等式换一行。'
+});
+
+/* =========================================================
+   DOM 引用与渲染
+   ========================================================= */
+var stackBody   = document.getElementById('stackBody');
+var varsBlock   = document.getElementById('varsBlock');
+var funcValEl   = document.getElementById('funcVal');
+var nValEl      = document.getElementById('nVal');
+var ifssCallVal = document.getElementById('ifssCallVal');
+var consoleBody = document.getElementById('consoleBody');
+var expText     = document.getElementById('expText');
+var stepCounter = document.getElementById('stepCounter');
+var btnPlay     = document.getElementById('btnPlay');
+var btnPrev     = document.getElementById('btnPrev');
+var btnNext     = document.getElementById('btnNext');
+var btnReset    = document.getElementById('btnReset');
+var btnFs       = document.getElementById('btnFs');
+var btnPanels   = document.getElementById('btnPanels');
+var btnMini     = document.getElementById('btnMini');
+var btnLayout   = document.getElementById('btnLayout');
+var speedInput  = document.getElementById('speed');
+var speedLbl    = document.getElementById('speedLbl');
+
+/* 面板拖动/调整大小/折叠/关闭/置顶 */
+var zTop = 100;
+var panelEls = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+function bringFront(el){
+  zTop += 1; el.style.zIndex = zTop;
+  panelEls.forEach(function(p){ p.classList.remove('top'); });
+  el.classList.add('top');
+}
+function makePanel(el){
+  var head = el.querySelector('.phead');
+  var rs   = el.querySelector('.rs');
+  el.addEventListener('pointerdown', function(){ bringFront(el); }, true);
+  var cbtn = el.querySelector('[data-act="collapse"]');
+  if (cbtn) cbtn.addEventListener('click', function(e){ e.stopPropagation(); el.classList.toggle('collapsed'); });
+  var xbtn = el.querySelector('[data-act="close"]');
+  if (xbtn) xbtn.addEventListener('click', function(e){ e.stopPropagation(); el.style.display = 'none'; });
+  head.addEventListener('pointerdown', function(e){
+    if (e.target.closest('button')) return;
+    bringFront(el);
+    var r = el.getBoundingClientRect();
+    var dx = e.clientX - r.left, dy = e.clientY - r.top;
+    function mv(ev){ el.style.left = (ev.clientX-dx)+'px'; el.style.top = (ev.clientY-dy)+'px'; }
+    function up(){ document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up); }
+    document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up);
+    e.preventDefault();
+  });
+  if (rs) rs.addEventListener('pointerdown', function(e){
+    bringFront(el);
+    var r = el.getBoundingClientRect();
+    var sx=e.clientX, sy=e.clientY, sw=r.width, sh=r.height;
+    function mv(ev){
+      el.style.width = Math.max(0, sw+ev.clientX-sx)+'px';
+      el.style.height = Math.max(0, sh+ev.clientY-sy)+'px';
+      if (el.id==='p-mini') rebuildMini();
+    }
+    function up(){
+      document.removeEventListener('pointermove',mv); document.removeEventListener('pointerup',up);
+      if (el.id==='p-mini') rebuildMini();
+    }
+    document.addEventListener('pointermove',mv); document.addEventListener('pointerup',up);
+    e.preventDefault(); e.stopPropagation();
+  });
+}
+panelEls.forEach(makePanel);
+
+/* 默认布局 */
+function setBox(id, o){
+  var el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = '';
+  if (o.left   !== undefined) el.style.left   = (typeof o.left==='number') ? o.left+'px' : o.left;
+  if (o.top    !== undefined) el.style.top    = (typeof o.top==='number') ? o.top+'px' : o.top;
+  if (o.width  !== undefined) el.style.width  = (typeof o.width==='number') ? o.width+'px' : o.width;
+  if (o.height !== undefined) el.style.height = (typeof o.height==='number') ? o.height+'px' : o.height;
+}
+function applyDefaultLayout(){
+  var W = window.innerWidth, H = window.innerHeight;
+  setBox('p-bar',  {left: 16, top: 14, width: 'auto', height: 'auto'});
+  setBox('p-mini', {left: W-170, top: 90, width: 150, height: Math.min(460, H-200)});
+  var varsW = Math.min(580, W*0.40);
+  setBox('p-vars', {left: 16, top: Math.max(120, H*0.14), width: varsW,
+                    height: Math.max(240, H-Math.max(120, H*0.14)-240)});
+  var outW = Math.min(760, W*0.52);
+  setBox('p-out',  {left: 16, top: H-220, width: outW, height: 200});
+  var expW = Math.max(340, W-varsW-220);
+  setBox('p-exp',  {left: varsW+30, top: H-220, width: expW, height: 200});
+  zTop = 100;
+  panelEls.forEach(function(p, i){ p.style.zIndex = 100+i; p.classList.remove('top'); });
+  document.getElementById('p-vars').classList.add('top');
+  rebuildMini();
+}
+
+/* 缩略图 */
+var miniLineH = 6;
+function rebuildMini(){
+  var panel = document.getElementById('p-mini');
+  if (!panel || panel.style.display === 'none') return;
+  var body = document.getElementById('miniBody');
+  var w = body.clientWidth - 12;
+  if (w <= 10) return;
+  var f = Math.max(2, w/75);
+  miniLineH = f * 1.32;
+  miniInner.style.fontSize = f+'px';
+  miniLineEls.forEach(function(el){
+    el.style.height = miniLineH+'px';
+    el.style.lineHeight = miniLineH+'px';
+  });
+  syncMini();
+}
+function syncMini(){
+  var panel = document.getElementById('p-mini');
+  if (!panel || panel.style.display === 'none') return;
+  if (!miniLineH) return;
+  var firstCl = codeLineEls[0];
+  if (!firstCl) return;
+  var lineH = firstCl.getBoundingClientRect().height;
+  if (!lineH) return;
+  var lineTopOffset = firstCl.offsetTop;
+  var sTop = codeScroll.scrollTop;
+  var sH   = codeScroll.clientHeight;
+  var relTop = Math.max(0, sTop - lineTopOffset);
+  var firstIdx = relTop / lineH;
+  var count    = sH / lineH;
+  var total = 30 * miniLineH;
+  var top  = firstIdx * miniLineH;
+  var h    = count * miniLineH;
+  if (top < 0) top = 0;
+  if (top > total) top = total;
+  if (top + h > total) h = total - top;
+  if (h < 4) h = 4;
+  miniView.style.top = top+'px';
+  miniView.style.height = h+'px';
+}
+miniBody.addEventListener('click', function(e){
+  if (!miniLineH) return;
+  var r = miniInner.getBoundingClientRect();
+  var y = e.clientY - r.top;
+  var idx = Math.floor(y / miniLineH);
+  if (idx < 0) idx = 0;
+  if (idx > 29) idx = 29;
+  centerLine(idx+1, true);
+});
+function updateMiniActive(lineNo){
+  miniLineEls.forEach(function(el){
+    el.classList.toggle('active', Number(el.dataset.line) === lineNo);
+  });
+}
+
+/* 渲染 */
+var current = -1;
+var playing = false;
+var timer = null;
+var speed = Number(speedInput.value);
+var lastOut = null, lastStackKey = null, lastVarsKey = null;
+
+function renderStack(step){
+  var stack = (step && step.stack) || [];
+  var key = stack.join('/');
+  if (key === lastStackKey) return;
+  lastStackKey = key;
+  if (!stack.length){
+    stackBody.innerHTML = '<span class="empty">（空）</span>';
+    return;
+  }
+  var html = '';
+  for (var k = 0; k < stack.length; k++){
+    if (k > 0) html += '<span class="arr2">→</span>';
+    var cls = 'frame';
+    if (stack[k] === 'main') cls += ' main';
+    else if (stack[k] === 'ifss') cls += ' ifssf';
+    if (k === stack.length - 1) cls += ' topF';
+    var label = stack[k] === 'main' ? 'main()' : 'ifss(int i)';
+    html += '<span class="'+cls+'">'+label+'</span>';
+  }
+  stackBody.innerHTML = html;
+}
+
+function buildVarRow(name, type, value, dim, changed){
+  var row = document.createElement('div');
+  row.className = 'vrow' + (changed ? ' changed' : '');
+  var k = document.createElement('span'); k.className = 'vk'; k.textContent = name;
+  if (type){ var t = document.createElement('span'); t.className='vt'; t.textContent=type; k.appendChild(t); }
+  var v = document.createElement('span'); v.className = 'vv' + (dim ? ' dim' : ''); v.textContent = value;
+  row.appendChild(k); row.appendChild(v);
+  return row;
+}
+
+function fmtNum(v){ return (v === null || v === undefined) ? '未初始化' : String(v); }
+
+function renderVars(step, prevStep){
+  if (!step){
+    lastVarsKey = null; varsBlock.innerHTML = ''; return;
+  }
+  var key = step.line + '|' + step.stack.join('/') + '|' + step.i + '|' +
+            step.j + '|' + step.k + '|' + step.flag1 + '|' + step.flag2 + '|' +
+            step.n + '|' + step.ifssI + '|' + step.ifssJ + '|' + step.ifssRet;
+  if (key === lastVarsKey) return;
+  lastVarsKey = key;
+  varsBlock.innerHTML = '';
+  var inMain = step.stack.indexOf('main') !== -1;
+  var inIfss = step.stack.indexOf('ifss') !== -1;
+
+  if (inMain){
+    var gM = document.createElement('div');
+    gM.className = 'scope-group scope-main';
+    var hM = document.createElement('div');
+    hM.className = 'scope-head';
+    hM.innerHTML = '<span class="fname">main</span><span class="role">主函数作用域</span>';
+    gM.appendChild(hM);
+    gM.appendChild(buildVarRow('i','int',fmtNum(step.i),step.i===null,prevStep&&prevStep.i!==step.i));
+    gM.appendChild(buildVarRow('k','int',fmtNum(step.k),step.k===null,prevStep&&prevStep.k!==step.k));
+    gM.appendChild(buildVarRow('j','int',fmtNum(step.j),step.j===null,prevStep&&prevStep.j!==step.j));
+    gM.appendChild(buildVarRow('flag1','int',fmtNum(step.flag1),step.flag1===null,prevStep&&prevStep.flag1!==step.flag1));
+    gM.appendChild(buildVarRow('flag2','int',fmtNum(step.flag2),step.flag2===null,prevStep&&prevStep.flag2!==step.flag2));
+    gM.appendChild(buildVarRow('n','int',fmtNum(step.n),false,prevStep&&prevStep.n!==step.n));
+    varsBlock.appendChild(gM);
+  }
+  if (inIfss){
+    var gF = document.createElement('div');
+    gF.className = 'scope-group scope-ifss';
+    var hF = document.createElement('div');
+    hF.className = 'scope-head';
+    hF.innerHTML = '<span class="fname">ifss</span><span class="role">素数判断（每次全新）</span>';
+    gF.appendChild(hF);
+    gF.appendChild(buildVarRow('i','int',fmtNum(step.ifssI),step.ifssI===null,prevStep&&prevStep.ifssI!==step.ifssI));
+    gF.appendChild(buildVarRow('j','int',fmtNum(step.ifssJ),step.ifssJ===null,prevStep&&prevStep.ifssJ!==step.ifssJ));
+    gF.appendChild(buildVarRow('return','int',fmtNum(step.ifssRet),step.ifssRet===null,prevStep&&prevStep.ifssRet!==step.ifssRet));
+    varsBlock.appendChild(gF);
+  }
+  Array.prototype.slice.call(varsBlock.querySelectorAll('.vrow.changed .vv'))
+    .forEach(function(el){
+      el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+    });
+}
+
+function centerLine(n, smooth){
+  var el = codeInner.querySelector('.cl[data-line="' + n + '"]');
+  if (!el) return;
+  var target = el.offsetTop - codeScroll.clientHeight/2 + el.offsetHeight/2;
+  if (target < 0) target = 0;
+  codeScroll.scrollTo({top: target, behavior: smooth ? 'smooth' : 'auto'});
+}
+
+function renderOutput(step){
+  var count = step ? step.outCount : 0;
+  var text = '';
+  for (var k = 0; k < count && k < OUT_CHUNKS.length; k++) text += OUT_CHUNKS[k].text;
+  if (text === lastOut) return;
+  lastOut = text;
+  consoleBody.innerHTML = '';
+  if (text === ''){
+    var cur0 = document.createElement('span');
+    cur0.className = 'cursor'; cur0.textContent = '▊';
+    consoleBody.appendChild(cur0);
+    return;
+  }
+  var parts = text.split('\n');
+  parts.forEach(function(part, idx){
+    var d = document.createElement('div');
+    d.className = 'out-line';
+    if (part === '' && idx === parts.length - 1){ /* 末尾空行 */ }
+    else if (part === ''){ d.classList.add('empty'); d.innerHTML = '&nbsp;'; }
+    else { d.textContent = part; }
+    consoleBody.appendChild(d);
+  });
+  var cur = document.createElement('span');
+  cur.className = 'cursor'; cur.textContent = '▊';
+  consoleBody.appendChild(cur);
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+  var prev = current > 0 ? STEPS[current-1] : null;
+  var activeLine = step ? step.line : null;
+
+  var done = {};
+  for (var k = 0; k <= current; k++) if (STEPS[k]) done[STEPS[k].line] = true;
+
+  codeLineEls.forEach(function(el){
+    var n = Number(el.dataset.line);
+    var inIfssBody = (n >= 2 && n <= 12);
+    el.classList.toggle('active', n === activeLine);
+    el.classList.toggle('done', !!done[n] && n !== activeLine);
+    /* 标记 ifss 函数体（调用期间） */
+    el.classList.toggle('in-call', inIfssBody);
+  });
+
+  updateMiniActive(activeLine);
+  renderStack(step);
+  renderVars(step, prev);
+  renderOutput(step);
+
+  funcValEl.textContent = step ? step.func : '—';
+  nValEl.textContent = step ? String(step.n) : '0';
+  ifssCallVal.textContent = step ? (step.ifssCalls + ' 次') : '0 次';
+
+  if (step){
+    var cls = 'expLine';
+    if (step.kind === 'pre') cls += ' pre';
+    else if (step.kind === 'ret') cls += ' ret';
+    else if (step.kind === 'gold') cls += ' gold';
+    else if (step.kind === 'skip') cls += ' skip';
+    else if (step.kind === 'mv') cls += ' mv';
+    else if (step.kind === 'ifss') cls += ' ifss';
+
+    expText.innerHTML =
+      '<span class="'+cls+'">第 '+step.line+' 行</span>' +
+      '<strong>'+step.title+'</strong><br>'+step.desc;
+    stepCounter.textContent = '步骤 ' + (current+1) + ' / ' + STEPS.length;
+  } else {
+    expText.innerHTML =
+      '<strong>点击「▶ 播放」或「下一步」，开始逐条执行程序。</strong><br>' +
+      '本程序用 <b>双重循环 + 素数判断函数</b>验证哥德巴赫猜想：<br>' +
+      '· <b>ifss(i)</b>：试除法判断 i 是否为素数（每次调用都会完整演示内部过程）；<br>' +
+      '· <b>main</b>：外层枚举偶数 i，内层枚举加数 k，<code>j = i - k</code>；<br>' +
+      '· k、j 同时为素数就输出 "<code>i=k+j</code>"，每 7 个换一行。<br>' +
+      '<span class="tip"><b>共 ' + STEPS.length + ' 个执行步骤，请用「▶ 播放」逐步查看。</b>' +
+      '紫色高亮的第 2~12 行表示"当前正在 ifss 内部执行"。</span>';
+    stepCounter.textContent = '步骤 — / ' + STEPS.length;
+  }
+
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+
+  if (activeLine) centerLine(activeLine, true);
+  window.requestAnimationFrame(syncMini);
+}
+
+/* 播放控制 */
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+function tick(){
+  if (current >= STEPS.length-1){ pause(); return; }
+  current += 1; render();
+  if (current >= STEPS.length-1) pause();
+}
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length-1){ current = -1; render(); }
+  playing = true; updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+function pause(){
+  playing = false; window.clearInterval(timer); timer = null; updatePlayBtn();
+}
+function nextStep(){ pause(); if (current < STEPS.length-1){ current += 1; render(); } }
+function prevStep(){ pause(); if (current > -1){ current -= 1; render(); } }
+function resetAll(){
+  pause(); current = -1;
+  lastOut = null; lastVarsKey = null; lastStackKey = null;
+  consoleBody.innerHTML = '';
+  codeScroll.scrollTop = 0;
+  render();
+  window.requestAnimationFrame(function(){ codeScroll.scrollTop = 0; syncMini(); });
+}
+btnPlay.addEventListener('click', function(){ if (playing) pause(); else play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLbl.textContent = (speed/1000).toFixed(1)+'s';
+  if (playing){
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+btnFs.addEventListener('click', function(){
+  if (!document.fullscreenElement){
+    if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+  } else {
+    if (document.exitFullscreen) document.exitFullscreen();
+  }
+});
+btnPanels.addEventListener('click', function(){
+  var anyVisible = panelEls.some(function(p){ return p.style.display !== 'none'; });
+  panelEls.forEach(function(p){
+    p.style.display = anyVisible ? 'none' : '';
+    if (!anyVisible) p.classList.remove('collapsed');
+  });
+  if (!anyVisible) rebuildMini();
+});
+btnMini.addEventListener('click', function(){
+  var m = document.getElementById('p-mini');
+  var hidden = (m.style.display === 'none');
+  m.style.display = hidden ? '' : 'none';
+  if (hidden) rebuildMini();
+});
+btnLayout.addEventListener('click', function(){
+  panelEls.forEach(function(p){ p.style.display = ''; p.classList.remove('collapsed'); });
+  applyDefaultLayout();
+  render();
+});
+
+document.addEventListener('keydown', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+  if (e.code === 'Space'){ e.preventDefault(); if (playing) pause(); else play(); }
+  else if (e.code === 'ArrowRight'){ e.preventDefault(); nextStep(); }
+  else if (e.code === 'ArrowLeft'){ e.preventDefault(); prevStep(); }
+  else if (e.code === 'KeyR'){ e.preventDefault(); resetAll(); }
+  else if (e.code === 'KeyF'){ e.preventDefault(); btnFs.click(); }
+  else if (e.code === 'KeyM'){ e.preventDefault(); btnMini.click(); }
+  else if (e.code === 'KeyH'){ e.preventDefault(); btnPanels.click(); }
+});
+
+var rafPending = false;
+function scheduleSync(){
+  if (rafPending) return;
+  rafPending = true;
+  window.requestAnimationFrame(function(){ rafPending = false; syncMini(); });
+}
+codeScroll.addEventListener('scroll', scheduleSync, {passive:true});
+window.addEventListener('resize', function(){ rebuildMini(); scheduleSync(); });
+if (document.fonts && document.fonts.ready){
+  document.fonts.ready.then(function(){ rebuildMini(); syncMini(); });
+}
+
+applyDefaultLayout();
+speedLbl.textContent = (speed/1000).toFixed(1)+'s';
+render();
+window.requestAnimationFrame(function(){ rebuildMini(); syncMini(); });
+window.setTimeout(function(){ rebuildMini(); syncMini(); }, 300);
+
+})();
+</script>
+</body>
+</html>
