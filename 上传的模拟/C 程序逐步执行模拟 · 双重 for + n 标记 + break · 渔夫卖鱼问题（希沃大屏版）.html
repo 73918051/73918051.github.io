@@ -1,0 +1,1643 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 双重 for + n 标记 + break · 渔夫卖鱼问题（希沃大屏版）</title>
+<style>
+  /* ============ 字体与全局变量（大屏硬指标） ============ */
+  :root{
+    --code-font: clamp(44px, 4.2vw, 118px);          /* 1920 下 ≈ 80.6px */
+    --line-h: calc(var(--code-font) * 1.65);
+    --out-font: clamp(40px, 4vw, 100px);             /* 1920 下 ≈ 76.8px */
+    --var-font: clamp(24px, 2.2vw, 48px);            /* 1920 下 ≈ 42px   */
+    --explain-font: clamp(28px, 2.6vw, 60px);        /* 1920 下 ≈ 50px   */
+    --btn-font: clamp(24px, 2.1vw, 46px);            /* 1920 下 ≈ 40px   */
+    --title-font: clamp(28px, 3vw, 64px);            /* 1920 下 ≈ 57.6px */
+    --mini-font: clamp(6px, 0.46vw, 12px);           /* 默认值，JS 会按缩略图宽度自适应覆盖 */
+    --bg:#0d1117;
+    --accent:#38bdf8;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;}
+  body{
+    background:var(--bg);
+    color:#dce8f8;
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  }
+
+  /* ============ 全屏代码区 ============ */
+  .code-viewport{
+    position:fixed; inset:0;
+    overflow:auto;
+    background:var(--bg);
+    z-index:1;
+    scrollbar-width:thin;
+    scrollbar-color:#2c3f5e transparent;
+  }
+  .code-viewport::-webkit-scrollbar{width:16px;height:16px;}
+  .code-viewport::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+  .code-viewport::-webkit-scrollbar-track{background:transparent;}
+
+  .code-content{width:max-content;min-width:100%;}
+
+  .code-line{
+    display:flex;
+    align-items:center;
+    height:var(--line-h);
+    white-space:pre;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:var(--code-font);
+    line-height:1;
+    padding:0 1em 0 .35em;
+    border-left:8px solid transparent;
+    transition:background .22s,border-color .22s,opacity .22s;
+  }
+  .code-line .ln{
+    flex:0 0 auto;
+    width:3.4ch;
+    text-align:right;
+    margin-right:.9ch;
+    color:#3f5a7d;
+    font-size:.7em;
+    font-variant-numeric:tabular-nums;
+    user-select:none;
+  }
+  .code-line .src{flex:1 1 auto;}
+
+  .code-line.active{
+    background:linear-gradient(90deg,rgba(56,189,248,.30),rgba(56,189,248,.03));
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 3px rgba(56,189,248,.40);
+  }
+  .code-line.active .src{color:#ffffff;}
+  .code-line.active .ln{color:var(--accent);font-weight:800;}
+
+  .code-line.hit{
+    background:linear-gradient(90deg,rgba(74,222,128,.18),rgba(74,222,128,0));
+    border-left-color:#4ade80;
+  }
+  .code-line.hit .ln{color:#4ade80;}
+
+  .code-line.skip{opacity:.22;}
+
+  /* 语法高亮 */
+  .pp{color:#c084fc;font-weight:700;}
+  .str{color:#4ade80;}
+  .cmt{color:#6b7f99;font-style:italic;}
+  .fn{color:#38bdf8;}
+  .kw{color:#f472b6;font-weight:700;}
+  .num{color:#fbbf24;}
+  .op{color:#fb923c;font-weight:700;}
+
+  /* ============ 悬浮面板通用 ============ */
+  .panel{
+    position:fixed;
+    z-index:100;
+    background:rgba(13,17,23,.82);
+    -webkit-backdrop-filter:blur(14px);
+    backdrop-filter:blur(14px);
+    border:2px solid rgba(56,189,248,.25);
+    border-radius:14px;
+    display:flex;flex-direction:column;
+    overflow:hidden;
+    box-shadow:0 12px 44px rgba(0,0,0,.66);
+    transition:border-color .18s,box-shadow .18s,background .18s;
+  }
+  .panel.active{
+    border-color:var(--accent);
+    box-shadow:0 0 0 4px rgba(56,189,248,.28),0 18px 60px rgba(0,0,0,.82);
+    background:rgba(13,17,23,.96);
+  }
+  .panel.hidden{display:none;}
+
+  .panel-head{
+    flex:0 0 auto;
+    display:flex;align-items:center;gap:.6rem;
+    padding:.32em .7em;
+    background:rgba(30,47,73,.72);
+    cursor:move;
+    user-select:none;
+    touch-action:none;
+    border-bottom:1px solid rgba(56,189,248,.18);
+  }
+  .panel-title{
+    font-size:var(--title-font);
+    font-weight:700;
+    color:#dce8f8;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .panel-close{
+    margin-left:auto;flex:0 0 auto;
+    min-width:52px;min-height:52px;
+    display:flex;align-items:center;justify-content:center;
+    border-radius:10px;
+    border:1px solid rgba(248,113,113,.55);
+    background:rgba(248,113,113,.16);
+    color:#fca5a5;
+    font-size:calc(var(--btn-font) * .9);
+    line-height:1;
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .panel-close:hover{background:rgba(248,113,113,.40);color:#fff;}
+
+  .panel-body{
+    flex:1 1 auto;
+    min-height:0;
+    overflow:auto;
+    padding:.5rem .7rem;
+    scrollbar-width:thin;
+    scrollbar-color:#2c3f5e transparent;
+  }
+  .panel-body::-webkit-scrollbar{width:12px;height:12px;}
+  .panel-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:6px;}
+
+  .resize-handle{
+    position:absolute;right:0;bottom:0;
+    width:56px;height:56px;
+    cursor:nwse-resize;
+    touch-action:none;
+    z-index:6;
+  }
+  .resize-handle::after{
+    content:'';
+    position:absolute;right:9px;bottom:9px;
+    width:24px;height:24px;
+    border-right:4px solid rgba(56,189,248,.85);
+    border-bottom:4px solid rgba(56,189,248,.85);
+    border-radius:0 0 6px 0;
+  }
+
+  /* ============ 控制栏按钮 ============ */
+  .ctl-row{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;}
+  .ctl-btn{
+    font:inherit;
+    font-size:var(--btn-font);
+    padding:.28em .7em;
+    border-radius:10px;
+    border:1px solid rgba(56,189,248,.35);
+    background:rgba(30,47,73,.82);
+    color:#dce8f8;
+    cursor:pointer;
+    min-height:60px;
+    white-space:nowrap;
+    transition:background .15s,border-color .15s,transform .1s;
+  }
+  .ctl-btn:hover:not(:disabled){background:rgba(56,189,248,.28);border-color:var(--accent);}
+  .ctl-btn:active:not(:disabled){transform:translateY(2px);}
+  .ctl-btn:disabled{opacity:.32;cursor:not-allowed;}
+  .ctl-btn.primary{
+    background:linear-gradient(180deg,#0ea5e9,#0284c7);
+    border-color:#7dd3fc;color:#04121f;font-weight:800;
+  }
+  .ctl-btn.primary.playing{
+    background:linear-gradient(180deg,#f59e0b,#d97706);
+    border-color:#fbbf24;color:#1a1200;
+  }
+  .speed-wrap{
+    display:flex;align-items:center;gap:.45rem;
+    font-size:var(--btn-font);color:#7d93b3;white-space:nowrap;
+  }
+  .speed-wrap input{
+    width:clamp(120px,10vw,260px);
+    accent-color:var(--accent);
+    cursor:pointer;
+    height:44px;
+  }
+  .speed-wrap b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:3.4em;display:inline-block;}
+
+  /* ============ 变量表 ============ */
+  .var-row{
+    display:flex;justify-content:space-between;align-items:center;gap:.6rem;
+    padding:.16em .6em;
+    border-radius:8px;
+    background:rgba(13,23,40,.88);
+    border:1px solid rgba(30,47,73,.95);
+    font-size:var(--var-font);
+    margin-bottom:.16em;
+    transition:background .25s,border-color .25s;
+  }
+  .var-row.k-ctx  {border-left:6px solid rgba(34,211,238,.8);}
+  .var-row.k-main {border-left:6px solid rgba(56,189,248,.8);}
+  .var-row.k-val  {border-left:6px solid rgba(244,114,182,.9);}
+  .var-row.k-sw   {border-left:6px solid rgba(45,212,191,.9);}
+  .var-row.k-money{border-left:6px solid rgba(251,191,36,.95);}
+  .var-row.k-sub  {border-left:6px solid rgba(192,132,252,.9);}
+  .var-row.k-note {border-left:6px solid rgba(45,212,191,.7);}
+  .var-row.k-ret  {border-left:6px solid rgba(251,191,36,.5);}
+  .var-row.changed{border-color:rgba(56,189,248,.95);background:rgba(56,189,248,.16);}
+  .var-name{color:#7d93b3;white-space:nowrap;}
+  .var-value{
+    font-family:ui-monospace,Consolas,monospace;
+    font-weight:800;
+    color:var(--accent);
+    text-align:right;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    max-width:62%;
+  }
+  .var-value.dim{color:#5f7796;font-weight:500;}
+  .var-row.k-ctx   .var-value{color:#4ade80;}
+  .var-row.k-val   .var-value{color:#f472b6;}
+  .var-row.k-sw    .var-value{color:#2dd4bf;}
+  .var-row.k-money .var-value{color:#fbbf24;}
+  .var-row.k-sub   .var-value{color:#c084fc;}
+  .var-row.k-note  .var-value{color:#2dd4bf;font-weight:600;}
+  .var-row.k-ret   .var-value{color:#fbbf24;}
+
+  @keyframes flash{
+    0%{transform:scale(1);}
+    35%{transform:scale(1.22);color:#fff;text-shadow:0 0 18px var(--accent);}
+    100%{transform:scale(1);}
+  }
+  .var-value.flash{animation:flash .55s ease-out;}
+
+  /* ============ 输出区 ============ */
+  .console{
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:var(--out-font);
+    line-height:1.35;
+    font-weight:800;
+    color:#fbbf24;
+    white-space:pre-wrap;
+  }
+  .out-line{animation:slideIn .35s ease-out;}
+  @keyframes slideIn{from{opacity:0;transform:translateX(-1rem);}to{opacity:1;transform:none;}}
+
+  /* ============ 说明条 ============ */
+  .explain{font-size:var(--explain-font);line-height:1.5;color:#b8c9e0;}
+  .explain strong{color:#eaf3ff;}
+  .explain code{
+    font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.18);
+    border-radius:6px;
+    padding:0 .3em;
+    color:#e2e8f0;
+  }
+  .ex-tag{
+    display:inline-block;
+    margin-right:.5em;
+    padding:.05em .5em;
+    border-radius:8px;
+    background:rgba(56,189,248,.20);
+    color:var(--accent);
+    font-weight:800;
+    font-size:.8em;
+    vertical-align:middle;
+  }
+  .ex-tag.hit{background:rgba(74,222,128,.22);color:#4ade80;}
+  .ex-tag.batch{background:rgba(192,132,252,.24);color:#c084fc;}
+  .ex-tag.ans{background:rgba(251,191,36,.26);color:#fbbf24;}
+  .explain .tip{
+    display:block;margin-top:.5em;padding:.4em .6em;border-radius:8px;
+    background:rgba(45,212,191,.12);border-left:6px solid #2dd4bf;color:#bff5ec;
+  }
+  .explain .warn{
+    display:block;margin-top:.5em;padding:.4em .6em;border-radius:8px;
+    background:rgba(251,191,36,.13);border-left:6px solid #fbbf24;color:#ffe6b0;
+  }
+
+  /* ============ 缩略图（修复版：保留缩进） ============ */
+  .mini-body{padding:0 !important;overflow:hidden !important;}
+  .mini-inner{
+    position:relative;width:100%;height:100%;
+    display:flex;flex-direction:column;
+    background:rgba(5,9,18,.55);
+  }
+  .mini-line{
+    /* flex item：均分 19 行高度，垂直居中 */
+    flex:1 1 0;
+    min-height:0;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    font-family:ui-monospace,Consolas,monospace;
+    font-size:var(--mini-font);
+    line-height:1;
+    padding:0 4px;
+    border-left:3px solid transparent;
+    white-space:nowrap;
+  }
+  /* ★ 关键修复：用 span 包住整行代码，white-space:pre 保留行首缩进空格
+     否则 flex 容器会把纯空白文本节点丢弃，缩进会全部消失 */
+  .mini-src{
+    flex:1 1 auto;
+    min-width:0;
+    display:block;
+    white-space:pre;
+    overflow:hidden;
+    text-overflow:clip;
+  }
+  .mini-line.cur{
+    background:rgba(56,189,248,.35);
+    border-left-color:#38bdf8;
+    box-shadow:inset 0 0 0 2px rgba(56,189,248,.7);
+  }
+  .mini-viewport{
+    position:absolute;left:0;right:0;
+    pointer-events:none;
+    background:rgba(56,189,248,.16);
+    border-top:3px solid #38bdf8;
+    border-bottom:3px solid #38bdf8;
+    box-shadow:0 0 22px rgba(56,189,248,.55);
+    z-index:3;
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 全屏代码区 ================= -->
+<div class="code-viewport" id="codeViewport">
+  <div class="code-content" id="codeContent">
+
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span></span></div>
+    <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">int</span> i, j, n<span class="op">=</span><span class="num">1</span>, x;                  <span class="cmt">// 定义变量（n 有初值 1，i/j/x 未初始化）</span></span></div>
+    <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">for</span> (i<span class="op">=</span><span class="num">23</span>; n; i<span class="op">+=</span><span class="num">2</span>) {              <span class="cmt">// 外层：条件就是 n，i 从 23 起每次 +2（奇数）</span></span></div>
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">        <span class="kw">for</span> (j<span class="op">=</span><span class="num">1</span>, x<span class="op">=</span>i; j<span class="op">&lt;=</span><span class="num">4</span> <span class="op">&amp;&amp;</span> x<span class="op">&gt;=</span><span class="num">11</span>; j<span class="op">++</span>) { <span class="cmt">// 内层：逗号表达式同时初始化 j=1、x=i</span></span></div>
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">            <span class="kw">if</span> ((x<span class="op">+</span><span class="num">1</span>) <span class="op">%</span> (j<span class="op">+</span><span class="num">1</span>) <span class="op">==</span> <span class="num">0</span>) {   <span class="cmt">// 判断能否整除（能否按规则出售）</span></span></div>
+    <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">                x <span class="op">-=</span> (x<span class="op">+</span><span class="num">1</span>) <span class="op">/</span> (j<span class="op">+</span><span class="num">1</span>);    <span class="cmt">// 执行出售，卖掉 (x+1)/(j+1) 条</span></span></div>
+    <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">            } <span class="kw">else</span> {                    <span class="cmt">// 否则（不能整除）</span></span></div>
+    <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">                x <span class="op">=</span> <span class="num">0</span>;                  <span class="cmt">// 置 x 为 0，让内层条件 x&gt;=11 失败</span></span></div>
+    <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">                <span class="kw">break</span>;                  <span class="cmt">// 立即跳出内层 j 循环（只跳一层）</span></span></div>
+    <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">            }                          <span class="cmt">// 结束 if-else</span></span></div>
+    <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">        }                              <span class="cmt">// 结束内层 for</span></span></div>
+    <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">        <span class="kw">if</span> (j <span class="op">==</span> <span class="num">5</span> <span class="op">&amp;&amp;</span> x <span class="op">==</span> <span class="num">11</span>) {        <span class="cmt">// 4 次出售全部完成且恰好剩 11 条？</span></span></div>
+    <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">            <span class="fn">printf</span>(<span class="str">"There are %d fish. \n"</span>, i); <span class="cmt">// 输出鱼的总数</span></span></div>
+    <div class="code-line" data-line="15"><span class="ln">15</span><span class="src">            n <span class="op">=</span> <span class="num">0</span>;                     <span class="cmt">// 标记已找到，通知外层退出</span></span></div>
+    <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">        }                              <span class="cmt">// 结束 if</span></span></div>
+    <div class="code-line" data-line="17"><span class="ln">17</span><span class="src">    }                                  <span class="cmt">// 结束外层 for</span></span></div>
+    <div class="code-line" data-line="18"><span class="ln">18</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回 0，程序正常结束</span></span></div>
+    <div class="code-line" data-line="19"><span class="ln">19</span><span class="src">}                                      <span class="cmt">// main 结束，栈帧销毁</span></span></div>
+
+  </div>
+</div>
+
+<!-- ================= 顶部控制栏 ================= -->
+<div class="panel" id="panelTop">
+  <div class="panel-head">
+    <span class="panel-title">控制台</span>
+    <button class="panel-close" data-close="panelTop">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="ctl-row">
+      <button class="ctl-btn" id="btnReset">⟲ 重置</button>
+      <button class="ctl-btn" id="btnPrev">◀ 上一步</button>
+      <button class="ctl-btn primary" id="btnPlay">▶ 自动播放</button>
+      <button class="ctl-btn" id="btnNext">下一步 ▶</button>
+      <span class="speed-wrap">速度
+        <input type="range" id="speed" min="300" max="3000" step="50" value="1200">
+        <b id="speedLabel">1.20s</b>
+      </span>
+      <button class="ctl-btn" id="btnFull">⛶ 全屏</button>
+      <button class="ctl-btn" id="btnToggleMini">▣ 缩略图</button>
+      <button class="ctl-btn" id="btnToggleAll">☰ 面板</button>
+      <button class="ctl-btn" id="btnResetLayout">↺ 重置布局</button>
+    </div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 变量面板 ================= -->
+<div class="panel" id="panelVars">
+  <div class="panel-head">
+    <span class="panel-title">变量 · 循环条件 · 状态表</span>
+    <button class="panel-close" data-close="panelVars">×</button>
+  </div>
+  <div class="panel-body" id="varTable"></div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 缩略图 ================= -->
+<div class="panel" id="panelMini">
+  <div class="panel-head">
+    <span class="panel-title">代码缩略图</span>
+    <button class="panel-close" data-close="panelMini">×</button>
+  </div>
+  <div class="panel-body mini-body">
+    <div class="mini-inner" id="miniInner">
+      <div class="mini-viewport" id="miniViewport"></div>
+    </div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 输出面板 ================= -->
+<div class="panel" id="panelOut">
+  <div class="panel-head">
+    <span class="panel-title">程序运行结果（屏幕输出）</span>
+    <button class="panel-close" data-close="panelOut">×</button>
+  </div>
+  <div class="panel-body" id="consoleBody">
+    <div class="console" id="consoleText"></div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 说明条 ================= -->
+<div class="panel" id="panelExplain">
+  <div class="panel-head">
+    <span class="panel-title">当前语句说明</span>
+    <button class="panel-close" data-close="panelExplain">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="explain" id="explainText"></div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   一、逐步执行轨迹（严格还原 C 程序真实执行过程）
+   i = 23,25,27,...,59 共 19 轮外层试探
+   命中 i = 59；printf 调用 1 次；最终 i=61、j=5、x=11、n=0
+   ========================================================= */
+var STEPS = [];
+var consoleLines = [];
+
+function V(o){
+  var base = {
+    ctx:'—', i:'—', j:'—', n:'—', x:'—',
+    condOuter:'—', condInner:'—',
+    divExpr:'—', divRes:'—', sell:'—',
+    check:'—', note:'—',
+    printfCnt:'0', found:'0', ret:'—'
+  };
+  if(o){ for(var k in o){ if(Object.prototype.hasOwnProperty.call(o,k)) base[k]=o[k]; } }
+  return base;
+}
+function push(o){
+  STEPS.push({
+    line:o.line, ctx:o.ctx, vars:V(o.vars),
+    out:consoleLines.slice(),
+    hit:o.hit||[], skip:o.skip||[],
+    title:o.title, desc:o.desc
+  });
+}
+
+/* ---------- 第 1 行 ---------- */
+push({
+  line:1, ctx:'预处理阶段',
+  vars:{ note:'预处理指令，编译前处理，不占运行时间' },
+  hit:[], skip:[],
+  title:'#include &lt;stdio.h&gt; —— 引入标准输入输出头文件',
+  desc:'预处理器在编译之前把 <code>stdio.h</code> 的内容引入本文件，让后面的 <code>printf</code> 有函数声明可用。<br>这一行不是可执行语句，不产生任何屏幕输出。'
+});
+
+/* ---------- 第 2 行 ---------- */
+push({
+  line:2, ctx:'main · 程序入口',
+  vars:{ note:'main 是程序入口，从这里开始执行' },
+  hit:[], skip:[],
+  title:'int main() { —— 主函数入口',
+  desc:'操作系统把控制权交给 <code>main</code>，系统为它建立<b>栈帧</b>，变量 i、j、n、x 都存放在这个栈帧里。'
+});
+
+/* ---------- 第 3 行 ---------- */
+push({
+  line:3, ctx:'main · 声明并初始化变量',
+  vars:{
+    n:'1',
+    i:'未初始化（不定值）', j:'未初始化（不定值）', x:'未初始化（不定值）',
+    note:'n=1 表示「还没找到，继续循环」'
+  },
+  hit:[3], skip:[],
+  title:'int i, j, n=1, x; —— 声明 4 个 int 变量',
+  desc:'· <b>i</b>：外层循环变量，<b>试探的鱼的总数</b>（未初始化）；<br>· <b>j</b>：内层循环变量，表示<b>第几次出售</b>（未初始化）；<br>· <b>n</b>：标记变量，初值 <b>1</b>，表示「还没找到答案，继续循环」（有初值！）；<br>· <b>x</b>：<b>当前剩余的鱼数</b>（未初始化）。'
+});
+
+/* =========== i = 23 详细展开 =========== */
+push({
+  line:4, ctx:'main · 外层 for 第 1 轮（i = 23，n = 1）',
+  vars:{
+    i:'23', n:'1',
+    condOuter:'n = 1 → 真（非 0 即真）',
+    note:'外层条件不是 i&lt;=某值，而是 n'
+  },
+  hit:[4], skip:[],
+  title:'for (i=23; n; i+=2) —— i 初始化为 23，n=1 为真，进入外层循环',
+  desc:'外层 <code>for</code> 先把 i 赋为 <b>23</b>；条件就是 <b>n</b> 本身，n = 1 → 真，进入循环体。<br>步长 <code>i+=2</code>，每次加 2，保证试探的鱼总数一直是<b>奇数</b>。<span class="tip">外层负责<b>试探鱼总数</b>，内层负责<b>模拟 4 次出售</b>。</span>'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 初始化（j = 1，x = i = 23）',
+  vars:{
+    i:'23', j:'1', x:'23', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'1 &lt;= 4 &amp;&amp; 23 &gt;= 11 → 真',
+    note:'x 每次外层循环都重新赋值为 i'
+  },
+  hit:[5], skip:[],
+  title:'for (j=1, x=i; j&lt;=4 &amp;&amp; x&gt;=11; j++) —— 逗号表达式同时初始化 j=1、x=23',
+  desc:'内层 <code>for</code> 用<b>逗号表达式</b>同时初始化两个变量：j = <b>1</b>，x = <b>i</b> = <b>23</b>。<br>条件 <code>j&lt;=4 &amp;&amp; x&gt;=11</code>：1 ≤ 4 真，23 ≥ 11 真 → <b>整体为真</b>，进入循环体。<span class="warn">关键：x 每轮外层循环都要重新赋值为 i，不能带着上一轮的残值。</span>'
+});
+
+push({
+  line:6, ctx:'main · 整除判断（第 1 次出售）',
+  vars:{
+    i:'23', j:'1', x:'23', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'1 &lt;= 4 &amp;&amp; 23 &gt;= 11 → 真',
+    divExpr:'(x+1) % (j+1) → (23+1) % (1+1) = 24 % 2',
+    divRes:'24 % 2 = 0 → 真（能整除）',
+    note:'第 1 次卖掉 (x+1)/2 条'
+  },
+  hit:[6], skip:[],
+  title:'(23+1) % (1+1) = 24 % 2 = 0 → 真，进入出售分支',
+  desc:'<code>(x+1) % (j+1) == 0</code> 判断鱼能不能按规则分下去：<br>· x = 23，j = 1 → (x+1) = <b>24</b>，(j+1) = <b>2</b><br>· 24 % 2 = <b>0</b>，余数为 0 → 能整除，条件为真。<br>含义：第 1 次卖掉 (23+1)/2 = <b>12</b> 条。'
+});
+
+push({
+  line:7, ctx:'main · 执行出售（第 1 次）',
+  vars:{
+    i:'23', j:'1', x:'11', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'1 &lt;= 4 &amp;&amp; 23 &gt;= 11 → 真',
+    divExpr:'(23+1) % (1+1) = 0',
+    divRes:'真（能整除）',
+    sell:'x -= (x+1)/(j+1) → x = 23 - 24/2 = 23 - 12',
+    note:'第 1 次卖掉 12 条，剩 11 条'
+  },
+  hit:[7], skip:[],
+  title:'x -= (23+1)/(1+1) = 12 → x = 23 - 12 = 11',
+  desc:'· <code>(x+1)/(j+1)</code> = 24/2 = <b>12</b>（卖掉的条数）<br>· <code>x -= 12</code>（复合赋值，等价于 x = x - 12）→ x = <b>11</b><br>第 1 次出售完成，剩 11 条。'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 递增（j = 2）',
+  vars:{
+    i:'23', j:'2', x:'11', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'2 &lt;= 4 &amp;&amp; 11 &gt;= 11 → 真',
+    note:'j 加 1 后重新判断两个条件'
+  },
+  hit:[5], skip:[],
+  title:'j++ → j = 2：2 &lt;= 4 &amp;&amp; 11 &gt;= 11 → 真',
+  desc:'内层执行 <code>j++</code>，j 从 1 递增到 <b>2</b>。<br>条件检查：2 ≤ 4 真，11 ≥ 11 真 → <b>整体为真</b>，继续第 2 次出售。'
+});
+
+push({
+  line:6, ctx:'main · 整除判断（第 2 次出售）',
+  vars:{
+    i:'23', j:'2', x:'11', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'2 &lt;= 4 &amp;&amp; 11 &gt;= 11 → 真',
+    divExpr:'(x+1) % (j+1) → (11+1) % (2+1) = 12 % 3',
+    divRes:'12 % 3 = 0 → 真（能整除）',
+    note:'第 2 次卖掉 (x+1)/3 条'
+  },
+  hit:[6], skip:[],
+  title:'(11+1) % (2+1) = 12 % 3 = 0 → 真，继续出售',
+  desc:'· x = 11，j = 2 → (x+1) = <b>12</b>，(j+1) = <b>3</b><br>· 12 % 3 = <b>0</b> → 能整除，条件为真。<br>含义：第 2 次卖掉 (11+1)/3 = <b>4</b> 条。'
+});
+
+push({
+  line:7, ctx:'main · 执行出售（第 2 次）',
+  vars:{
+    i:'23', j:'2', x:'7', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'2 &lt;= 4 &amp;&amp; 11 &gt;= 11 → 真',
+    divExpr:'(11+1) % (2+1) = 0',
+    divRes:'真（能整除）',
+    sell:'x -= (x+1)/(j+1) → x = 11 - 12/3 = 11 - 4',
+    note:'第 2 次卖掉 4 条，剩 7 条'
+  },
+  hit:[7], skip:[],
+  title:'x -= (11+1)/(2+1) = 4 → x = 11 - 4 = 7',
+  desc:'· <code>(x+1)/(j+1)</code> = 12/3 = <b>4</b><br>· <code>x -= 4</code> → x = 11 - 4 = <b>7</b><br>第 2 次出售完成，剩 7 条鱼。'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 条件（假，退出内层）',
+  vars:{
+    i:'23', j:'3', x:'7', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'3 &lt;= 4 真，但 7 &gt;= 11 假 → 整体为假，退出内层循环',
+    note:'x 已小于 11，不可能再撑到第 4 次出售'
+  },
+  hit:[5], skip:[6,7,8,9,10,11],
+  title:'j = 3：3 &lt;= 4 真但 7 &gt;= 11 假 → 退出内层循环',
+  desc:'j 递增到 <b>3</b>，条件检查：<br>· <code>j &lt;= 4</code> → 3 ≤ 4 → 真<br>· <code>x &gt;= 11</code> → 7 ≥ 11 → <b>假</b><br><code>&amp;&amp;</code> 短路求值：只要有一个为假，整体为假 → <b>退出内层循环</b>。<span class="warn">此时 j = 3（不是 5），说明 i = 23 没能完整走完 4 次出售。</span>'
+});
+
+push({
+  line:13, ctx:'main · 判断是否满足「4 次后余 11 条」',
+  vars:{
+    i:'23', j:'3', x:'7', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'已退出（x &lt; 11）',
+    check:'j == 5 &amp;&amp; x == 11 → 3 == 5 → 假（短路）',
+    note:'j = 3 ≠ 5，说明没能走完 4 次出售'
+  },
+  hit:[13], skip:[14,15],
+  title:'i = 23：j = 3 ≠ 5 → 条件为假，跳过 printf',
+  desc:'内层循环结束后检查 <code>if (j == 5 &amp;&amp; x == 11)</code>：<br>· <code>j == 5</code> → 3 == 5 → <b>假</b> → <code>&amp;&amp;</code> 短路，后面的 <code>x == 11</code> 不再判断<br>· 整体为假，<b>跳过 printf</b>，i = 23 不是答案。'
+});
+
+push({
+  line:4, ctx:'main · 外层 for 递增，i 变为 25',
+  vars:{
+    i:'25', j:'3', x:'7', n:'1',
+    condOuter:'n = 1 → 真',
+    note:'i += 2 后重新判断 n'
+  },
+  hit:[4], skip:[],
+  title:'i += 2 → i = 25：n = 1 → 真，继续循环',
+  desc:'外层执行 <code>i += 2</code>，i 从 23 递增到 <b>25</b>（步长 2，保证鱼总数是奇数）。<br>n 仍为 1，条件成立，进入下一轮试探。'
+});
+
+/* ---------- 批量：i = 25 ~ 39 ---------- */
+push({
+  line:5, ctx:'main · 批量：i = 25 ~ 39（8 个奇数）',
+  vars:{
+    i:'39', j:'2', x:'0', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'各轮均已退出',
+    divExpr:'批量：每轮 j 都从 1 重新开始试',
+    divRes:'全部失败，无任何命中',
+    note:'i = 25~39 的 8 个奇数全部不是答案'
+  },
+  hit:[4,5,6,7], skip:[14,15],
+  title:'批量：i = 25 ~ 39，8 轮全部失败',
+  desc:'i 依次取 25、27、29、31、33、35、37、39，每个 i 都完整跑一遍内层：<br>· i=25：x=25→26%2=0→x=12→13%3=1≠0→<b>x=0，j=2 时 break</b><br>· i=27：x=27→28%2=0→x=13→14%3=2≠0→<b>x=0，j=2 时 break</b><br>· i=29：x=29→30%2=0→x=14→15%3=0→x=9→<b>9&lt;11，j=3 时退出</b><br>· i=31：x=31→32%2=0→x=15→16%3=1≠0→<b>x=0，j=2 时 break</b><br>· i=33：x=33→34%2=0→x=16→17%3=2≠0→<b>x=0，j=2 时 break</b><br>· i=35：x=35→36%2=0→x=17→18%3=0→x=11→12%4=0→x=8→<b>8&lt;11，j=4 时退出</b><br>· i=37：x=37→38%2=0→x=18→19%3=1≠0→<b>x=0，j=2 时 break</b><br>· i=39：x=39→40%2=0→x=19→20%3=2≠0→<b>x=0，j=2 时 break</b><br><b>所有轮次 j 都不等于 5，全部失败，无任何输出。</b>'
+});
+
+/* ---------- 批量：i = 41 ~ 57 ---------- */
+push({
+  line:5, ctx:'main · 批量：i = 41 ~ 57（9 个奇数）',
+  vars:{
+    i:'57', j:'2', x:'0', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'各轮均已退出',
+    divExpr:'批量：每轮 j 都从 1 重新开始试',
+    divRes:'全部失败，无任何命中',
+    note:'i = 41~57 的 9 个奇数全部不是答案'
+  },
+  hit:[4,5,6,7], skip:[14,15],
+  title:'批量：i = 41 ~ 57，9 轮全部失败',
+  desc:'i 依次取 41、43、45、47、49、51、53、55、57：<br>· i=41：x=41→42%2=0→x=20→21%3=0→x=13→14%4=2≠0→<b>x=0，j=3 时 break</b><br>· i=43：x=43→44%2=0→x=21→22%3=1≠0→<b>x=0，j=2 时 break</b><br>· i=45：x=45→46%2=0→x=22→23%3=2≠0→<b>x=0，j=2 时 break</b><br>· i=47：x=47→48%2=0→x=23→24%3=0→x=15→16%4=0→x=11→12%5=2≠0→<b>x=0，j=4 时 break</b><br>· i=49：x=49→50%2=0→x=24→25%3=1≠0→<b>x=0，j=2 时 break</b><br>· i=51：x=51→52%2=0→x=25→26%3=2≠0→<b>x=0，j=2 时 break</b><br>· i=53：x=53→54%2=0→x=26→27%3=0→x=17→18%4=2≠0→<b>x=0，j=3 时 break</b><br>· i=55：x=55→56%2=0→x=27→28%3=1≠0→<b>x=0，j=2 时 break</b><br>· i=57：x=57→58%2=0→x=28→29%3=2≠0→<b>x=0，j=2 时 break</b><br><b>所有轮次 j 都不等于 5，全部失败，无任何输出。</b>'
+});
+
+/* =========== i = 59 详细展开 =========== */
+push({
+  line:4, ctx:'main · 外层 for 递增，i 变为 59 ★',
+  vars:{
+    i:'59', j:'2', x:'0', n:'1',
+    condOuter:'n = 1 → 真',
+    note:'★ 答案即将出现'
+  },
+  hit:[4], skip:[],
+  title:'i += 2 → i = 59：n = 1 → 真 ★',
+  desc:'外层执行 <code>i += 2</code>，i 从 57 递增到 <b>59</b>，n 仍为 1，条件成立。<span class="tip"><b>伏笔：</b>前面 18 个奇数全部失败，答案就在 <b>i = 59</b>。</span>'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 初始化（j = 1，x = 59）★',
+  vars:{
+    i:'59', j:'1', x:'59', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'1 &lt;= 4 &amp;&amp; 59 &gt;= 11 → 真',
+    note:'x 重新赋值为 i = 59'
+  },
+  hit:[5], skip:[],
+  title:'for (j=1, x=i; ...) —— j = 1，x = 59',
+  desc:'x 重新被赋值为 i = <b>59</b>，条件 <code>1 &lt;= 4 &amp;&amp; 59 &gt;= 11</code> 为真。'
+});
+
+push({
+  line:6, ctx:'main · 整除判断（第 1 次出售）',
+  vars:{
+    i:'59', j:'1', x:'59', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'1 &lt;= 4 &amp;&amp; 59 &gt;= 11 → 真',
+    divExpr:'(59+1) % (1+1) = 60 % 2',
+    divRes:'60 % 2 = 0 → 真（能整除）',
+    note:'第 1 次卖掉 30 条'
+  },
+  hit:[6], skip:[],
+  title:'(59+1) % (1+1) = 60 % 2 = 0 → 真',
+  desc:'· (x+1) = <b>60</b>，(j+1) = <b>2</b><br>· 60 % 2 = <b>0</b> → 能整除，进入出售分支。'
+});
+
+push({
+  line:7, ctx:'main · 执行出售（第 1 次）',
+  vars:{
+    i:'59', j:'1', x:'29', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'1 &lt;= 4 &amp;&amp; 59 &gt;= 11 → 真',
+    divExpr:'(59+1) % (1+1) = 0',
+    divRes:'真（能整除）',
+    sell:'x -= 60/2 = 30 → x = 59 - 30',
+    note:'第 1 次卖掉 30 条，剩 29 条'
+  },
+  hit:[7], skip:[],
+  title:'x -= 60/2 = 30 → x = 59 - 30 = 29',
+  desc:'· <code>(x+1)/(j+1)</code> = 60/2 = <b>30</b><br>· <code>x -= 30</code> → x = 59 - 30 = <b>29</b><br>第 1 次出售完成，剩 29 条鱼。'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 递增（j = 2）',
+  vars:{
+    i:'59', j:'2', x:'29', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'2 &lt;= 4 &amp;&amp; 29 &gt;= 11 → 真',
+    note:'条件成立，继续第 2 次出售'
+  },
+  hit:[5], skip:[],
+  title:'j++ → j = 2：2 &lt;= 4 &amp;&amp; 29 &gt;= 11 → 真',
+  desc:'j 递增到 <b>2</b>，两个条件都成立，进入第 2 次出售。'
+});
+
+push({
+  line:6, ctx:'main · 整除判断（第 2 次出售）',
+  vars:{
+    i:'59', j:'2', x:'29', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'2 &lt;= 4 &amp;&amp; 29 &gt;= 11 → 真',
+    divExpr:'(29+1) % (2+1) = 30 % 3',
+    divRes:'30 % 3 = 0 → 真（能整除）',
+    note:'第 2 次卖掉 10 条'
+  },
+  hit:[6], skip:[],
+  title:'(29+1) % (2+1) = 30 % 3 = 0 → 真',
+  desc:'· (x+1) = <b>30</b>，(j+1) = <b>3</b><br>· 30 % 3 = <b>0</b> → 能整除。'
+});
+
+push({
+  line:7, ctx:'main · 执行出售（第 2 次）',
+  vars:{
+    i:'59', j:'2', x:'19', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'2 &lt;= 4 &amp;&amp; 29 &gt;= 11 → 真',
+    divExpr:'(29+1) % (2+1) = 0',
+    divRes:'真（能整除）',
+    sell:'x -= 30/3 = 10 → x = 29 - 10',
+    note:'第 2 次卖掉 10 条，剩 19 条'
+  },
+  hit:[7], skip:[],
+  title:'x -= 30/3 = 10 → x = 29 - 10 = 19',
+  desc:'· <code>(x+1)/(j+1)</code> = 30/3 = <b>10</b><br>· <code>x -= 10</code> → x = 29 - 10 = <b>19</b><br>第 2 次出售完成，剩 19 条鱼。'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 递增（j = 3）',
+  vars:{
+    i:'59', j:'3', x:'19', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'3 &lt;= 4 &amp;&amp; 19 &gt;= 11 → 真',
+    note:'条件成立，继续第 3 次出售'
+  },
+  hit:[5], skip:[],
+  title:'j++ → j = 3：3 &lt;= 4 &amp;&amp; 19 &gt;= 11 → 真',
+  desc:'j 递增到 <b>3</b>，条件成立，进入第 3 次出售。'
+});
+
+push({
+  line:6, ctx:'main · 整除判断（第 3 次出售）',
+  vars:{
+    i:'59', j:'3', x:'19', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'3 &lt;= 4 &amp;&amp; 19 &gt;= 11 → 真',
+    divExpr:'(19+1) % (3+1) = 20 % 4',
+    divRes:'20 % 4 = 0 → 真（能整除）',
+    note:'第 3 次卖掉 5 条'
+  },
+  hit:[6], skip:[],
+  title:'(19+1) % (3+1) = 20 % 4 = 0 → 真',
+  desc:'· (x+1) = <b>20</b>，(j+1) = <b>4</b><br>· 20 % 4 = <b>0</b> → 能整除。'
+});
+
+push({
+  line:7, ctx:'main · 执行出售（第 3 次）',
+  vars:{
+    i:'59', j:'3', x:'14', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'3 &lt;= 4 &amp;&amp; 19 &gt;= 11 → 真',
+    divExpr:'(19+1) % (3+1) = 0',
+    divRes:'真（能整除）',
+    sell:'x -= 20/4 = 5 → x = 19 - 5',
+    note:'第 3 次卖掉 5 条，剩 14 条'
+  },
+  hit:[7], skip:[],
+  title:'x -= 20/4 = 5 → x = 19 - 5 = 14',
+  desc:'· <code>(x+1)/(j+1)</code> = 20/4 = <b>5</b><br>· <code>x -= 5</code> → x = 19 - 5 = <b>14</b><br>第 3 次出售完成，剩 14 条鱼。'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 递增（j = 4）',
+  vars:{
+    i:'59', j:'4', x:'14', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'4 &lt;= 4 &amp;&amp; 14 &gt;= 11 → 真',
+    note:'最后一次出售（j = 4）'
+  },
+  hit:[5], skip:[],
+  title:'j++ → j = 4：4 &lt;= 4 &amp;&amp; 14 &gt;= 11 → 真',
+  desc:'j 递增到 <b>4</b>，这是最后一次出售，条件 <code>4 &lt;= 4 &amp;&amp; 14 &gt;= 11</code> 成立。'
+});
+
+push({
+  line:6, ctx:'main · 整除判断（第 4 次出售）',
+  vars:{
+    i:'59', j:'4', x:'14', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'4 &lt;= 4 &amp;&amp; 14 &gt;= 11 → 真',
+    divExpr:'(14+1) % (4+1) = 15 % 5',
+    divRes:'15 % 5 = 0 → 真（能整除）',
+    note:'第 4 次卖掉 3 条'
+  },
+  hit:[6], skip:[],
+  title:'(14+1) % (4+1) = 15 % 5 = 0 → 真',
+  desc:'· (x+1) = <b>15</b>，(j+1) = <b>5</b><br>· 15 % 5 = <b>0</b> → 能整除。'
+});
+
+push({
+  line:7, ctx:'main · 执行出售（第 4 次）★',
+  vars:{
+    i:'59', j:'4', x:'11', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'4 &lt;= 4 &amp;&amp; 14 &gt;= 11 → 真',
+    divExpr:'(14+1) % (4+1) = 0',
+    divRes:'真（能整除）',
+    sell:'x -= 15/5 = 3 → x = 14 - 3',
+    note:'★ 第 4 次卖掉 3 条，恰好剩 11 条！'
+  },
+  hit:[7], skip:[],
+  title:'★ x -= 15/5 = 3 → x = 14 - 3 = 11',
+  desc:'· <code>(x+1)/(j+1)</code> = 15/5 = <b>3</b><br>· <code>x -= 3</code> → x = 14 - 3 = <b>11</b><br><b>4 次出售完成，恰好剩下 11 条！</b>符合题目要求。'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 条件（假，正常退出）',
+  vars:{
+    i:'59', j:'5', x:'11', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'5 &lt;= 4 → 假 → 退出内层循环（j 恰好等于 5）',
+    note:'★ 正常退出，j = 5'
+  },
+  hit:[5], skip:[6,7,8,9,10,11],
+  title:'★ j = 5：5 &lt;= 4 → 假，正常退出内层循环',
+  desc:'j 递增到 <b>5</b>，条件 <code>5 &lt;= 4</code> 为假，<b>内层循环正常退出</b>。<br><b>注意：</b>这次和前面失败的 i 不一样——前面要么 break（j 停在 2、3、4），要么因 x&lt;11 提前退出；<b>只有这次 j 完整地跑到了 5</b>，同时 x = 11。<span class="tip"><b>j == 5 代表什么？</b>内层执行了 j = 1、2、3、4 共 4 次出售，然后 j++ 变成 5 退出。所以 <code>j == 5</code> 就意味着「4 次出售全部成功完成」。</span>'
+});
+
+push({
+  line:13, ctx:'main · 判断是否满足「4 次后余 11 条」 ★★★',
+  vars:{
+    i:'59', j:'5', x:'11', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'已正常退出（j = 5）',
+    check:'j == 5 &amp;&amp; x == 11 → 5 == 5 真，11 == 11 真 → 整体为真 ★',
+    note:'★ 两个条件同时满足！进入 if 体'
+  },
+  hit:[13], skip:[],
+  title:'★ j == 5 &amp;&amp; x == 11 → 真！找到答案',
+  desc:'检查两个条件：<br>· <code>j == 5</code> → 5 == 5 → <b>真</b>（4 次出售全部完成）<br>· <code>x == 11</code> → 11 == 11 → <b>真</b>（恰好剩 11 条）<br>两个条件都为真，<b>整个 if 条件为真，进入 if 体，执行第 14、15 行。</b>'
+});
+
+/* ---------- 第 14 行：printf（唯一一次） ---------- */
+consoleLines.push('There are 59 fish. ');
+push({
+  line:14, ctx:'main · printf 输出结果 ★',
+  vars:{
+    i:'59', j:'5', x:'11', n:'1',
+    condOuter:'n = 1 → 真',
+    condInner:'已退出（j = 5）',
+    check:'真',
+    printfCnt:'1',
+    found:'1',
+    note:'屏幕上出现唯一的输出行'
+  },
+  hit:[14], skip:[],
+  title:'printf("There are %d fish. \\n", i) → 输出 There are 59 fish.',
+  desc:'<code>printf("There are %d fish. \\n", i);</code> 输出结果：<br>· <code>%d</code> 被实参 <b>i = 59</b> 替换；<br>· 注意句点后有一个空格，然后 <code>\\n</code> 换行；<br>· 屏幕上出现 <b>There are 59 fish. </b><br><b>这就是本题的答案：渔夫一开始有 59 条鱼。</b><br><b>整个程序只调用 1 次 printf。</b>'
+});
+
+/* ---------- 第 15 行：n = 0 ---------- */
+push({
+  line:15, ctx:'main · 标记找到答案',
+  vars:{
+    i:'59', j:'5', x:'11', n:'0',
+    condOuter:'n = 1 → 真（本轮开始时的值）',
+    condInner:'已退出',
+    check:'真',
+    printfCnt:'1',
+    found:'1',
+    note:'外层循环下次判断 n 时会退出'
+  },
+  hit:[15], skip:[],
+  title:'n = 0; —— 标记「已找到」，通知外层循环退出',
+  desc:'<code>n = 0;</code> 把标记变量从 <b>1</b> 改成 <b>0</b>。<br>外层 <code>for (i=23; n; i+=2)</code> 的条件就是 <b>n 本身</b>，所以下一次判断条件时会变成假，从而<b>跳出外层循环</b>。<span class="tip"><b>n 的作用：</b>它像一面「小红旗」——找到答案就放倒。因为外层循环本来没有终止条件（i 会一直加下去），必须靠 n 才能停下来。</span>'
+});
+
+/* ---------- 第 4 行：外层退出 ---------- */
+push({
+  line:4, ctx:'main · 外层 for 条件（n = 0 → 假）',
+  vars:{
+    i:'61', j:'5', x:'11', n:'0',
+    condOuter:'n = 0 → 假（0 为假） → 退出外层循环',
+    condInner:'已退出',
+    check:'已完成',
+    printfCnt:'1',
+    found:'1',
+    note:'i 已加到 61，但条件已为假'
+  },
+  hit:[4], skip:[5,6,7,8,9,10,11,13,14,15],
+  title:'n = 0 → 假：外层循环结束',
+  desc:'if 体执行完毕后，外层循环继续执行 <code>i += 2</code>，i 从 59 变成 <b>61</b>。<br>然后重新判断外层条件：<code>n</code> 现在是 <b>0</b>，<b>0 在 C 语言中代表假</b>，所以条件为假，<b>外层循环退出</b>。<br><b>双重循环全部结束。</b>'
+});
+
+/* ---------- 第 18 行：return 0 ---------- */
+push({
+  line:18, ctx:'main · return',
+  vars:{
+    i:'61', j:'5', x:'11', n:'0',
+    printfCnt:'1',
+    found:'1',
+    ret:'0',
+    note:'返回 0 表示程序正常结束'
+  },
+  hit:[18], skip:[],
+  title:'return 0; —— 结束 main 函数',
+  desc:'<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。约定返回 0 表示程序正常结束。'
+});
+
+/* ---------- 第 19 行：} ---------- */
+push({
+  line:19, ctx:'程序结束',
+  vars:{
+    i:'61', j:'5', x:'11', n:'0',
+    printfCnt:'1',
+    found:'1',
+    ret:'0',
+    note:'栈帧销毁，变量随栈帧释放'
+  },
+  hit:[], skip:[],
+  title:'main 函数体结束 }',
+  desc:'函数收尾，main 的栈帧被销毁，变量 i、j、n、x 随栈帧一起释放。<br>程序没有输入，共调用 <b>1 次 printf</b>，返回值 0。<span class="tip"><b>本程序要点总结：</b><br>① <b>双重 for 嵌套</b>：外层 i 试探鱼总数（23 起步，步长 2，保证奇数），内层 j 模拟 4 次出售；<br>② <b>逗号表达式初始化</b> <code>j=1, x=i</code>：每次外层循环开始，内层都重新把 x 设回 i；<br>③ <b>双条件循环</b> <code>j&lt;=4 &amp;&amp; x&gt;=11</code>：既限制最多卖 4 次，又要求 x 不能低于 11；<br>④ <b>整除判断</b> <code>(x+1)%(j+1)==0</code>：能整除就卖掉 (x+1)/(j+1) 条，否则把 x 置 0 并 <b>break</b>；<br>⑤ <b>j == 5 是关键标志</b>：内层正常跑完 4 次后 j 才等于 5，中途 break 或 x&lt;11 都会让 j&lt;5；<br>⑥ <b>n 标记 + break</b>：找到答案后 n = 0 让外层退出。<br><b>最终答案：渔夫一开始有 59 条鱼。</b>验证：59 → 卖 30 剩 29 → 卖 10 剩 19 → 卖 5 剩 14 → 卖 3 剩 11。✓<br><b>常见错误：</b>① 把 <code>j=1, x=i</code> 写成 <code>j=1; x=i;</code>，语法错；② 忘记在内层重新给 x 赋值，导致 x 带着上一轮的残值；③ 把 <code>i+=2</code> 写成 <code>i++</code>；④ 把 <code>n=0</code> 写成 <code>n=1</code>，外层循环永不停止；⑤ 把 if 条件写成 <code>j==4</code>（内层退出后 j 是 5，不是 4）。</span>'
+});
+
+/* =========================================================
+   二、DOM 引用
+   ========================================================= */
+var codeViewport = document.getElementById('codeViewport');
+var codeContent  = document.getElementById('codeContent');
+var codeLines    = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+var varTable     = document.getElementById('varTable');
+var consoleText  = document.getElementById('consoleText');
+var explainText  = document.getElementById('explainText');
+var miniInner    = document.getElementById('miniInner');
+var miniViewport = document.getElementById('miniViewport');
+
+var panelTop     = document.getElementById('panelTop');
+var panelVars    = document.getElementById('panelVars');
+var panelMini    = document.getElementById('panelMini');
+var panelOut     = document.getElementById('panelOut');
+var panelExplain = document.getElementById('panelExplain');
+var ALL_PANELS   = [panelTop, panelVars, panelMini, panelOut, panelExplain];
+
+var btnReset       = document.getElementById('btnReset');
+var btnPrev        = document.getElementById('btnPrev');
+var btnPlay        = document.getElementById('btnPlay');
+var btnNext        = document.getElementById('btnNext');
+var btnFull        = document.getElementById('btnFull');
+var btnToggleMini  = document.getElementById('btnToggleMini');
+var btnToggleAll   = document.getElementById('btnToggleAll');
+var btnResetLayout = document.getElementById('btnResetLayout');
+var speedInput     = document.getElementById('speed');
+var speedLabel     = document.getElementById('speedLabel');
+
+/* =========================================================
+   三、变量面板行定义
+   ========================================================= */
+var VAR_ROWS = [
+  { key:'ctx',       name:'当前执行位置',                          kind:'k-ctx'   },
+  { key:'i',         name:'i  (int) 试探的鱼总数',                 kind:'k-main'  },
+  { key:'j',         name:'j  (int) 第几次出售 / 循环变量',         kind:'k-main'  },
+  { key:'n',         name:'n  (int) 标记（1继续 / 0退出）',         kind:'k-val'   },
+  { key:'x',         name:'x  (int) 当前剩余鱼数',                 kind:'k-money' },
+  { key:'condOuter', name:'外层条件 n（非0为真）',                  kind:'k-sw'    },
+  { key:'condInner', name:'内层条件 j<=4 && x>=11',                kind:'k-sw'    },
+  { key:'divExpr',   name:'整除判断 (x+1) % (j+1)',                kind:'k-sub'   },
+  { key:'divRes',    name:'判断结果',                              kind:'k-val'   },
+  { key:'sell',      name:'出售计算 x -= (x+1)/(j+1)',             kind:'k-sub'   },
+  { key:'check',     name:'if (j==5 && x==11) 判断',               kind:'k-sub'   },
+  { key:'note',      name:'关键规则提示',                           kind:'k-note'  },
+  { key:'printfCnt', name:'printf 调用次数',                       kind:'k-ret'   },
+  { key:'found',     name:'已找到方案数',                           kind:'k-ret'   },
+  { key:'ret',       name:'main 返回值',                           kind:'k-ret'   }
+];
+
+function buildVarTable(){
+  varTable.innerHTML = VAR_ROWS.map(function(r){
+    return '<div class="var-row '+r.kind+'" data-key="'+r.key+'">'+
+             '<span class="var-name">'+r.name+'</span>'+
+             '<span class="var-value dim">—</span>'+
+           '</div>';
+  }).join('');
+}
+
+/* =========================================================
+   四、缩略图生成
+   ★ 关键修复：把整行代码包进 <span class="mini-src">
+     配合 .mini-src{white-space:pre} 保留行首缩进空格
+     原先直接放进 flex 容器，纯空白文本节点会被 flex 忽略，缩进全部丢失
+   ========================================================= */
+var miniMaxUnits = 1;   /* 最长行的「等宽字符单位」宽度（中文按 2 计），用于字体自适应 */
+
+function computeMiniMaxUnits(){
+  var maxU = 0;
+  codeLines.forEach(function(el){
+    /* 克隆一份，去掉行尾注释（注释太长会把字体压得过小） */
+    var clone = el.querySelector('.src').cloneNode(true);
+    var cmts = clone.querySelectorAll('.cmt');
+    Array.prototype.forEach.call(cmts, function(c){
+      if(c.parentNode) c.parentNode.removeChild(c);
+    });
+    var t = clone.textContent || '';
+    var u = 0;
+    for(var i = 0; i < t.length; i++){
+      u += (t.charCodeAt(i) > 255) ? 2 : 1;   /* 中文等全角字符按 2 个等宽字符计 */
+    }
+    if(u > maxU) maxU = u;
+  });
+  miniMaxUnits = maxU || 1;
+}
+
+function buildMinimap(){
+  var html = '';
+  codeLines.forEach(function(el){
+    var srcHTML = el.querySelector('.src').innerHTML;
+    html += '<div class="mini-line"><span class="mini-src">'+srcHTML+'</span></div>';
+  });
+  miniViewport.insertAdjacentHTML('beforebegin', html);
+  computeMiniMaxUnits();
+}
+buildMinimap();
+var miniLines = Array.prototype.slice.call(miniInner.querySelectorAll('.mini-line'));
+
+/* =========================================================
+   五、渲染逻辑
+   ========================================================= */
+var current = -1;
+var playing = false;
+var timer   = null;
+var speed   = Number(speedInput.value);
+var lastOutSig = '';
+
+function valueOf(step, key){
+  if(!step) return '—';
+  if(key === 'ctx') return step.ctx;
+  var v = step.vars[key];
+  return (v === undefined || v === null) ? '—' : v;
+}
+
+function updateVars(step, prevStep){
+  VAR_ROWS.forEach(function(r){
+    var row = varTable.querySelector('.var-row[data-key="'+r.key+'"]');
+    if(!row) return;
+    var valEl = row.querySelector('.var-value');
+    var val = String(valueOf(step, r.key));
+    var old = String(valueOf(prevStep, r.key));
+    if(valEl.textContent !== val){
+      valEl.textContent = val;
+      valEl.classList.toggle('dim', val === '—');
+      valEl.title = val;
+      valEl.classList.remove('flash');
+      void valEl.offsetWidth;
+      valEl.classList.add('flash');
+      if(prevStep && old !== val){
+        row.classList.add('changed');
+        window.setTimeout(function(){ row.classList.remove('changed'); }, 700);
+      }
+    }
+  });
+}
+
+function updateCode(step){
+  var activeLine = step ? step.line : null;
+  var hitLines   = (step && step.hit)  || [];
+  var skipLines  = (step && step.skip) || [];
+  codeLines.forEach(function(el){
+    var n = Number(el.dataset.line);
+    el.classList.toggle('active', activeLine !== null && n === activeLine);
+    el.classList.toggle('hit',    hitLines.indexOf(n)  !== -1 && n !== activeLine);
+    el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+  });
+  /* 当前执行行如果在视野外，滚动到中间 */
+  if(activeLine !== null){
+    var el = codeLines[activeLine - 1];
+    if(el){
+      var lineH = el.offsetHeight || 1;
+      var top = el.offsetTop;
+      var bottom = top + lineH;
+      var vTop = codeViewport.scrollTop;
+      var vBottom = vTop + codeViewport.clientHeight;
+      if(top < vTop + 20 || bottom > vBottom - 20){
+        var target = top - (codeViewport.clientHeight - lineH) / 2;
+        var maxScroll = Math.max(0, codeContent.scrollHeight - codeViewport.clientHeight);
+        target = Math.max(0, Math.min(maxScroll, target));
+        try{
+          codeViewport.scrollTo({ top: target, behavior:'smooth' });
+        }catch(e){
+          codeViewport.scrollTop = target;
+        }
+      }
+    }
+  }
+}
+
+function updateOutput(){
+  var lines = (current >= 0 && STEPS[current]) ? STEPS[current].out : [];
+  var sig = lines.length + ':' + (lines.length ? lines[lines.length - 1] : '');
+  if(sig === lastOutSig) return;
+  lastOutSig = sig;
+  if(!lines.length){
+    consoleText.innerHTML = '<span style="color:#3d5474">（等待程序输出…）</span>';
+    return;
+  }
+  consoleText.innerHTML = lines.map(function(t){
+    return '<div class="out-line">'+t.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>';
+  }).join('');
+}
+
+function updateExplain(step){
+  if(!step){
+    explainText.innerHTML =
+      '<em>点击「自动播放」或「下一步」，开始逐条执行程序。<br>'+
+      '本程序用 <b>双重 for 循环</b>：外层 i 从 23 开始每次加 2（保证奇数）<b>试探鱼的总数</b>，'+
+      '内层 j 用逗号表达式 <code>j=1, x=i</code> 初始化，模拟 <b>4 次出售</b>，'+
+      '每次检查 <code>(x+1)%(j+1)==0</code>，能整除就卖掉 <code>(x+1)/(j+1)</code> 条，'+
+      '否则把 x 置 0 并 <b>break</b>。<br>'+
+      '内层结束后用 <code>if (j==5 &amp;&amp; x==11)</code> 判断是否「4 次卖完恰好剩 11 条」。<br>'+
+      '找到后设 <b>n = 0</b> 让外层循环停下。<br>'+
+      '最终答案：<b>渔夫一开始有 59 条鱼</b>。</em>';
+    return;
+  }
+  var isHit   = step.hit && step.hit.length > 0;
+  var isBatch = /批量/.test(step.title);
+  var isKey   = step.title.indexOf('★') !== -1;
+  var cls = isKey ? 'ans' : (isBatch ? 'batch' : (isHit ? 'hit' : ''));
+  explainText.innerHTML =
+    '<span class="ex-tag '+cls+'">第 '+step.line+' 行</span>'+
+    '<strong>'+step.title+'</strong> —— '+step.desc;
+}
+
+function updateMiniCurrent(lineNo){
+  miniLines.forEach(function(el, i){
+    el.classList.toggle('cur', lineNo !== null && (i + 1) === lineNo);
+  });
+}
+
+/* =========================================================
+   六、缩略图荧光框（与全屏可见区域严格同步）+ 字体自适应
+   ========================================================= */
+var syncPending = false;
+var miniFontCache = -1;
+
+function getLineHeight(){
+  if(!codeLines.length) return 1;
+  var h = codeContent.scrollHeight / codeLines.length;
+  return h > 0 ? h : (codeLines[0].offsetHeight || 1);
+}
+
+/* 根据缩略图可用宽度 + 每行高度，自动计算最合适的字号
+   目标：代码部分（去掉注释）尽量完整可见，同时保留清晰缩进 */
+function fitMiniFont(bodyH, bodyW){
+  var avail = bodyW - 10;
+  if(avail <= 0 || bodyH <= 0) return;
+  var thumbLineH = bodyH / codeLines.length;
+  var fsByWidth  = avail / miniMaxUnits / 0.6;   /* 等宽字体字符宽度 ≈ 0.6em */
+  var fsByHeight = thumbLineH * 0.82;
+  var fs = Math.min(fsByWidth, fsByHeight);
+  fs = Math.max(4, Math.min(16, fs));
+  fs = Math.round(fs * 100) / 100;
+  if(Math.abs(fs - miniFontCache) < 0.05) return;
+  miniFontCache = fs;
+  miniInner.style.setProperty('--mini-font', fs + 'px');
+}
+
+function updateMinimapViewport(){
+  var lineH = getLineHeight();
+  var bodyH = miniInner.clientHeight;
+  var bodyW = miniInner.clientWidth;
+  if(bodyH <= 0 || bodyW <= 0) return;
+
+  var totalLines = codeLines.length;                 /* 19 */
+  var thumbLineH = bodyH / totalLines;               /* 缩略图单行高度 */
+
+  /* 字体自适应（不改变布局尺寸，仅调整字号） */
+  fitMiniFont(bodyH, bodyW);
+
+  var scrollTop  = codeViewport.scrollTop;
+  var visibleRows = codeViewport.clientHeight / lineH;
+  if(visibleRows > totalLines) visibleRows = totalLines;
+
+  var top = (scrollTop / lineH) * thumbLineH;
+  var h   = visibleRows * thumbLineH;
+  if(top < 0) top = 0;
+  if(top + h > bodyH) top = Math.max(0, bodyH - h);
+
+  miniViewport.style.top    = top + 'px';
+  miniViewport.style.height = h + 'px';
+  miniViewport.style.left   = '0px';
+  miniViewport.style.right  = '0px';
+}
+
+function requestMiniSync(){
+  if(syncPending) return;
+  syncPending = true;
+  window.requestAnimationFrame(function(){
+    syncPending = false;
+    updateMinimapViewport();
+  });
+}
+
+/* 滚动同步 */
+codeViewport.addEventListener('scroll', requestMiniSync, { passive:true });
+
+/* 尺寸变化同步 */
+if(window.ResizeObserver){
+  var ro = new ResizeObserver(function(){
+    requestMiniSync();
+  });
+  ro.observe(codeViewport);
+  ro.observe(miniInner);
+}
+window.addEventListener('resize', function(){
+  requestMiniSync();
+  clampAllPanels();
+});
+window.addEventListener('orientationchange', function(){ requestMiniSync(); });
+if(document.fonts && document.fonts.ready){
+  document.fonts.ready.then(function(){ requestMiniSync(); });
+}
+window.addEventListener('load', requestMiniSync);
+
+/* 点击缩略图跳转 */
+miniInner.addEventListener('pointerdown', function(e){
+  if(e.target.closest('.resize-handle')) return;
+  var r = miniInner.getBoundingClientRect();
+  var y = e.clientY - r.top;
+  var totalLines = codeLines.length;
+  var thumbLineH = r.height / totalLines;
+  var row = Math.floor(y / thumbLineH);
+  row = Math.max(0, Math.min(totalLines - 1, row));
+
+  var lineH = getLineHeight();
+  var target = row * lineH - (codeViewport.clientHeight - lineH) / 2;
+  var maxScroll = Math.max(0, codeContent.scrollHeight - codeViewport.clientHeight);
+  target = Math.max(0, Math.min(maxScroll, target));
+  try{
+    codeViewport.scrollTo({ top: target, behavior:'smooth' });
+  }catch(err){
+    codeViewport.scrollTop = target;
+  }
+  requestMiniSync();
+});
+
+/* =========================================================
+   七、主渲染
+   ========================================================= */
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+  var prev = current > 0 ? STEPS[current - 1] : null;
+
+  updateCode(step);
+  updateVars(step, prev);
+  updateOutput();
+  updateExplain(step);
+  updateMiniCurrent(step ? step.line : null);
+  requestMiniSync();
+
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+}
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+
+function tick(){
+  if(current >= STEPS.length - 1){ pause(); return; }
+  current += 1;
+  render();
+  if(current >= STEPS.length - 1) pause();
+}
+
+function play(){
+  if(playing) return;
+  if(current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){
+  pause();
+  if(current < STEPS.length - 1){ current += 1; render(); }
+}
+
+function prevStep(){
+  pause();
+  if(current > -1){ current -= 1; render(); }
+}
+
+function resetAll(){
+  pause();
+  current = -1;
+  lastOutSig = '';
+  codeViewport.scrollTop = 0;
+  render();
+}
+
+/* =========================================================
+   八、面板：拖动 / 调整大小 / 置顶 / 关闭 / 重置布局
+   ========================================================= */
+var zTop = 100;
+
+function activatePanel(p){
+  zTop += 1;
+  p.style.zIndex = zTop;
+  ALL_PANELS.forEach(function(x){
+    x.classList.toggle('active', x === p);
+  });
+}
+
+function setPanel(p, left, top, width, height){
+  p.style.left   = (typeof left   === 'number') ? left + 'px'   : left;
+  p.style.top    = (typeof top    === 'number') ? top + 'px'    : top;
+  p.style.width  = (typeof width  === 'number') ? width + 'px'  : width;
+  p.style.height = (typeof height === 'number') ? height + 'px' : height;
+  p.style.right  = 'auto';
+  p.style.bottom = 'auto';
+}
+
+var DEFAULTS = {};
+function computeDefaults(){
+  var W = window.innerWidth, H = window.innerHeight;
+  DEFAULTS = {
+    panelTop:     { left: 16,            top: 16,               width:'auto', height:'auto' },
+    panelVars:    { left: Math.max(16, W - 800), top: 16,        width: 780,  height: Math.min(660, H * 0.58) },
+    panelMini:    { left: 16,            top: Math.max(16, H*0.18), width: 300, height: Math.min(700, H * 0.62) },
+    panelOut:     { left: Math.max(16, W - 800), top: Math.max(16, H - 360), width: 780, height: 340 },
+    panelExplain: { left: Math.max(16, W*0.20), top: Math.max(16, H - 470), width: Math.min(1000, W*0.62), height: 440 }
+  };
+}
+
+function resetLayout(){
+  computeDefaults();
+  setPanel(panelTop,     DEFAULTS.panelTop.left,     DEFAULTS.panelTop.top,     DEFAULTS.panelTop.width,     DEFAULTS.panelTop.height);
+  setPanel(panelVars,    DEFAULTS.panelVars.left,    DEFAULTS.panelVars.top,    DEFAULTS.panelVars.width,    DEFAULTS.panelVars.height);
+  setPanel(panelMini,    DEFAULTS.panelMini.left,    DEFAULTS.panelMini.top,    DEFAULTS.panelMini.width,    DEFAULTS.panelMini.height);
+  setPanel(panelOut,     DEFAULTS.panelOut.left,     DEFAULTS.panelOut.top,     DEFAULTS.panelOut.width,     DEFAULTS.panelOut.height);
+  setPanel(panelExplain, DEFAULTS.panelExplain.left, DEFAULTS.panelExplain.top, DEFAULTS.panelExplain.width, DEFAULTS.panelExplain.height);
+
+  ALL_PANELS.forEach(function(p){
+    p.classList.remove('hidden');
+    p.classList.remove('active');
+  });
+  /* 恢复默认层级顺序 */
+  zTop = 100;
+  panelTop.style.zIndex     = (++zTop);
+  panelVars.style.zIndex    = (++zTop);
+  panelMini.style.zIndex    = (++zTop);
+  panelOut.style.zIndex     = (++zTop);
+  panelExplain.style.zIndex = (++zTop);
+
+  miniFontCache = -1;   /* 让字体重新自适应一次 */
+  requestMiniSync();
+}
+
+/* 保持面板至少有部分在视口内 */
+function clampAllPanels(){
+  ALL_PANELS.forEach(function(p){
+    if(p.classList.contains('hidden')) return;
+    var r = p.getBoundingClientRect();
+    var left = r.left, top = r.top;
+    var maxL = window.innerWidth  - 60;
+    var maxT = window.innerHeight - 40;
+    if(left > maxL){ p.style.left = maxL + 'px'; }
+    if(top  > maxT){ p.style.top  = maxT + 'px'; }
+    if(left + r.width  < 60){ p.style.left = (60 - r.width) + 'px'; }
+    if(top  + r.height < 40){ p.style.top  = '8px'; }
+  });
+}
+
+function startDrag(panel, e){
+  e.preventDefault();
+  var r = panel.getBoundingClientRect();
+  /* 首次拖动时把尺寸固定下来，避免后续布局抖动 */
+  if(getComputedStyle(panel).width === 'auto' || panel.style.width === 'auto' || !panel.style.width){
+    panel.style.width  = r.width + 'px';
+  }
+  if(panel.style.height === 'auto' || !panel.style.height){
+    panel.style.height = r.height + 'px';
+  }
+  var ox = e.clientX - r.left;
+  var oy = e.clientY - r.top;
+
+  function move(ev){
+    var nl = ev.clientX - ox;
+    var nt = ev.clientY - oy;
+    var w = panel.offsetWidth, h = panel.offsetHeight;
+    nl = Math.max(-w + 80, Math.min(window.innerWidth - 80, nl));
+    nt = Math.max(0, Math.min(window.innerHeight - 40, nt));
+    panel.style.left = nl + 'px';
+    panel.style.top  = nt + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+  }
+  function up(){
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    document.removeEventListener('pointercancel', up);
+    requestMiniSync();
+  }
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+  document.addEventListener('pointercancel', up);
+}
+
+function startResize(panel, e){
+  e.preventDefault();
+  e.stopPropagation();
+  var r = panel.getBoundingClientRect();
+  var startW = r.width, startH = r.height;
+  var sx = e.clientX, sy = e.clientY;
+
+  function move(ev){
+    /* 不设最小/最大限制，完全由用户控制 */
+    var nw = startW + (ev.clientX - sx);
+    var nh = startH + (ev.clientY - sy);
+    panel.style.width  = nw + 'px';
+    panel.style.height = nh + 'px';
+    panel.style.right  = 'auto';
+    panel.style.bottom = 'auto';
+    requestMiniSync();
+  }
+  function up(){
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    document.removeEventListener('pointercancel', up);
+    requestMiniSync();
+  }
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+  document.addEventListener('pointercancel', up);
+}
+
+/* 绑定面板交互 */
+ALL_PANELS.forEach(function(p){
+  /* 点击置顶（捕获阶段） */
+  p.addEventListener('pointerdown', function(){ activatePanel(p); }, true);
+  p.addEventListener('focusin', function(){ activatePanel(p); });
+
+  var head = p.querySelector('.panel-head');
+  head.addEventListener('pointerdown', function(e){
+    if(e.target.closest('button')) return;
+    startDrag(p, e);
+  });
+
+  var rh = p.querySelector('.resize-handle');
+  if(rh){
+    rh.addEventListener('pointerdown', function(e){
+      startResize(p, e);
+    });
+  }
+
+  var closeBtn = p.querySelector('.panel-close');
+  if(closeBtn){
+    closeBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      p.classList.add('hidden');
+    });
+  }
+});
+
+/* 关闭按钮 data-close 兜底（等价处理） */
+document.querySelectorAll('[data-close]').forEach(function(btn){
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var el = document.getElementById(btn.getAttribute('data-close'));
+    if(el) el.classList.add('hidden');
+  });
+});
+
+/* =========================================================
+   九、按钮与快捷键
+   ========================================================= */
+btnPlay.addEventListener('click', function(){ playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if(playing){
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+btnFull.addEventListener('click', function(){
+  if(!document.fullscreenElement){
+    if(document.documentElement.requestFullscreen){
+      document.documentElement.requestFullscreen().catch(function(){});
+    }
+  }else{
+    if(document.exitFullscreen) document.exitFullscreen();
+  }
+});
+
+btnToggleMini.addEventListener('click', function(){
+  panelMini.classList.toggle('hidden');
+  if(!panelMini.classList.contains('hidden')){
+    activatePanel(panelMini);
+    miniFontCache = -1;
+  }
+  requestMiniSync();
+});
+
+var allHidden = false;
+btnToggleAll.addEventListener('click', function(){
+  allHidden = !allHidden;
+  ALL_PANELS.forEach(function(p){
+    p.classList.toggle('hidden', allHidden);
+  });
+  if(!allHidden){
+    panelTop.classList.remove('hidden');
+    miniFontCache = -1;
+    requestMiniSync();
+  }
+});
+
+btnResetLayout.addEventListener('click', function(){
+  resetLayout();
+});
+
+document.addEventListener('keydown', function(e){
+  if(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  if(e.code === 'Space'){ e.preventDefault(); playing ? pause() : play(); }
+  else if(e.code === 'ArrowRight'){ e.preventDefault(); nextStep(); }
+  else if(e.code === 'ArrowLeft'){ e.preventDefault(); prevStep(); }
+  else if(e.code === 'KeyR'){ e.preventDefault(); resetAll(); }
+  else if(e.code === 'KeyF'){
+    e.preventDefault();
+    if(!document.fullscreenElement){
+      if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function(){});
+    }else{
+      if(document.exitFullscreen) document.exitFullscreen();
+    }
+  }
+  else if(e.code === 'KeyM'){
+    e.preventDefault();
+    panelMini.classList.toggle('hidden');
+    if(!panelMini.classList.contains('hidden')){
+      activatePanel(panelMini);
+      miniFontCache = -1;
+    }
+    requestMiniSync();
+  }
+  else if(e.code === 'KeyH'){
+    e.preventDefault();
+    var anyVisible = ALL_PANELS.some(function(p){ return !p.classList.contains('hidden'); });
+    ALL_PANELS.forEach(function(p){ p.classList.toggle('hidden', anyVisible); });
+    if(!anyVisible){ panelTop.classList.remove('hidden'); }
+    miniFontCache = -1;
+    requestMiniSync();
+  }
+});
+
+/* =========================================================
+   十、初始化
+   ========================================================= */
+buildVarTable();
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+resetLayout();
+render();
+requestMiniSync();
+window.setTimeout(requestMiniSync, 120);
+window.setTimeout(requestMiniSync, 600);
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1721 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 亲密数对查找 · 嵌套 for · 两级因子和 · 1~10000 · 希沃大屏版</title>
+<style>
+/* =========================================================
+   全局变量：极端大字号（1920×1080 下后排 10 米可读）
+   ========================================================= */
+:root{
+  --code-font: clamp(80px, 4.8vw, 150px);
+  --ln-font:   clamp(56px, 3.2vw, 100px);
+  --out-font:  clamp(72px, 4.2vw, 130px);
+  --var-font:  clamp(40px, 2.3vw, 70px);
+  --explain-font: clamp(48px, 2.6vw, 80px);
+  --btn-font:  clamp(40px, 2vw, 60px);
+  --title-font: clamp(48px, 2.6vw, 80px);
+
+  --bg:#0d1117;
+  --panel-bg:rgba(13,17,23,.86);
+  --border:rgba(56,189,248,.35);
+  --accent:#38bdf8;
+  --green:#4ade80;
+  --amber:#fbbf24;
+  --pink:#f472b6;
+  --purple:#c084fc;
+  --teal:#2dd4bf;
+  --orange:#fb923c;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;}
+body{
+  background:var(--bg);
+  color:#dce8f8;
+  font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* =========================================================
+   1. 全屏代码区（不透明、不被永久遮挡）
+   ========================================================= */
+#codeScroll{
+  position:fixed;
+  inset:0;
+  overflow:auto;
+  background:#0d1117;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  scrollbar-width:thin;
+  scrollbar-color:#334155 #0d1117;
+  z-index:1;
+}
+#codeScroll::-webkit-scrollbar{width:18px;height:18px;}
+#codeScroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+#codeScroll::-webkit-scrollbar-track{background:#0d1117;}
+
+.code-line{
+  display:flex;
+  align-items:baseline;
+  white-space:pre;
+  line-height:1.32;
+  font-size:var(--code-font);
+  padding:0 .45em 0 0;
+  border-left:12px solid transparent;
+  min-width:100%;
+  width:max-content;
+  transition:background .25s,border-color .25s,opacity .25s;
+}
+.code-line .ln{
+  flex:0 0 auto;
+  display:inline-block;
+  min-width:2.4em;
+  text-align:right;
+  padding:0 .35em 0 .25em;
+  color:#3f5a7d;
+  font-size:var(--ln-font);
+  line-height:calc(var(--code-font) * 1.32);
+  user-select:none;
+  font-variant-numeric:tabular-nums;
+}
+.code-line .src{flex:0 0 auto;}
+
+.code-line.hit{
+  background:rgba(74,222,128,.10);
+  border-left-color:rgba(74,222,128,.55);
+}
+.code-line.hit .ln{color:#4ade80;}
+.code-line.skip{opacity:.26;}
+.code-line.active{
+  background:linear-gradient(90deg,rgba(56,189,248,.30),rgba(56,189,248,.06));
+  border-left-color:#38bdf8;
+  box-shadow:inset 0 0 0 2px rgba(56,189,248,.38);
+  opacity:1;
+}
+.code-line.active .ln{color:#38bdf8;font-weight:800;}
+
+.pp{color:var(--purple);font-weight:700;}
+.str{color:var(--green);}
+.cmt{color:#64748b;font-style:italic;}
+.fn{color:var(--accent);}
+.kw{color:var(--pink);font-weight:700;}
+.num{color:var(--amber);}
+.op{color:var(--orange);font-weight:700;}
+
+/* =========================================================
+   2. 悬浮面板
+   ========================================================= */
+.panel{
+  position:fixed;
+  background:var(--panel-bg);
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+  border:3px solid var(--border);
+  border-radius:22px;
+  box-shadow:0 24px 70px rgba(0,0,0,.72);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  z-index:10;
+  transition:border-color .18s, box-shadow .18s;
+}
+.panel.active-panel{
+  border-color:#38bdf8;
+  box-shadow:0 0 0 4px rgba(56,189,248,.35), 0 26px 80px rgba(0,0,0,.85);
+}
+.panel-head{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  gap:.5em;
+  padding:.18em .35em .18em .7em;
+  cursor:move;
+  user-select:none;
+  touch-action:none;
+  background:linear-gradient(180deg,rgba(56,189,248,.24),rgba(56,189,248,.05));
+  border-bottom:3px solid rgba(56,189,248,.25);
+}
+.panel-title{
+  font-size:var(--title-font);
+  font-weight:800;
+  color:#e2f2ff;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  letter-spacing:.02em;
+}
+.panel-hint{
+  font-size:calc(var(--title-font) * .62);
+  color:#7d93b3;
+  white-space:nowrap;
+  margin-left:.6em;
+}
+.panel-close{
+  margin-left:auto;
+  flex:0 0 auto;
+  width:clamp(48px,3vw,76px);
+  height:clamp(48px,3vw,76px);
+  display:flex;align-items:center;justify-content:center;
+  font-size:clamp(28px,1.8vw,46px);
+  line-height:1;
+  border:3px solid rgba(248,113,113,.55);
+  background:rgba(248,113,113,.18);
+  color:#fca5a5;
+  border-radius:14px;
+  cursor:pointer;
+  font-family:inherit;
+  font-weight:800;
+  transition:background .15s,border-color .15s;
+}
+.panel-close:hover{background:rgba(248,113,113,.4);border-color:#f87171;color:#fff;}
+
+.panel-body{
+  flex:1 1 auto;
+  min-height:0;
+  min-width:0;
+  overflow:auto;
+  padding:.35em .5em;
+  scrollbar-width:thin;
+  scrollbar-color:#334155 transparent;
+}
+.panel-body::-webkit-scrollbar{width:14px;height:14px;}
+.panel-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+
+.rz{
+  position:absolute;
+  right:0;bottom:0;
+  width:clamp(46px,3vw,72px);
+  height:clamp(46px,3vw,72px);
+  cursor:nwse-resize;
+  touch-action:none;
+  z-index:30;
+  background:
+    linear-gradient(135deg,transparent 58%,rgba(56,189,248,.85) 58%,rgba(56,189,248,.85) 68%,transparent 68%),
+    linear-gradient(135deg,transparent 74%,rgba(56,189,248,.5) 74%,rgba(56,189,248,.5) 84%,transparent 84%);
+}
+
+/* =========================================================
+   3. 顶部控制栏
+   ========================================================= */
+#panelTop{background:rgba(13,17,23,.75);}
+#panelTop:hover{background:rgba(13,17,23,.96);}
+#panelTop .panel-body{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:.35em .5em;
+  overflow:visible;
+}
+button{
+  font-family:inherit;
+  font-size:var(--btn-font);
+  padding:.22em .62em;
+  min-height:72px;
+  border-radius:16px;
+  border:3px solid rgba(56,189,248,.35);
+  background:rgba(30,45,70,.8);
+  color:#dce8f8;
+  cursor:pointer;
+  white-space:nowrap;
+  transition:background .15s,border-color .15s,transform .1s;
+  touch-action:manipulation;
+  font-weight:700;
+}
+button:hover:not(:disabled){background:rgba(45,70,110,.95);border-color:#38bdf8;}
+button:active:not(:disabled){transform:translateY(2px);}
+button:disabled{opacity:.3;cursor:not-allowed;}
+button.primary{
+  background:linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#7dd3fc;color:#04121f;
+}
+button.primary.playing{
+  background:linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24;color:#1a1200;
+}
+.speed{
+  display:flex;align-items:center;gap:.4em;
+  font-size:var(--btn-font);color:#9db4d0;white-space:nowrap;
+}
+.speed input{
+  width:clamp(180px,11vw,340px);
+  height:52px;
+  accent-color:var(--accent);
+  cursor:pointer;
+}
+.speed b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:3.6em;display:inline-block;}
+
+/* =========================================================
+   4. 变量表
+   ========================================================= */
+#varTable{display:flex;flex-direction:column;gap:.1em;}
+.var-row{
+  display:flex;justify-content:space-between;align-items:center;gap:.6em;
+  padding:.14em .5em;
+  border-radius:12px;
+  background:rgba(13,23,40,.85);
+  border:2px solid #1b293f;
+  font-size:var(--var-font);
+  transition:background .3s,border-color .3s;
+}
+.var-row.k-ctx{background:rgba(18,40,68,.9);border-color:#26456b;}
+.var-row.k-main{border-left:10px solid rgba(74,222,128,.85);}
+.var-row.k-sub{border-left:10px solid rgba(56,189,248,.9);}
+.var-row.k-val{border-left:10px solid rgba(244,114,182,.9);}
+.var-row.k-sw{border-left:10px solid rgba(45,212,191,.9);}
+.var-row.k-money{border-left:10px solid rgba(251,191,36,.95);}
+.var-row.k-note{border-left:10px solid rgba(45,212,191,.7);}
+.var-row.k-ret{border-left:10px solid rgba(251,191,36,.55);}
+.var-row.k-pair{border-left:10px solid rgba(244,114,182,.95);}
+.var-row.changed{border-color:rgba(56,189,248,.9);background:rgba(56,189,248,.16);}
+.var-name{color:#8aa3c4;white-space:nowrap;font-weight:600;}
+.var-value{
+  font-family:ui-monospace,Consolas,monospace;
+  font-weight:800;
+  color:var(--accent);
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+  text-align:right;
+}
+.var-value.dim{color:#5f7796;font-weight:500;}
+.var-row.k-main .var-value{color:var(--green);}
+.var-row.k-val .var-value{color:var(--pink);}
+.var-row.k-sw .var-value{color:var(--teal);}
+.var-row.k-money .var-value{color:var(--amber);}
+.var-row.k-pair .var-value{color:var(--pink);}
+.var-row.k-note .var-value{color:var(--teal);font-size:.86em;}
+@keyframes flash{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.22);color:#fff;text-shadow:0 0 18px var(--accent);}
+  100%{transform:scale(1);}
+}
+.var-value.flash{animation:flash .55s ease-out;}
+
+/* =========================================================
+   5. 程序输出面板
+   ========================================================= */
+#consoleBody{
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);
+  line-height:1.42;
+  white-space:pre;
+  color:#e8f2ff;
+}
+#consoleBody:empty::before{content:"（等待程序输出…）";color:#3d5474;}
+.out-line{animation:slideIn .4s ease-out;}
+.seg-money{color:var(--amber);font-weight:800;}
+.seg-pair{color:var(--pink);font-weight:800;}
+@keyframes slideIn{from{opacity:0;transform:translateX(-14px);}to{opacity:1;transform:none;}}
+
+/* =========================================================
+   6. 说明条
+   ========================================================= */
+#explainBody{
+  font-size:var(--explain-font);
+  line-height:1.55;
+  color:#c4d6ee;
+}
+#explainBody .ex-line{
+  display:inline-block;margin-right:.5em;padding:.05em .5em;
+  border-radius:12px;background:rgba(56,189,248,.22);
+  color:#7dd3fc;font-weight:800;font-size:.82em;vertical-align:middle;
+}
+#explainBody .ex-line.hit{background:rgba(74,222,128,.22);color:#86efac;}
+#explainBody .ex-line.batch{background:rgba(192,132,252,.24);color:#e9d5ff;}
+#explainBody .ex-line.pair{background:rgba(244,114,182,.24);color:#fbcfe8;}
+#explainBody strong{color:#ffffff;}
+#explainBody code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(148,163,184,.18);border-radius:8px;
+  padding:0 .3em;color:#f0f6ff;
+}
+#explainBody .tip{
+  display:block;margin-top:.4em;padding:.35em .6em;border-radius:12px;
+  background:rgba(45,212,191,.12);border-left:10px solid var(--teal);
+  color:#bff5ec;font-size:.9em;
+}
+
+/* =========================================================
+   7. 缩略图（VSCode minimap）
+   ========================================================= */
+.mini-wrap{position:relative;flex:1 1 auto;min-height:0;min-width:0;}
+#miniBody{
+  position:absolute;inset:0;
+  overflow:hidden;
+  background:rgba(5,12,23,.55);
+  border-radius:12px;
+}
+.mini-line{
+  position:absolute;
+  left:0;right:0;
+  overflow:hidden;
+  white-space:pre;
+  opacity:.88;
+  padding-left:4px;
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+}
+#miniViewport{
+  position:absolute;
+  left:0;right:0;
+  background:rgba(56,189,248,.16);
+  border-top:3px solid #38bdf8;
+  border-bottom:3px solid #38bdf8;
+  box-shadow:0 0 26px rgba(56,189,248,.55);
+  pointer-events:none;
+  z-index:5;
+}
+#miniCurrent{
+  position:absolute;
+  left:0;right:0;
+  background:rgba(74,222,128,.42);
+  border-left:6px solid #4ade80;
+  pointer-events:none;
+  z-index:6;
+}
+
+@media (max-width:900px){
+  :root{
+    --code-font:clamp(56px,7vw,90px);
+    --ln-font:clamp(40px,5vw,64px);
+    --out-font:clamp(48px,6vw,80px);
+    --var-font:clamp(28px,3.6vw,48px);
+    --explain-font:clamp(30px,4vw,52px);
+    --btn-font:clamp(28px,3.4vw,44px);
+    --title-font:clamp(30px,3.8vw,52px);
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- =========================================================
+     全屏代码区：共 22 行，每行代码与行尾注释同占一行，绝不折行
+     ========================================================= -->
+<div id="codeScroll">
+  <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+  <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span></span></div>
+  <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">int</span> i, j, k, sum1, sum2;           <span class="cmt">// 定义变量</span></span></div>
+  <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">for</span> (i<span class="op">=</span><span class="num">1</span>; i<span class="op">&lt;=</span><span class="num">10000</span>; i<span class="op">++</span>) {     <span class="cmt">// 遍历1~10000</span></span></div>
+  <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">        sum1 <span class="op">=</span> <span class="num">0</span>;                      <span class="cmt">// 初始化sum1为0</span></span></div>
+  <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">        sum2 <span class="op">=</span> <span class="num">0</span>;                      <span class="cmt">// 初始化sum2为0</span></span></div>
+  <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">        <span class="kw">for</span> (j<span class="op">=</span><span class="num">1</span>; j<span class="op">&lt;</span>i; j<span class="op">++</span>) {            <span class="cmt">// 求 i 的真因子和 sum1</span></span></div>
+  <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">            <span class="kw">if</span> (i <span class="op">%</span> j <span class="op">==</span> <span class="num">0</span>) {             <span class="cmt">// 若 j 是 i 的因子</span></span></div>
+  <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">                sum1 <span class="op">+=</span> j;               <span class="cmt">// 累加因子</span></span></div>
+  <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">            }</span></div>
+  <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">        }</span></div>
+  <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">        <span class="kw">for</span> (k<span class="op">=</span><span class="num">1</span>; k<span class="op">&lt;</span>sum1; k<span class="op">++</span>) {         <span class="cmt">// 求 sum1 的真因子和 sum2</span></span></div>
+  <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">            <span class="kw">if</span> (sum1 <span class="op">%</span> k <span class="op">==</span> <span class="num">0</span>) {          <span class="cmt">// 若 k 是 sum1 的因子</span></span></div>
+  <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">                sum2 <span class="op">+=</span> k;               <span class="cmt">// 累加因子</span></span></div>
+  <div class="code-line" data-line="15"><span class="ln">15</span><span class="src">            }</span></div>
+  <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">        }</span></div>
+  <div class="code-line" data-line="17"><span class="ln">17</span><span class="src">        <span class="kw">if</span> (sum2 <span class="op">==</span> i <span class="op">&amp;&amp;</span> i <span class="op">&lt;</span> sum1) {     <span class="cmt">// 双向相等且 i &lt; sum1 去重</span></span></div>
+  <div class="code-line" data-line="18"><span class="ln">18</span><span class="src">            <span class="fn">printf</span>(<span class="str">"%d, %d\n"</span>, i, sum1); <span class="cmt">// 输出亲密数对</span></span></div>
+  <div class="code-line" data-line="19"><span class="ln">19</span><span class="src">        }</span></div>
+  <div class="code-line" data-line="20"><span class="ln">20</span><span class="src">    }</span></div>
+  <div class="code-line" data-line="21"><span class="ln">21</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回0，程序结束</span></span></div>
+  <div class="code-line" data-line="22"><span class="ln">22</span><span class="src">}</span></div>
+</div>
+
+<!-- =========================================================
+     顶部控制栏
+     ========================================================= -->
+<div class="panel" id="panelTop" style="left:12px;top:12px;">
+  <div class="panel-head">
+    <span class="panel-title">亲密数对查找 · 三重嵌套 for</span>
+    <span class="panel-hint" id="stepCounter">步骤 — / —</span>
+    <button class="panel-close" data-close="panelTop" title="关闭（按 H 重新显示）">✕</button>
+  </div>
+  <div class="panel-body">
+    <button id="btnReset">⟲ 重置</button>
+    <button id="btnPrev">◀ 上一步</button>
+    <button id="btnPlay" class="primary">▶ 自动播放</button>
+    <button id="btnNext">下一步 ▶</button>
+    <label class="speed">速度 <input type="range" id="speed" min="200" max="2000" step="50" value="700"><b id="speedLabel">0.70s</b></label>
+    <button id="btnFull">⛶ 全屏</button>
+    <button id="btnPanels">👁 面板</button>
+    <button id="btnMini">🗺 缩略图</button>
+    <button id="btnLayout">↺ 重置布局</button>
+  </div>
+  <div class="rz"></div>
+</div>
+
+<!-- =========================================================
+     变量 / 循环条件 / 状态面板
+     ========================================================= -->
+<div class="panel" id="panelVars">
+  <div class="panel-head">
+    <span class="panel-title">变量 · 循环条件 · 状态</span>
+    <button class="panel-close" data-close="panelVars">✕</button>
+  </div>
+  <div class="panel-body" id="varTable"></div>
+  <div class="rz"></div>
+</div>
+
+<!-- =========================================================
+     程序输出面板
+     ========================================================= -->
+<div class="panel" id="panelOut">
+  <div class="panel-head">
+    <span class="panel-title">程序运行结果（1~10000 亲密数对）</span>
+    <button class="panel-close" data-close="panelOut">✕</button>
+  </div>
+  <div class="panel-body"><div id="consoleBody"></div></div>
+  <div class="rz"></div>
+</div>
+
+<!-- =========================================================
+     当前语句说明条
+     ========================================================= -->
+<div class="panel" id="panelExplain">
+  <div class="panel-head">
+    <span class="panel-title">当前语句说明</span>
+    <button class="panel-close" data-close="panelExplain">✕</button>
+  </div>
+  <div class="panel-body" id="explainBody"></div>
+  <div class="rz"></div>
+</div>
+
+<!-- =========================================================
+     代码缩略图（VSCode minimap）
+     ========================================================= -->
+<div class="panel" id="panelMini">
+  <div class="panel-head">
+    <span class="panel-title">缩略图</span>
+    <button class="panel-close" data-close="panelMini">✕</button>
+  </div>
+  <div class="mini-wrap">
+    <div id="miniBody">
+      <div id="miniViewport"></div>
+      <div id="miniCurrent" style="display:none;"></div>
+    </div>
+  </div>
+  <div class="rz"></div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+/* =========================================================
+   0. 常量
+   ========================================================= */
+var LINES = 22;      /* 源代码共 22 行 */
+
+/* =========================================================
+   1. 逐步执行轨迹
+      —— 严格对照 C 语言真实执行顺序
+      —— 详细展示 i = 1、i = 220、i = 1184 三轮
+      —— 批量跳过其他区间
+      —— printf 共调用 5 次，输出 5 对亲密数对
+      —— 最终 i = 10001，main 返回值 0
+   ========================================================= */
+function buildSteps() {
+  var st = [];
+  var i = null, j = null, k = null;
+  var sum1 = null, sum2 = null;
+  var printed = 0;
+  var pairs = [];        /* [[a,b], ...] */
+  var outLines = [];     /* 输出行（每行是 seg 数组） */
+  var ret = '—';
+
+  function fmt(v) { return v === null ? '未初始化（不定值）' : String(v); }
+
+  function snapOut() {
+    return outLines.length ? outLines.map(function (l) { return l.slice(); }) : null;
+  }
+  function pushPairLine(a, b) {
+    outLines.push([
+      { t: String(a), c: 'pair' },
+      { t: ', ', c: 'out' },
+      { t: String(b), c: 'pair' }
+    ]);
+  }
+
+  function push(o) {
+    var v = {
+      i: fmt(i), j: fmt(j), k: fmt(k),
+      sum1: fmt(sum1), sum2: fmt(sum2),
+      condI: '—', condJ: '—', condK: '—', condOut: '—',
+      subExpr: '—', subVal: '—', note: '—',
+      prints: printed, pairCnt: String(pairs.length),
+      ret: ret
+    };
+    if (o.v) {
+      for (var kk in o.v) {
+        if (Object.prototype.hasOwnProperty.call(o.v, kk)) v[kk] = o.v[kk];
+      }
+    }
+    st.push({
+      line: o.line, ctx: o.ctx, vars: v,
+      out: snapOut(),
+      hit: o.hit || [], skip: o.skip || [],
+      title: o.title, desc: o.desc
+    });
+  }
+
+  /* ============ 第 1 行 ============ */
+  push({
+    line: 1, ctx: '预处理阶段',
+    v: { i:'—', j:'—', k:'—', sum1:'—', sum2:'—',
+         subExpr:'#include <stdio.h>',
+         subVal:'引入标准输入输出头文件',
+         note:'预处理指令，编译前已处理' },
+    title: '预处理指令 #include &lt;stdio.h&gt;',
+    desc: '预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容在<b>编译之前</b>引入源文件，让 <code>printf</code> 获得正确的函数声明。<br>这一行<b>不是 C 语句</b>，不占运行时间，也不产生任何屏幕输出。'
+  });
+
+  /* ============ 第 2 行 ============ */
+  push({
+    line: 2, ctx: 'main · 程序入口',
+    v: { i:'—', j:'—', k:'—', sum1:'—', sum2:'—',
+         subExpr:'int main()',
+         subVal:'程序开始',
+         note:'main 是程序入口' },
+    title: 'int main() {  程序从这里开始',
+    desc: '操作系统把控制权交给 <code>main</code>，程序正式开始执行。系统为 main 建立<b>栈帧</b>，变量 i、j、k、sum1、sum2 都存放在这个栈帧里，函数结束时随栈帧一起销毁。'
+  });
+
+  /* ============ 第 3 行 ============ */
+  push({
+    line: 3, ctx: 'main · 声明 5 个整型变量',
+    v: { i:'未初始化（不定值）', j:'未初始化（不定值）', k:'未初始化（不定值）',
+         sum1:'未初始化（不定值）', sum2:'未初始化（不定值）',
+         subExpr:'int i, j, k, sum1, sum2;',
+         subVal:'5 个变量均未初始化',
+         note:'i=外层候选数；j、k=两轮内层枚举；sum1、sum2=两级因子和' },
+    title: 'int i, j, k, sum1, sum2;  声明 5 个变量',
+    desc: '一条语句声明 5 个 <b>int</b> 变量，分工如下：<br>' +
+          '· <b>i</b>：外层循环的<b>候选数</b>，从 1 遍历到 10000；<br>' +
+          '· <b>j</b>：第一层内层循环，枚举 i 的真因子；<br>' +
+          '· <b>k</b>：第二层内层循环，枚举 sum1 的真因子；<br>' +
+          '· <b>sum1</b>：i 的所有真因子之和；<br>' +
+          '· <b>sum2</b>：sum1 的所有真因子之和。' +
+          '<span class="tip"><b>什么是亲密数对？</b>若 a 的真因子之和等于 b，而 b 的真因子之和又恰好等于 a，则 (a, b) 称为一对<b>亲密数对</b>。<br>' +
+          '<b>经典例子：</b>220 的真因子是 1,2,4,5,10,11,20,22,44,55,110，和为 <b>284</b>；而 284 的真因子是 1,2,4,71,142，和为 <b>220</b>。所以 (220, 284) 是一对亲密数。<br>' +
+          '<b>10000 以内的亲密数对共 5 对：</b>(220, 284)、(1184, 1210)、(2620, 2924)、(5020, 5564)、(6232, 6368)。</span>'
+  });
+
+  /* ================= i = 1 ================= */
+  i = 1;
+  push({
+    line: 4, ctx: 'main · 外层 for 条件（i = 1）',
+    v: { i:'1', j:fmt(j), k:fmt(k), sum1:fmt(sum1), sum2:fmt(sum2),
+         condI:'1 <= 10000 → 真',
+         subExpr:'for (i=1; i<=10000; i++)',
+         subVal:'初始化 i = 1；1 <= 10000 成立',
+         note:'外层初始化，遍历 1~10000' },
+    hit: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    title: 'for (i=1; 1 &lt;= 10000; i++)  首次判断，条件为真',
+    desc: '进入外层 <code>for</code>，执行顺序为：<br>' +
+          '① <b>初始化</b> <code>i=1</code>（整个循环只执行 1 次）；<br>' +
+          '② <b>条件</b> <code>i &lt;= 10000</code>，为真；<br>' +
+          '③ 循环体（第 5~19 行）；④ <code>i++</code>；⑤ 再判断条件。<br>' +
+          '外层循环最多执行 <b>10000 次</b>。' +
+          '<span class="tip"><b>为什么不逐轮展示 10000 次？</b>因为内层循环极其庞大——比如 i=9999 时内层 j 要枚举 9998 次。<br>' +
+          '为了突出关键环节，本模拟<b>详细展示</b> i = 1、i = 220、i = 1184 三轮，其余区间<b>批量跳过</b>并在说明中给出关键统计。</span>'
+  });
+
+  sum1 = 0;
+  push({
+    line: 5, ctx: 'main · sum1 归零（i = 1）',
+    v: { i:'1', j:fmt(j), k:fmt(k), sum1:'0', sum2:fmt(sum2),
+         condI:'1 <= 10000 → 真',
+         subExpr:'sum1 = 0;',
+         subVal:'sum1 重置为 0',
+         note:'每轮必须清零，否则会累积上一轮的因子' },
+    hit: [5, 6, 7, 8, 9, 10, 11],
+    title: 'sum1 = 0;  第一级因子和清零',
+    desc: '把 sum1 重置为 <b>0</b>，它将要累加 i = 1 的所有真因子。' +
+          '<span class="tip"><b>为什么必须清零？</b>sum1 是累加器，如果不重置，上一轮的因子和会残留下来，导致后续所有判断都出错。</span>'
+  });
+
+  sum2 = 0;
+  push({
+    line: 6, ctx: 'main · sum2 归零（i = 1）',
+    v: { i:'1', j:fmt(j), k:fmt(k), sum1:'0', sum2:'0',
+         condI:'1 <= 10000 → 真',
+         subExpr:'sum2 = 0;',
+         subVal:'sum2 重置为 0',
+         note:'第二轮因子和同样必须清零' },
+    hit: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+    title: 'sum2 = 0;  第二级因子和清零',
+    desc: '把 sum2 重置为 <b>0</b>。它稍后将累加 sum1 的所有真因子。'
+  });
+
+  /* i=1：内层 j 循环跳过 */
+  j = 1;
+  push({
+    line: 7, ctx: 'main · 内层 j 循环（i = 1，直接跳过）',
+    v: { i:'1', j:'1', k:fmt(k), sum1:'0', sum2:'0',
+         condI:'1 <= 10000 → 真',
+         condJ:'1 < 1 → 假',
+         subExpr:'for (j=1; j<1; j++)',
+         subVal:'条件一开始就为假，内层循环一次都不执行',
+         note:'i = 1 没有真因子，sum1 保持 0' },
+    skip: [7, 8, 9, 10, 11],
+    title: '内层 j 循环：1 &lt; 1 为假，不执行循环体',
+    desc: '进入内层 <code>for (j=1; j&lt;i; j++)</code>：<br>' +
+          '· 初始化 <code>j=1</code>；<br>' +
+          '· 判断 <code>1 &lt; 1</code>，结果为<b>假</b>，<b>循环体一次都不执行</b>。<br>' +
+          '所以 i = 1 的真因子和 <b>sum1 保持 0</b>。' +
+          '<span class="tip"><b>为什么 j 只到 i-1？</b>因为"真因子"不含自身。写成 <code>j &lt; i</code> 恰好把 j = i 排除在外。<br>' +
+          '如果写成 <code>j &lt;= i</code>，会把 i 也加上去，那么 sum1 至少等于 i，永远不满足判断条件——<b>这个上界是本程序正确性的关键。</b></span>'
+  });
+
+  /* i=1：内层 k 循环跳过 */
+  k = 1;
+  push({
+    line: 12, ctx: 'main · 内层 k 循环（i = 1，直接跳过）',
+    v: { i:'1', j:'1', k:'1', sum1:'0', sum2:'0',
+         condI:'1 <= 10000 → 真',
+         condK:'1 < 0 → 假',
+         subExpr:'for (k=1; k<0; k++)',
+         subVal:'条件一开始就为假，内层循环一次都不执行',
+         note:'sum1 = 0 没有真因子，sum2 保持 0' },
+    skip: [12, 13, 14, 15, 16],
+    title: '内层 k 循环：1 &lt; 0 为假，不执行循环体',
+    desc: '进入内层 <code>for (k=1; k&lt;sum1; k++)</code>：<br>' +
+          '· 初始化 <code>k=1</code>；<br>' +
+          '· 判断 <code>1 &lt; 0</code>，结果为<b>假</b>，循环体一次都不执行。<br>' +
+          '所以 <b>sum2 保持 0</b>。'
+  });
+
+  /* i=1：判定 */
+  push({
+    line: 17, ctx: 'main · 判定是否为亲密数（i = 1）',
+    v: { i:'1', j:'1', k:'1', sum1:'0', sum2:'0',
+         condI:'1 <= 10000 → 真',
+         condOut:'sum2 == i && i < sum1  →  0 == 1 → 假',
+         subExpr:'if (sum2 == i && i < sum1)',
+         subVal:'左边 0 == 1 为假 → && 短路，不再计算右边 → 整体为假',
+         note:'不满足条件，跳过 printf' },
+    hit: [17],
+    skip: [18],
+    title: 'i = 1：sum2 == i 为假，跳过 printf',
+    desc: '<code>if (sum2 == i &amp;&amp; i &lt; sum1)</code> 有两个条件用 <b>&amp;&amp;</b> 连接：<br>' +
+          '· 先算左边 <code>sum2 == i</code>，即 <code>0 == 1</code> → <b>假</b>；<br>' +
+          '· <b>&amp;&amp; 短路</b>立刻生效，右边的 <code>i &lt; sum1</code> <b>根本不会计算</b>；<br>' +
+          '· 整体为假，<b>跳过 printf</b>，进入下一轮外层循环。' +
+          '<span class="tip"><b>为什么是 &amp;&amp;（逻辑与）？</b>亲密数对要求<b>两个条件同时满足</b>：① sum2 必须等于 i；② i 必须小于 sum1（<b>只输出一次</b>，避免 (220,284) 和 (284,220) 都被打印）。<br>' +
+          '<b>如果去掉 i &lt; sum1 会怎样？</b>每对亲密数都会被输出两次。加上 <code>i &lt; sum1</code> 后，只在较小数那一侧输出。</span>'
+  });
+
+  /* i=1：第 20 行 循环体结束 */
+  push({
+    line: 20, ctx: 'main · 外层循环体结束（i = 1）',
+    v: { i:'1', j:'1', k:'1', sum1:'0', sum2:'0',
+         condI:'1 <= 10000 → 真',
+         subExpr:'}   // 结束外层 for 循环体',
+         subVal:'第 1 轮结束，i 即将自增为 2' },
+    hit: [4, 20],
+    title: '第 1 轮外层循环体结束',
+    desc: '第 <b>1</b> 轮外层循环体结束，i 将执行 <code>i++</code> 变成 <b>2</b>。'
+  });
+
+  /* ================= 批量：i = 2 ~ 219 ================= */
+  i = 219;
+  push({
+    line: 4, ctx: 'main · 批量推进（i = 2 ~ 219）',
+    v: { i:'219', j:'—', k:'—', sum1:'—', sum2:'—',
+         condI:'219 <= 10000 → 真',
+         subExpr:'批量检查 i = 2 ~ 219',
+         subVal:'共检查 218 个数，未发现亲密数对',
+         note:'i 推进到 219，即将进入 220' },
+    hit: [4],
+    title: '批量：i = 2 到 219 全部检查完毕，未发现亲密数对',
+    desc: '对 i = <b>2 到 219</b> 这 218 个数字逐一做了"两级因子和"检查，<b>没有发现满足 sum2 == i 且 i &lt; sum1 的组合</b>。<br>' +
+          '当前外层变量 i 已推进到 <b>219</b>，即将进入下一轮。' +
+          '<span class="tip"><b>为什么会有这么多"空跑"？</b>因为亲密数对极其稀少——在 1 万个数字里只有 5 对。绝大多数 i 都会在内层循环跑完因子和之后，败在最后那个 <code>sum2 == i</code> 的判断上。</span>'
+  });
+
+  /* ================= i = 220 ================= */
+  i = 220;
+  push({
+    line: 4, ctx: 'main · 外层 for 条件（i = 220）',
+    v: { i:'220', j:'—', k:'—', sum1:'—', sum2:'—',
+         condI:'220 <= 10000 → 真',
+         subExpr:'for (i=220; i<=10000; i++)',
+         subVal:'i = 220，条件成立',
+         note:'220 是第一个亲密数对的较小数' },
+    hit: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    title: 'for (i=220; 220 &lt;= 10000; i++)  条件为真，进入第 220 轮',
+    desc: '外层循环推进到 <b>i = 220</b>。<br>' +
+          '这是<b>第一个亲密数对</b>的较小数（220 与 284），接下来详细展示它的两级因子和计算过程。'
+  });
+
+  sum1 = 0;
+  push({
+    line: 5, ctx: 'main · sum1 归零（i = 220）',
+    v: { i:'220', j:'—', k:'—', sum1:'0', sum2:'—',
+         condI:'220 <= 10000 → 真',
+         subExpr:'sum1 = 0;',
+         subVal:'sum1 = 0',
+         note:'准备累加 220 的因子' },
+    hit: [5, 6, 7, 8, 9, 10, 11],
+    title: 'sum1 = 0;  i = 220 的因子和清零',
+    desc: 'sum1 重置为 0，准备累加 220 的真因子。'
+  });
+
+  sum2 = 0;
+  push({
+    line: 6, ctx: 'main · sum2 归零（i = 220）',
+    v: { i:'220', j:'—', k:'—', sum1:'0', sum2:'0',
+         condI:'220 <= 10000 → 真',
+         subExpr:'sum2 = 0;',
+         subVal:'sum2 = 0',
+         note:'准备累加 sum1 的因子' },
+    hit: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+    title: 'sum2 = 0;  第二级因子和清零',
+    desc: 'sum2 重置为 0。'
+  });
+
+  /* i=220：内层 j 批量完成 */
+  j = 220;
+  sum1 = 284;
+  push({
+    line: 7, ctx: 'main · 内层 j 循环批量完成（i = 220）',
+    v: { i:'220', j:'220', k:'—', sum1:'284', sum2:'0',
+         condI:'220 <= 10000 → 真',
+         condJ:'220 < 220 → 假',
+         subExpr:'for (j=1; j<220; j++) 批量检查',
+         subVal:'j 从 1 到 219 全部试除完毕；220 的真因子：1,2,4,5,10,11,20,22,44,55,110',
+         note:'sum1 = 1+2+4+5+10+11+20+22+44+55+110 = 284' },
+    hit: [7, 8, 9],
+    title: 'i = 220：j 从 1 到 219 试除完毕，sum1 = 284',
+    desc: '内层 j 循环从 <b>j = 1</b> 一路试到 <b>j = 219</b>，凡是能整除 220 的 j 都累加到 sum1：<br>' +
+          '· 220 的真因子：<b>1、2、4、5、10、11、20、22、44、55、110</b>；<br>' +
+          '· 累加结果：<code>1+2+4+5+10+11+20+22+44+55+110 = <b>284</b></code>；<br>' +
+          '· 循环变量 j 走完 220 后停在 220，条件 <code>220 &lt; 220</code> 为假，退出内层 j 循环。' +
+          '<span class="tip"><b>这就是第一级因子和：</b>220 的所有真因子之和恰好是 <b>284</b>。但仅仅这样还不够——我们必须验证 284 的真因子之和是否回到 220，才能确认它们是亲密数对。</span>'
+  });
+
+  /* i=220：内层 k 批量完成 */
+  k = 284;
+  sum2 = 220;
+  push({
+    line: 12, ctx: 'main · 内层 k 循环批量完成（i = 220）',
+    v: { i:'220', j:'220', k:'284', sum1:'284', sum2:'220',
+         condI:'220 <= 10000 → 真',
+         condK:'284 < 284 → 假',
+         subExpr:'for (k=1; k<284; k++) 批量检查',
+         subVal:'k 从 1 到 283 全部试除完毕；284 的真因子：1,2,4,71,142',
+         note:'sum2 = 1+2+4+71+142 = 220' },
+    hit: [12, 13, 14],
+    title: 'i = 220：k 从 1 到 283 试除完毕，sum2 = 220',
+    desc: '内层 k 循环从 <b>k = 1</b> 一路试到 <b>k = 283</b>，凡是能整除 sum1 = 284 的 k 都累加到 sum2：<br>' +
+          '· 284 的真因子：<b>1、2、4、71、142</b>；<br>' +
+          '· 累加结果：<code>1+2+4+71+142 = <b>220</b></code>；<br>' +
+          '· 循环变量 k 走完 284 后停在 284，条件 <code>284 &lt; 284</code> 为假，退出内层 k 循环。' +
+          '<span class="tip"><b>关键点：</b>sum2 恰好等于 <b>220</b>，也就是回到了原来的 i。这正是"双向因子和相等"的体现——220 → 284 → 220，形成了一个闭环。</span>'
+  });
+
+  /* i=220：判定 */
+  push({
+    line: 17, ctx: 'main · 判定是否为亲密数（i = 220）',
+    v: { i:'220', j:'220', k:'284', sum1:'284', sum2:'220',
+         condI:'220 <= 10000 → 真',
+         condOut:'sum2 == i && i < sum1  →  220 == 220 && 220 < 284  →  真',
+         subExpr:'if (sum2 == i && i < sum1)',
+         subVal:'220 == 220 → 真；220 < 284 → 真；&& 整体 → 真，执行 printf',
+         note:'双向因子和相等 + i 较小 → 输出' },
+    hit: [17, 18],
+    title: 'i = 220：条件为真，输出亲密数对 (220, 284)',
+    desc: '<code>if (sum2 == i &amp;&amp; i &lt; sum1)</code>：<br>' +
+          '· <b>左边</b> <code>sum2 == i</code> → <code>220 == 220</code> → <b>真</b>；<br>' +
+          '· <b>右边</b> <code>i &lt; sum1</code> → <code>220 &lt; 284</code> → <b>真</b>；<br>' +
+          '· <b>&amp;&amp; 整体</b> → <b>真</b>，进入 if 体，执行第 18 行的 printf。' +
+          '<span class="tip"><b>为什么要判断 <code>i &lt; sum1</code>？</b>因为 (220, 284) 和 (284, 220) 是<b>同一对</b>亲密数。当外层循环走到 i = 284 时，同样会计算出 sum1 = 220、sum2 = 284，也会满足 <code>sum2 == i</code>（284 == 284）。如果不加这个限制，同一对会被<b>输出两次</b>。加上后，只在较小的一侧输出，保证每对只打印一次。</span>'
+  });
+
+  /* i=220：printf */
+  printed++;
+  pairs.push([220, 284]);
+  pushPairLine(220, 284);
+  push({
+    line: 18, ctx: 'main · printf 输出亲密数对',
+    v: { i:'220', j:'220', k:'284', sum1:'284', sum2:'220',
+         condI:'220 <= 10000 → 真',
+         subExpr:'printf("%d, %d\\n", i, sum1)',
+         subVal:'输出 "220, 284" 并换行',
+         note:'每对亲密数占一行' },
+    hit: [18],
+    title: 'printf("220, 284\\n");  输出第一对亲密数',
+    desc: '<code>printf("%d, %d\\n", i, sum1);</code> 按格式输出两个整数，中间用逗号加空格分隔，末尾 <code>\\n</code> 换行。<br>' +
+          '· 屏幕上出现第一行 <b>220, 284</b>；<br>' +
+          '· 这一对是 10000 以内<b>第一对</b>亲密数，也是最著名的一对（早在古希腊就被毕达哥拉斯学派发现）。'
+  });
+
+  push({
+    line: 20, ctx: 'main · 外层循环体结束（i = 220）',
+    v: { i:'220', j:'220', k:'284', sum1:'284', sum2:'220',
+         condI:'220 <= 10000 → 真',
+         subExpr:'}   // 结束外层 for 循环体',
+         subVal:'第 220 轮结束，i 即将自增为 221' },
+    hit: [4, 20],
+    title: '第 220 轮结束，i 即将自增为 221',
+    desc: '第 <b>220</b> 轮结束，a 将变成 <b>221</b>。'
+  });
+
+  /* ================= 批量：i = 221 ~ 1183 ================= */
+  i = 1183;
+  push({
+    line: 4, ctx: 'main · 批量推进（i = 221 ~ 1183）',
+    v: { i:'1183', j:'—', k:'—', sum1:'—', sum2:'—',
+         condI:'1183 <= 10000 → 真',
+         subExpr:'批量检查 i = 221 ~ 1183',
+         subVal:'共检查 963 个数，未发现亲密数对',
+         note:'i 推进到 1183，即将进入 1184' },
+    hit: [4],
+    title: '批量：i = 221 到 1183 全部检查完毕，未发现亲密数对',
+    desc: '对 i = <b>221 到 1183</b> 这 963 个数字逐一做了两级因子和检查，<b>没有发现满足条件的亲密数对</b>。<br>' +
+          '当前外层变量 i 已推进到 <b>1183</b>。' +
+          '<span class="tip"><b>为什么 220 和 1184 之间没有亲密数对？</b>亲密数对极其罕见。欧拉曾经系统研究过这类数，在 10000 以内只有 5 对。人类目前已知最大的亲密数对包含数万位数字。</span>'
+  });
+
+  /* ================= i = 1184 ================= */
+  i = 1184;
+  push({
+    line: 4, ctx: 'main · 外层 for 条件（i = 1184）',
+    v: { i:'1184', j:'—', k:'—', sum1:'—', sum2:'—',
+         condI:'1184 <= 10000 → 真',
+         subExpr:'for (i=1184; i<=10000; i++)',
+         subVal:'i = 1184，条件成立',
+         note:'1184 是第二对亲密数对的较小数' },
+    hit: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    title: 'for (i=1184; 1184 &lt;= 10000; i++)  条件为真，进入第 1184 轮',
+    desc: '外层循环推进到 <b>i = 1184</b>。<br>' +
+          '这是<b>第二对亲密数对</b>的较小数（1184 与 1210），接下来详细展示。'
+  });
+
+  sum1 = 0;
+  push({
+    line: 5, ctx: 'main · sum1 归零（i = 1184）',
+    v: { i:'1184', j:'—', k:'—', sum1:'0', sum2:'—',
+         condI:'1184 <= 10000 → 真',
+         subExpr:'sum1 = 0;',
+         subVal:'sum1 = 0',
+         note:'准备累加 1184 的因子' },
+    hit: [5, 6, 7, 8, 9, 10, 11],
+    title: 'sum1 = 0;  i = 1184 的因子和清零',
+    desc: 'sum1 重置为 0。'
+  });
+
+  sum2 = 0;
+  push({
+    line: 6, ctx: 'main · sum2 归零（i = 1184）',
+    v: { i:'1184', j:'—', k:'—', sum1:'0', sum2:'0',
+         condI:'1184 <= 10000 → 真',
+         subExpr:'sum2 = 0;',
+         subVal:'sum2 = 0',
+         note:'准备累加 sum1 的因子' },
+    hit: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+    title: 'sum2 = 0;  第二级因子和清零',
+    desc: 'sum2 重置为 0。'
+  });
+
+  j = 1184;
+  sum1 = 1210;
+  push({
+    line: 7, ctx: 'main · 内层 j 循环批量完成（i = 1184）',
+    v: { i:'1184', j:'1184', k:'—', sum1:'1210', sum2:'0',
+         condI:'1184 <= 10000 → 真',
+         condJ:'1184 < 1184 → 假',
+         subExpr:'for (j=1; j<1184; j++) 批量检查',
+         subVal:'j 从 1 到 1183 全部试除完毕；1184 的真因子：1,2,4,8,16,32,37,74,148,296,592',
+         note:'sum1 = 1210' },
+    hit: [7, 8, 9],
+    title: 'i = 1184：j 从 1 到 1183 试除完毕，sum1 = 1210',
+    desc: '内层 j 循环从 <b>j = 1</b> 到 <b>j = 1183</b> 逐一试除：<br>' +
+          '· 1184 的真因子：<b>1、2、4、8、16、32、37、74、148、296、592</b>；<br>' +
+          '· 累加结果：<code>1+2+4+8+16+32+37+74+148+296+592 = <b>1210</b></code>；<br>' +
+          '· 退出内层 j 循环，进入内层 k 循环。'
+  });
+
+  k = 1210;
+  sum2 = 1184;
+  push({
+    line: 12, ctx: 'main · 内层 k 循环批量完成（i = 1184）',
+    v: { i:'1184', j:'1184', k:'1210', sum1:'1210', sum2:'1184',
+         condI:'1184 <= 10000 → 真',
+         condK:'1210 < 1210 → 假',
+         subExpr:'for (k=1; k<1210; k++) 批量检查',
+         subVal:'k 从 1 到 1209 全部试除完毕；1210 的真因子：1,2,5,10,11,22,55,110,121,242,605',
+         note:'sum2 = 1184' },
+    hit: [12, 13, 14],
+    title: 'i = 1184：k 从 1 到 1209 试除完毕，sum2 = 1184',
+    desc: '内层 k 循环从 <b>k = 1</b> 到 <b>k = 1209</b> 逐一试除：<br>' +
+          '· 1210 的真因子：<b>1、2、5、10、11、22、55、110、121、242、605</b>；<br>' +
+          '· 累加结果：<code>1+2+5+10+11+22+55+110+121+242+605 = <b>1184</b></code>；<br>' +
+          '· <b>sum2 = 1184</b>，正好回到了原来的 i！'
+  });
+
+  push({
+    line: 17, ctx: 'main · 判定是否为亲密数（i = 1184）',
+    v: { i:'1184', j:'1184', k:'1210', sum1:'1210', sum2:'1184',
+         condI:'1184 <= 10000 → 真',
+         condOut:'sum2 == i && i < sum1  →  1184 == 1184 && 1184 < 1210  →  真',
+         subExpr:'if (sum2 == i && i < sum1)',
+         subVal:'条件整体为真，执行 printf',
+         note:'双向因子和相等 + i 较小' },
+    hit: [17, 18],
+    title: 'i = 1184：条件为真，输出亲密数对 (1184, 1210)',
+    desc: '两个条件同时成立：<br>' +
+          '· <code>1184 == 1184</code> → <b>真</b>；<br>' +
+          '· <code>1184 &lt; 1210</code> → <b>真</b>；<br>' +
+          '· 进入 if 体输出。'
+  });
+
+  printed++;
+  pairs.push([1184, 1210]);
+  pushPairLine(1184, 1210);
+  push({
+    line: 18, ctx: 'main · printf 输出亲密数对',
+    v: { i:'1184', j:'1184', k:'1210', sum1:'1210', sum2:'1184',
+         condI:'1184 <= 10000 → 真',
+         subExpr:'printf("%d, %d\\n", i, sum1)',
+         subVal:'输出 "1184, 1210" 并换行',
+         note:'第二对亲密数' },
+    hit: [18],
+    title: 'printf("1184, 1210\\n");  输出第二对亲密数',
+    desc: '屏幕上追加第二行 <b>1184, 1210</b>。<br>' +
+          '相比 (220, 284)，这一对在数值上大一个数量级，但依然满足"双向因子和相等"的关系。'
+  });
+
+  push({
+    line: 20, ctx: 'main · 外层循环体结束（i = 1184）',
+    v: { i:'1184', j:'1184', k:'1210', sum1:'1210', sum2:'1184',
+         condI:'1184 <= 10000 → 真',
+         subExpr:'}   // 结束外层 for 循环体',
+         subVal:'第 1184 轮结束，i 即将自增为 1185' },
+    hit: [4, 20],
+    title: '第 1184 轮结束，i 即将自增为 1185',
+    desc: '第 <b>1184</b> 轮结束，i 将变成 <b>1185</b>。'
+  });
+
+  /* ================= 批量：i = 1185 ~ 10000（含 3 对） ================= */
+  i = 2619;
+  push({
+    line: 4, ctx: 'main · 批量推进（i = 1185 ~ 2619）',
+    v: { i:'2619', j:'—', k:'—', sum1:'—', sum2:'—',
+         condI:'2619 <= 10000 → 真',
+         subExpr:'批量检查 i = 1185 ~ 2619',
+         subVal:'共检查 1435 个数，未发现新亲密数对',
+         note:'i 推进到 2619，即将进入 2620' },
+    hit: [4],
+    title: '批量：i = 1185 到 2619 检查完毕，未发现新亲密数对',
+    desc: '对 i = <b>1185 到 2619</b> 这 1435 个数字做了两级因子和检查，<b>没有发现新的亲密数对</b>。<br>' +
+          '当前 i 已推进到 <b>2619</b>。'
+  });
+
+  i = 2620;
+  sum1 = 2924; sum2 = 2620;
+  printed++;
+  pairs.push([2620, 2924]);
+  pushPairLine(2620, 2924);
+  push({
+    line: 18, ctx: 'main · printf 输出亲密数对（i = 2620）',
+    v: { i:'2620', j:'2620', k:'2924', sum1:'2924', sum2:'2620',
+         condI:'2620 <= 10000 → 真',
+         subExpr:'printf("%d, %d\\n", 2620, 2924)',
+         subVal:'输出 "2620, 2924" 并换行',
+         note:'第三对亲密数' },
+    hit: [4, 18],
+    title: 'i = 2620：条件为真，输出第三对亲密数 (2620, 2924)',
+    desc: 'i = <b>2620</b> 经过两级因子和计算：<br>' +
+          '· 2620 的真因子和 sum1 = <b>2924</b>；<br>' +
+          '· 2924 的真因子和 sum2 = <b>2620</b>；<br>' +
+          '· <code>2620 == 2620 &amp;&amp; 2620 &lt; 2924</code> → 真；<br>' +
+          '· 输出 <b>2620, 2924</b>，追加到屏幕第三行。'
+  });
+
+  i = 5019;
+  push({
+    line: 4, ctx: 'main · 批量推进（i = 2621 ~ 5019）',
+    v: { i:'5019', j:'—', k:'—', sum1:'—', sum2:'—',
+         condI:'5019 <= 10000 → 真',
+         subExpr:'批量检查 i = 2621 ~ 5019',
+         subVal:'共检查 2399 个数，未发现新亲密数对',
+         note:'i 推进到 5019' },
+    hit: [4],
+    title: '批量：i = 2621 到 5019 检查完毕，未发现新亲密数对',
+    desc: '对 i = <b>2621 到 5019</b> 这 2399 个数字做了两级因子和检查，<b>没有发现新的亲密数对</b>。<br>' +
+          '当前 i 已推进到 <b>5019</b>。'
+  });
+
+  i = 5020;
+  sum1 = 5564; sum2 = 5020;
+  printed++;
+  pairs.push([5020, 5564]);
+  pushPairLine(5020, 5564);
+  push({
+    line: 18, ctx: 'main · printf 输出亲密数对（i = 5020）',
+    v: { i:'5020', j:'5020', k:'5564', sum1:'5564', sum2:'5020',
+         condI:'5020 <= 10000 → 真',
+         subExpr:'printf("%d, %d\\n", 5020, 5564)',
+         subVal:'输出 "5020, 5564" 并换行',
+         note:'第四对亲密数' },
+    hit: [4, 18],
+    title: 'i = 5020：条件为真，输出第四对亲密数 (5020, 5564)',
+    desc: 'i = <b>5020</b>：<br>' +
+          '· sum1 = <b>5564</b>（5020 的真因子和）；<br>' +
+          '· sum2 = <b>5020</b>（5564 的真因子和）；<br>' +
+          '· 输出 <b>5020, 5564</b>，追加到屏幕第四行。'
+  });
+
+  i = 6231;
+  push({
+    line: 4, ctx: 'main · 批量推进（i = 5021 ~ 6231）',
+    v: { i:'6231', j:'—', k:'—', sum1:'—', sum2:'—',
+         condI:'6231 <= 10000 → 真',
+         subExpr:'批量检查 i = 5021 ~ 6231',
+         subVal:'共检查 1211 个数，未发现新亲密数对',
+         note:'i 推进到 6231' },
+    hit: [4],
+    title: '批量：i = 5021 到 6231 检查完毕，未发现新亲密数对',
+    desc: '对 i = <b>5021 到 6231</b> 这 1211 个数字做了两级因子和检查，<b>没有发现新的亲密数对</b>。'
+  });
+
+  i = 6232;
+  sum1 = 6368; sum2 = 6232;
+  printed++;
+  pairs.push([6232, 6368]);
+  pushPairLine(6232, 6368);
+  push({
+    line: 18, ctx: 'main · printf 输出亲密数对（i = 6232）',
+    v: { i:'6232', j:'6232', k:'6368', sum1:'6368', sum2:'6232',
+         condI:'6232 <= 10000 → 真',
+         subExpr:'printf("%d, %d\\n", 6232, 6368)',
+         subVal:'输出 "6232, 6368" 并换行',
+         note:'第五对亲密数' },
+    hit: [4, 18],
+    title: 'i = 6232：条件为真，输出第五对亲密数 (6232, 6368)',
+    desc: 'i = <b>6232</b>：<br>' +
+          '· sum1 = <b>6368</b>；<br>' +
+          '· sum2 = <b>6232</b>；<br>' +
+          '· 输出 <b>6232, 6368</b>，追加到屏幕第五行。'
+  });
+
+  i = 10000;
+  push({
+    line: 4, ctx: 'main · 批量推进（i = 6233 ~ 10000）',
+    v: { i:'10000', j:'—', k:'—', sum1:'—', sum2:'—',
+         condI:'10000 <= 10000 → 真',
+         subExpr:'批量检查 i = 6233 ~ 10000',
+         subVal:'共检查 3768 个数，未发现新亲密数对',
+         note:'10000 以内共 5 对亲密数对，全部找到' },
+    hit: [4],
+    title: '批量：i = 6233 到 10000 检查完毕，未发现新亲密数对',
+    desc: '对 i = <b>6233 到 10000</b> 这 3768 个数字做了两级因子和检查，<b>没有发现新的亲密数对</b>。<br>' +
+          '至此，1 到 10000 全部检查完毕，共找到 <b>' + pairs.length + '</b> 对亲密数对。'
+  });
+
+  /* ================= 外层退出 ================= */
+  i = 10001;
+  push({
+    line: 4, ctx: 'main · 外层 for 条件（最终，假）',
+    v: { i:'10001', j:'—', k:'—', sum1:'—', sum2:'—',
+         condI:'10001 <= 10000 → 假',
+         subExpr:'for (; i<=10000; )  →  10001 <= 10000',
+         subVal:'假 → 退出外层循环',
+         note:'1 到 10000 全部检查完毕' },
+    hit: [4],
+    skip: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    title: 'i = 10001：外层循环结束',
+    desc: 'i 变成 <b>10001</b>，条件 <code>10001 &lt;= 10000</code> 为假，外层循环终止。<br>' +
+          '<b>循环总账：</b>外层一共执行 <b>10000 轮</b>（i 从 1 到 10000），共找到 <b>5 对</b>亲密数对，printf 调用 <b>5 次</b>。' +
+          '<span class="tip"><b>三重循环的复杂度：</b>最外层 i 循环 10000 次；对每个 i，第一层内层 j 循环约 i 次；第二层内层 k 循环约 sum1 次。<br>' +
+          '总运算量约为 <b>10^8 次量级</b>，一般计算机 1 秒内可以完成。</span>'
+  });
+
+  /* ================= return 0 ================= */
+  ret = '0';
+  push({
+    line: 21, ctx: 'main · return',
+    v: { i:'10001', j:'—', k:'—', sum1:'—', sum2:'—',
+         condI:'10001 <= 10000 → 假（已退出）',
+         subExpr:'return 0;',
+         subVal:'返回 0，程序结束',
+         note:'返回 0 表示正常结束' },
+    title: 'return 0;  结束 main 函数',
+    desc: '<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。' +
+          '约定返回 0 表示程序<b>正常结束</b>。这条语句不产生屏幕输出。<br>' +
+          '此时 <b>printf 已调用 5 次</b>，输出 5 行亲密数对。'
+  });
+
+  /* ================= } main 结束 ================= */
+  push({
+    line: 22, ctx: '程序结束',
+    v: { i:'10001', j:'—', k:'—', sum1:'—', sum2:'—',
+         condI:'—', subExpr:'—', subVal:'—', note:'—' },
+    title: '第 22 行 } —— main 函数结束，栈帧销毁',
+    desc: '函数体收尾，main 的<b>栈帧被销毁</b>，变量 i、j、k、sum1、sum2 随栈帧一起释放，控制权交还操作系统。<br>' +
+          '程序共调用 <b>printf 5 次</b>，找到 <b>' + pairs.length + '</b> 对亲密数对，返回值 0。' +
+          '<span class="tip"><b>本程序要点总结：</b><br>' +
+          '① <b>外层 i 遍历 1~10000</b>：逐个检查候选数；<br>' +
+          '② <b>每轮 sum1、sum2 都要清零</b>：否则会残留上一轮的值，结果全错；<br>' +
+          '③ <b>第一层内层 j 循环求 i 的真因子和</b>：j 从 1 到 i-1，满足 <code>i % j == 0</code> 就累加到 sum1；<br>' +
+          '④ <b>第二层内层 k 循环求 sum1 的真因子和</b>：k 从 1 到 sum1-1，满足 <code>sum1 % k == 0</code> 就累加到 sum2；<br>' +
+          '⑤ <b>判断 <code>sum2 == i &amp;&amp; i &lt; sum1</code></b>：双向因子和相等 + i 较小，保证每对只输出一次；<br>' +
+          '⑥ <b>printf 格式</b> <code>"%d, %d\\n"</code>：每对独占一行。<br>' +
+          '<b>10000 以内共 5 对亲密数对：</b><br>(220, 284)、(1184, 1210)、(2620, 2924)、(5020, 5564)、(6232, 6368)。<br>' +
+          '<b>常见错误：</b>① 内层循环写成 <code>j &lt;= i</code>，会把 i 本身也算进因子和，导致 sum1 永远大于 i，没有一对能匹配；' +
+          '② 忘记 <code>i &lt; sum1</code> 判断，每对会被输出两次；' +
+          '③ sum1、sum2 未清零，后续所有结果都会出错。</span>'
+  });
+
+  return st;
+}
+
+var STEPS = buildSteps();
+
+/* =========================================================
+   2. DOM 引用
+   ========================================================= */
+var codeScroll  = document.getElementById('codeScroll');
+var codeLines   = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+var varTable    = document.getElementById('varTable');
+var consoleBody = document.getElementById('consoleBody');
+var explainBody = document.getElementById('explainBody');
+var stepCounter = document.getElementById('stepCounter');
+var miniBody    = document.getElementById('miniBody');
+var miniViewport= document.getElementById('miniViewport');
+var miniCurrent = document.getElementById('miniCurrent');
+var btnPlay     = document.getElementById('btnPlay');
+var btnPrev     = document.getElementById('btnPrev');
+var btnNext     = document.getElementById('btnNext');
+var btnReset    = document.getElementById('btnReset');
+var speedInput  = document.getElementById('speed');
+var speedLabel  = document.getElementById('speedLabel');
+
+/* =========================================================
+   3. 变量表定义
+   ========================================================= */
+var VAR_ROWS = [
+  { key:'ctx',     name:'当前执行位置',                    kind:'k-ctx'   },
+  { key:'i',       name:'i (int) 外层候选数',              kind:'k-main'  },
+  { key:'j',       name:'j (int) 第一层因子枚举',          kind:'k-main'  },
+  { key:'k',       name:'k (int) 第二层因子枚举',          kind:'k-main'  },
+  { key:'sum1',    name:'sum1 (int) i 的真因子和',         kind:'k-money' },
+  { key:'sum2',    name:'sum2 (int) sum1 的真因子和',      kind:'k-money' },
+  { key:'condI',   name:'外层条件 i <= 10000',             kind:'k-sw'    },
+  { key:'condJ',   name:'内层 j 条件 j < i',               kind:'k-sw'    },
+  { key:'condK',   name:'内层 k 条件 k < sum1',            kind:'k-sw'    },
+  { key:'condOut', name:'判定 sum2==i && i<sum1',         kind:'k-pair'  },
+  { key:'subExpr', name:'正在求值的子表达式',              kind:'k-sub'   },
+  { key:'subVal',  name:'子表达式结果',                    kind:'k-val'   },
+  { key:'note',    name:'关键规则提示',                    kind:'k-note'  },
+  { key:'prints',  name:'printf 调用次数',                 kind:'k-ctx'   },
+  { key:'pairCnt', name:'已找到亲密数对个数',              kind:'k-pair'  },
+  { key:'ret',     name:'main 返回值',                     kind:'k-ret'   }
+];
+
+/* =========================================================
+   4. 运行状态
+   ========================================================= */
+var current    = -1;
+var playing    = false;
+var timer      = null;
+var speed      = Number(speedInput.value);
+var lastOutSig = '';
+var currentLine = 0;
+
+/* =========================================================
+   5. 构建变量表骨架
+   ========================================================= */
+function buildVarTable() {
+  varTable.innerHTML = VAR_ROWS.map(function (r) {
+    return '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+             '<span class="var-name">' + r.name + '</span>' +
+             '<span class="var-value dim">—</span>' +
+           '</div>';
+  }).join('');
+}
+
+function valueOf(step, key) {
+  if (!step) return '—';
+  if (key === 'ctx') return step.ctx;
+  return step.vars[key];
+}
+
+function updateVars(step, prevStep) {
+  VAR_ROWS.forEach(function (r) {
+    var row   = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+    if (!row) return;
+    var valEl = row.querySelector('.var-value');
+    var val   = String(valueOf(step, r.key));
+    var old   = String(valueOf(prevStep, r.key));
+
+    if (valEl.textContent !== val) {
+      valEl.textContent = val;
+      valEl.classList.toggle('dim', val === '—');
+      valEl.title = val;
+      valEl.classList.remove('flash');
+      void valEl.offsetWidth;
+      valEl.classList.add('flash');
+      if (prevStep && old !== val) {
+        row.classList.add('changed');
+        window.setTimeout(function () { row.classList.remove('changed'); }, 700);
+      }
+    }
+  });
+}
+
+/* =========================================================
+   6. 输出区
+   ========================================================= */
+function resolveOut(upto) {
+  for (var k = upto; k >= 0; k--) {
+    if (STEPS[k] && STEPS[k].out) return STEPS[k].out;
+  }
+  return null;
+}
+
+function updateOutput(upto) {
+  var lines = resolveOut(upto);
+  var sig   = lines ? JSON.stringify(lines) : '';
+  if (sig === lastOutSig) return;
+  lastOutSig = sig;
+
+  consoleBody.innerHTML = '';
+  if (!lines) return;
+
+  lines.forEach(function (segs) {
+    var div = document.createElement('div');
+    div.className = 'out-line';
+    segs.forEach(function (seg) {
+      var sp = document.createElement('span');
+      sp.className = 'seg-' + (seg.c || 'out');
+      sp.textContent = seg.t;
+      div.appendChild(sp);
+    });
+    consoleBody.appendChild(div);
+  });
+  consoleBody.parentNode.scrollTop = consoleBody.parentNode.scrollHeight;
+}
+
+/* =========================================================
+   7. 缩略图
+   ========================================================= */
+var miniLines = [];
+
+function buildMinimap() {
+  var srcs = codeScroll.querySelectorAll('.code-line .src');
+  Array.prototype.slice.call(miniBody.querySelectorAll('.mini-line')).forEach(function (n) {
+    n.parentNode.removeChild(n);
+  });
+  miniLines = [];
+  srcs.forEach(function (src, idx) {
+    var d = document.createElement('div');
+    d.className = 'mini-line';
+    d.innerHTML = src.innerHTML;
+    d.style.top = (idx * 100 / LINES) + '%';
+    d.style.height = (100 / LINES) + '%';
+    miniBody.appendChild(d);
+    miniLines.push(d);
+  });
+}
+
+var rafId = null;
+function requestSync() {
+  if (rafId) return;
+  rafId = window.requestAnimationFrame(function () {
+    rafId = null;
+    syncMinimap();
+  });
+}
+
+function syncMinimap() {
+  if (!codeLines.length || !miniBody) return;
+  var lineH = codeLines[1].offsetTop - codeLines[0].offsetTop;
+  if (!lineH || lineH <= 0) lineH = codeLines[0].offsetHeight || 1;
+
+  var bodyH = miniBody.clientHeight;
+  if (bodyH <= 0) return;
+  var rowH = bodyH / LINES;
+
+  var fs = Math.max(3, rowH * 0.62);
+  for (var k = 0; k < miniLines.length; k++) {
+    miniLines[k].style.fontSize = fs + 'px';
+    miniLines[k].style.lineHeight = rowH + 'px';
+  }
+
+  var visRows = Math.min(LINES, codeScroll.clientHeight / lineH);
+  var top = (codeScroll.scrollTop / lineH) * rowH;
+  var vh  = visRows * rowH;
+  if (top < 0) top = 0;
+  if (top + vh > bodyH) top = Math.max(0, bodyH - vh);
+
+  miniViewport.style.top = top + 'px';
+  miniViewport.style.height = vh + 'px';
+
+  if (currentLine > 0) {
+    miniCurrent.style.display = 'block';
+    miniCurrent.style.top = ((currentLine - 1) * rowH) + 'px';
+    miniCurrent.style.height = rowH + 'px';
+  } else {
+    miniCurrent.style.display = 'none';
+  }
+}
+
+miniBody.addEventListener('click', function (e) {
+  var r = miniBody.getBoundingClientRect();
+  var rowH = r.height / LINES;
+  if (rowH <= 0) return;
+  var idx = Math.floor((e.clientY - r.top) / rowH);
+  idx = Math.max(0, Math.min(LINES - 1, idx));
+  jumpToLine(idx + 1);
+});
+
+function jumpToLine(n) {
+  if (n < 1 || n > LINES) return;
+  var lineH = codeLines[1].offsetTop - codeLines[0].offsetTop;
+  var el = codeLines[n - 1];
+  var target = el.offsetTop - (codeScroll.clientHeight - lineH) / 2;
+  var maxTop = codeScroll.scrollHeight - codeScroll.clientHeight;
+  target = Math.max(0, Math.min(maxTop, target));
+  codeScroll.scrollTo({ top: target, behavior: 'smooth' });
+  requestSync();
+}
+
+function centerCurrentLine(n) {
+  if (n < 1 || n > LINES) return;
+  var lineH = codeLines[1].offsetTop - codeLines[0].offsetTop;
+  var el = codeLines[n - 1];
+  var target = el.offsetTop - (codeScroll.clientHeight - lineH) / 2;
+  var maxTop = codeScroll.scrollHeight - codeScroll.clientHeight;
+  target = Math.max(0, Math.min(maxTop, target));
+  codeScroll.scrollTop = target;
+  requestSync();
+}
+
+/* =========================================================
+   8. 代码高亮
+   ========================================================= */
+function updateCode(step) {
+  var activeLine = step ? step.line : 0;
+  var hitLines   = (step && step.hit)  || [];
+  var skipLines  = (step && step.skip) || [];
+  currentLine = activeLine;
+
+  codeLines.forEach(function (el) {
+    var n = Number(el.dataset.line);
+    el.classList.toggle('active', activeLine !== 0 && n === activeLine);
+    el.classList.toggle('hit',    hitLines.indexOf(n)  !== -1);
+    el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+  });
+
+  if (activeLine) centerCurrentLine(activeLine);
+  else requestSync();
+}
+
+/* =========================================================
+   9. 总渲染
+   ========================================================= */
+function render() {
+  var step = current >= 0 ? STEPS[current] : null;
+  var prev = current > 0 ? STEPS[current - 1] : null;
+
+  updateCode(step);
+  updateVars(step, prev);
+  updateOutput(current);
+
+  if (step) {
+    var isHit   = step.hit && step.hit.length > 0;
+    var isBatch = /批量/.test(step.title);
+    var isPair  = /输出|亲密数对/.test(step.title) && /printf|条件为真/.test(step.title);
+    var cls = isBatch ? ' batch' : (isPair ? ' pair' : (isHit ? ' hit' : ''));
+    explainBody.innerHTML =
+      '<span class="ex-line' + cls + '">第 ' + step.line + ' 行</span>' +
+      '<strong>' + step.title + '</strong> —— ' + step.desc;
+    stepCounter.textContent = '步骤 ' + (current + 1) + ' / ' + STEPS.length;
+  } else {
+    explainBody.innerHTML =
+      '<em>点击「自动播放」或「下一步」，开始逐条执行程序。<br>' +
+      '本程序查找 10000 以内的<b>亲密数对</b>：对每个 i，先用内层 j 循环求它的真因子和 sum1，' +
+      '再用内层 k 循环求 sum1 的真因子和 sum2，最后判断 <code>sum2 == i &amp;&amp; i &lt; sum1</code>。<br>' +
+      '预期结果（5 对）：<b>(220, 284)、(1184, 1210)、(2620, 2924)、(5020, 5564)、(6232, 6368)</b>。</em>';
+    stepCounter.textContent = '步骤 — / ' + STEPS.length;
+  }
+
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+
+  requestSync();
+}
+
+/* =========================================================
+   10. 播放控制
+   ========================================================= */
+function updatePlayBtn() {
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+
+function tick() {
+  if (current >= STEPS.length - 1) { pause(); return; }
+  current += 1;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+
+function play() {
+  if (playing) return;
+  if (current >= STEPS.length - 1) { current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+
+function pause() {
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep() {
+  pause();
+  if (current < STEPS.length - 1) { current += 1; render(); }
+}
+
+function prevStep() {
+  pause();
+  if (current > -1) { current -= 1; render(); }
+}
+
+function resetAll() {
+  pause();
+  current = -1;
+  currentLine = 0;
+  lastOutSig = '';
+  consoleBody.innerHTML = '';
+  codeScroll.scrollTop = 0;
+  render();
+}
+
+/* =========================================================
+   11. 面板交互：置顶 / 拖动 / 调整大小 / 关闭
+   ========================================================= */
+var zTop = 10;
+var allPanels = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+var PANEL_IDS = ['panelTop','panelVars','panelOut','panelExplain','panelMini'];
+
+function bringToFront(el) {
+  if (!el) return;
+  zTop += 1;
+  el.style.zIndex = zTop;
+  allPanels.forEach(function (p) { p.classList.remove('active-panel'); });
+  el.classList.add('active-panel');
+}
+
+function makeDraggable(el) {
+  var head = el.querySelector('.panel-head');
+  if (!head) return;
+  head.addEventListener('pointerdown', function (e) {
+    if (e.target.closest('.panel-close')) return;
+    bringToFront(el);
+    var startX = e.clientX, startY = e.clientY;
+    var r = el.getBoundingClientRect();
+    var startL = r.left, startT = r.top;
+
+    function move(ev) {
+      el.style.left = (startL + (ev.clientX - startX)) + 'px';
+      el.style.top  = (startT + (ev.clientY - startY)) + 'px';
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+    }
+    function up(ev) {
+      head.removeEventListener('pointermove', move);
+      head.removeEventListener('pointerup', up);
+      head.removeEventListener('pointercancel', up);
+      try { head.releasePointerCapture(ev.pointerId); } catch (_) {}
+      requestSync();
+    }
+    head.setPointerCapture(e.pointerId);
+    head.addEventListener('pointermove', move);
+    head.addEventListener('pointerup', up);
+    head.addEventListener('pointercancel', up);
+    e.preventDefault();
+  });
+}
+
+function makeResizable(el) {
+  var rz = el.querySelector('.rz');
+  if (!rz) return;
+  rz.addEventListener('pointerdown', function (e) {
+    bringToFront(el);
+    var startX = e.clientX, startY = e.clientY;
+    var startW = el.offsetWidth, startH = el.offsetHeight;
+
+    function move(ev) {
+      el.style.width  = (startW + (ev.clientX - startX)) + 'px';
+      el.style.height = (startH + (ev.clientY - startY)) + 'px';
+      requestSync();
+    }
+    function up(ev) {
+      rz.removeEventListener('pointermove', move);
+      rz.removeEventListener('pointerup', up);
+      rz.removeEventListener('pointercancel', up);
+      try { rz.releasePointerCapture(ev.pointerId); } catch (_) {}
+      requestSync();
+    }
+    rz.setPointerCapture(e.pointerId);
+    rz.addEventListener('pointermove', move);
+    rz.addEventListener('pointerup', up);
+    rz.addEventListener('pointercancel', up);
+    e.preventDefault();
+    e.stopPropagation();
+  });
+}
+
+allPanels.forEach(function (el) {
+  makeDraggable(el);
+  makeResizable(el);
+  el.addEventListener('pointerdown', function () { bringToFront(el); });
+  el.addEventListener('focusin',   function () { bringToFront(el); });
+});
+
+document.querySelectorAll('.panel-close').forEach(function (btn) {
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    var id = btn.getAttribute('data-close');
+    var p = document.getElementById(id);
+    if (p) p.style.display = 'none';
+    requestSync();
+  });
+});
+
+/* =========================================================
+   12. 默认布局 / 重置布局
+   ========================================================= */
+var DEFAULT_LAYOUT = {
+  panelTop:     { left:12,   top:12,  width:'auto', height:'auto', z:10 },
+  panelVars:    { left:12,   top:190, width:960,    height:430,    z:11 },
+  panelOut:     { left:12,   top:640, width:960,    height:428,    z:12 },
+  panelExplain: { left:992,  top:190, width:640,    height:878,    z:13 },
+  panelMini:    { left:1652, top:190, width:256,    height:878,    z:14 }
+};
+
+function applyLayout(layout) {
+  Object.keys(layout).forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var L = layout[id];
+    el.style.display = '';
+    el.style.left = L.left + 'px';
+    el.style.top  = L.top  + 'px';
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+    el.style.width  = (L.width  === 'auto' ? 'auto' : L.width + 'px');
+    el.style.height = (L.height === 'auto' ? 'auto' : L.height + 'px');
+    el.style.zIndex = L.z;
+    el.classList.remove('active-panel');
+  });
+  zTop = 14;
+  requestSync();
+}
+
+/* =========================================================
+   13. 事件绑定
+   ========================================================= */
+btnPlay.addEventListener('click', function () { playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function () {
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if (playing) {
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+document.getElementById('btnFull').addEventListener('click', function () {
+  var d = document, el = d.documentElement;
+  if (!d.fullscreenElement) { if (el.requestFullscreen) el.requestFullscreen(); }
+  else { if (d.exitFullscreen) d.exitFullscreen(); }
+});
+
+function toggleAllPanels() {
+  var anyVisible = PANEL_IDS.some(function (id) {
+    var el = document.getElementById(id);
+    return el && el.style.display !== 'none';
+  });
+  PANEL_IDS.forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = anyVisible ? 'none' : '';
+  });
+  if (!anyVisible) bringToFront(document.getElementById('panelTop'));
+  requestSync();
+}
+document.getElementById('btnPanels').addEventListener('click', toggleAllPanels);
+
+function toggleMini() {
+  var p = document.getElementById('panelMini');
+  var showing = (p.style.display !== 'none');
+  p.style.display = showing ? 'none' : '';
+  if (!showing) bringToFront(p);
+  requestSync();
+}
+document.getElementById('btnMini').addEventListener('click', toggleMini);
+
+document.getElementById('btnLayout').addEventListener('click', function () {
+  applyLayout(DEFAULT_LAYOUT);
+  bringToFront(document.getElementById('panelTop'));
+});
+
+document.addEventListener('keydown', function (e) {
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) {
+    if (e.code === 'Space') e.preventDefault();
+    return;
+  }
+  switch (e.code) {
+    case 'Space':      e.preventDefault(); playing ? pause() : play(); break;
+    case 'ArrowRight': e.preventDefault(); nextStep(); break;
+    case 'ArrowLeft':  e.preventDefault(); prevStep(); break;
+    case 'KeyR':       e.preventDefault(); resetAll(); break;
+    case 'KeyF':       e.preventDefault(); document.getElementById('btnFull').click(); break;
+    case 'KeyM':       e.preventDefault(); toggleMini(); break;
+    case 'KeyH':       e.preventDefault(); toggleAllPanels(); break;
+  }
+});
+
+/* =========================================================
+   14. 滚动 / 尺寸变化实时同步
+   ========================================================= */
+codeScroll.addEventListener('scroll', requestSync, { passive: true });
+window.addEventListener('resize', requestSync);
+
+if (window.ResizeObserver) {
+  var ro = new ResizeObserver(function () { requestSync(); });
+  ro.observe(codeScroll);
+  ro.observe(miniBody);
+  allPanels.forEach(function (p) { ro.observe(p); });
+}
+
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(function () { requestSync(); });
+}
+window.addEventListener('load', function () { requestSync(); });
+
+/* =========================================================
+   15. 初始化
+   ========================================================= */
+buildVarTable();
+buildMinimap();
+applyLayout(DEFAULT_LAYOUT);
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+render();
+window.setTimeout(requestSync, 60);
+window.setTimeout(requestSync, 300);
+
+})();
+</script>
+</body>
+</html>

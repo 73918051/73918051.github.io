@@ -1,0 +1,1619 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 双 for 找平方数车牌 · iijj 型四位数</title>
+<style>
+/* ============================================================
+   全局变量：1920×1080 下后排 10 米可读
+   ============================================================ */
+:root{
+  --bg:#0d1117;
+  --panel-bg:rgba(13,17,23,.80);
+  --border:#30363d;
+  --text:#e6edf3;
+  --muted:#8b949e;
+  --accent:#58a6ff;
+  --green:#3fb950;
+  --amber:#d29922;
+  --pink:#ff7b72;
+  --purple:#d2a8ff;
+  --orange:#ffa657;
+  --teal:#39d353;
+
+  --code-font : clamp(80px, 5vw, 120px);
+  --out-font  : clamp(72px, 4.2vw, 104px);
+  --var-font  : clamp(40px, 2.2vw, 56px);
+  --exp-font  : clamp(48px, 2.6vw, 66px);
+  --btn-font  : clamp(40px, 2vw, 54px);
+  --title-font: clamp(56px, 2.8vw, 76px);
+}
+
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;padding:0;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  overflow:hidden;
+}
+
+/* ============================================================
+   1. 全屏代码区（不透明、始终是视觉主体）
+   ============================================================ */
+#codePane{
+  position:fixed; inset:0;
+  overflow:auto;
+  background:var(--bg);
+  scrollbar-width:thin;
+  scrollbar-color:#3a4451 transparent;
+  z-index:1;
+}
+#codePane::-webkit-scrollbar{width:14px;height:14px;}
+#codePane::-webkit-scrollbar-thumb{background:#3a4451;border-radius:8px;}
+#codePane::-webkit-scrollbar-track{background:transparent;}
+
+#codeInner{
+  min-width:max-content;
+  padding-bottom:45vh;         /* 最后几行也能滚到视野中央 */
+}
+
+.cl{
+  display:flex;
+  align-items:flex-start;
+  white-space:pre;             /* 关键：不折行，每行代码+注释只占一行 */
+  line-height:1.5;
+  padding:.06em 90px .06em 0;
+  border-left:10px solid transparent;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  font-weight:500;
+  transition:background .25s,border-color .25s,opacity .25s;
+}
+.cl .ln{
+  flex:0 0 auto;
+  position:sticky; left:0; z-index:3;
+  align-self:stretch;
+  display:flex; align-items:center; justify-content:flex-end;
+  width:3.4ch;
+  padding-right:.35em;
+  margin-right:.55em;
+  font-size:.58em;
+  color:#4d5866;
+  background:var(--bg);
+  user-select:none;
+  font-variant-numeric:tabular-nums;
+  border-right:2px solid #21262d;
+}
+.cl .cd{flex:1 1 auto;}
+
+/* 语法高亮 */
+.pp{color:var(--purple);font-weight:700;}
+.str{color:#7ee787;}
+.cmt{color:#6e7681;font-style:italic;}
+.fn{color:var(--accent);font-weight:600;}
+.kw{color:var(--pink);font-weight:700;}
+.num{color:var(--amber);}
+.op{color:var(--orange);font-weight:700;}
+
+/* 当前执行行 */
+.cl.active{
+  background:linear-gradient(90deg,rgba(88,166,255,.28),rgba(88,166,255,.05) 60%,transparent);
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 3px rgba(88,166,255,.35);
+}
+.cl.active .cd{color:#ffffff;}
+.cl.active .ln{color:var(--accent);font-weight:900;border-right-color:var(--accent);}
+
+/* 循环体命中（绿底） */
+.cl.hit{
+  background:linear-gradient(90deg,rgba(63,185,80,.24),rgba(63,185,80,.03) 60%,transparent);
+  border-left-color:var(--green);
+}
+.cl.hit .ln{color:var(--green);}
+
+/* 被跳过（灰） */
+.cl.skip{opacity:.20;}
+
+/* ============================================================
+   2. 通用悬浮面板：可拖动 / 可关闭 / 可任意调整大小 / 点击置顶
+   ============================================================ */
+.panel{
+  position:fixed;
+  background:var(--panel-bg);
+  -webkit-backdrop-filter:blur(16px) saturate(1.3);
+  backdrop-filter:blur(16px) saturate(1.3);
+  border:2px solid var(--border);
+  border-radius:16px;
+  box-shadow:0 12px 44px rgba(0,0,0,.65);
+  display:flex; flex-direction:column;
+  overflow:hidden;
+  z-index:100;
+  transition:border-color .18s,box-shadow .18s,opacity .18s;
+}
+.panel.top{
+  border-color:var(--accent);
+  box-shadow:0 0 0 4px rgba(88,166,255,.35), 0 18px 60px rgba(0,0,0,.75);
+}
+.panel.hidden{display:none;}
+
+/* 标题栏（拖拽把手） */
+.ph{
+  flex:0 0 auto;
+  display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  padding:10px 12px 10px 18px;
+  background:linear-gradient(180deg,rgba(33,38,45,.95),rgba(22,27,34,.95));
+  border-bottom:2px solid var(--border);
+  cursor:move;
+  touch-action:none;
+  user-select:none;
+}
+.pt{
+  font-size:clamp(28px,1.5vw,40px);
+  font-weight:800;
+  letter-spacing:.06em;
+  color:#adbac7;
+  white-space:nowrap;
+}
+.sp{flex:1 1 auto;min-width:8px;}
+
+/* 内容区 */
+.pb{
+  flex:1 1 auto; min-height:0; overflow:auto;
+  scrollbar-width:thin; scrollbar-color:#3a4451 transparent;
+}
+.pb::-webkit-scrollbar{width:12px;height:12px;}
+.pb::-webkit-scrollbar-thumb{background:#3a4451;border-radius:8px;}
+
+/* 按钮 */
+.btn{
+  font:inherit;
+  font-size:var(--btn-font);
+  font-weight:700;
+  min-height:72px;
+  padding:0 22px;
+  border-radius:14px;
+  border:2px solid #3d4753;
+  background:#1c2430;
+  color:var(--text);
+  cursor:pointer;
+  white-space:nowrap;
+  transition:background .15s,border-color .15s,transform .08s;
+  touch-action:manipulation;
+}
+.btn:hover:not(:disabled){background:#26313f;border-color:#5a6a7d;}
+.btn:active:not(:disabled){transform:translateY(3px);}
+.btn:disabled{opacity:.32;cursor:not-allowed;}
+.btn.primary{
+  background:linear-gradient(180deg,#1f6feb,#1158c7);
+  border-color:#58a6ff;color:#fff;
+}
+.btn.primary.playing{
+  background:linear-gradient(180deg,#d29922,#9e6a00);
+  border-color:#e3b341;color:#161000;
+}
+
+/* 关闭按钮 */
+.pclose{
+  flex:0 0 auto;
+  width:64px;height:64px;min-width:64px;
+  font-size:44px;line-height:1;
+  border-radius:12px;
+  border:2px solid #5c3a3a;
+  background:#3a1d1d;
+  color:#ff9c9c;
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition:background .15s;
+}
+.pclose:hover{background:#5c2626;color:#fff;}
+
+/* 右下角缩放手柄：可任意调整大小，无最小/最大限制 */
+.rs{
+  position:absolute; right:0; bottom:0;
+  width:70px;height:70px;
+  cursor:nwse-resize;
+  touch-action:none;
+  z-index:20;
+}
+.rs::after{
+  content:'';
+  position:absolute; right:10px; bottom:10px;
+  width:26px;height:26px;
+  border-right:6px solid #7d8590;
+  border-bottom:6px solid #7d8590;
+  border-radius:0 0 6px 0;
+  opacity:.85;
+}
+.rs:hover::after{border-color:var(--accent);}
+
+/* 速度滑块 */
+.spd{
+  display:flex;align-items:center;gap:12px;
+  font-size:var(--btn-font);
+  color:var(--muted);
+  white-space:nowrap;
+  padding:0 10px;
+}
+.spd input[type=range]{
+  width:clamp(160px,14vw,320px);
+  height:52px;
+  accent-color:var(--accent);
+  cursor:pointer;
+}
+.spd b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:3em;display:inline-block;}
+
+/* ============================================================
+   3. 变量 / 状态面板
+   ============================================================ */
+#varBody{padding:10px 12px;display:flex;flex-direction:column;gap:8px;}
+.vr{
+  display:flex;justify-content:space-between;align-items:center;gap:16px;
+  padding:8px 16px;
+  border-radius:10px;
+  background:rgba(22,27,34,.9);
+  border:2px solid #21262d;
+  font-size:var(--var-font);
+  transition:background .3s,border-color .3s;
+}
+.vr.k-ctx{background:#0f2a45;border-color:#1f5f96;}
+.vr.k-main{border-left:10px solid #39c5cf;}
+.vr.k-money{border-left:10px solid var(--amber);}
+.vr.k-sw{border-left:10px solid var(--teal);}
+.vr.k-sub{border-left:10px solid var(--accent);}
+.vr.k-val{border-left:10px solid var(--pink);}
+.vr.k-note{border-left:10px solid #2dd4bf;}
+.vr.k-ret{border-left:10px solid #8b949e;}
+.vr.changed{background:rgba(88,166,255,.20);border-color:var(--accent);}
+.vn{color:var(--muted);white-space:nowrap;font-size:.86em;}
+.vv{
+  font-family:ui-monospace,Consolas,monospace;
+  font-weight:800;
+  font-variant-numeric:tabular-nums;
+  text-align:right;
+  color:var(--accent);
+  white-space:nowrap;
+}
+.vr.k-money .vv{color:var(--amber);}
+.vr.k-sw .vv{color:var(--teal);}
+.vr.k-val .vv{color:var(--pink);}
+.vr.k-ctx .vv{color:#79c0ff;}
+.vr.k-note .vv{color:#7ee787;font-size:.82em;font-weight:600;}
+.vr.k-ret .vv{color:#e3b341;}
+@keyframes vflash{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.30);color:#fff;text-shadow:0 0 26px var(--accent);}
+  100%{transform:scale(1);}
+}
+.vv.flash{animation:vflash .55s ease-out;}
+
+/* ============================================================
+   4. 程序输出面板
+   ============================================================ */
+#outBody{
+  padding:14px 18px;
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);
+  line-height:1.45;
+  white-space:pre;
+  color:#c9d1d9;
+}
+.out-line{animation:slideIn .35s ease-out;}
+.seg-ans{color:var(--amber);font-weight:900;}
+@keyframes slideIn{from{opacity:0;transform:translateX(-30px);}to{opacity:1;transform:none;}}
+.out-empty{color:#484f58;font-size:var(--var-font);}
+
+/* ============================================================
+   5. 当前语句说明条
+   ============================================================ */
+#expBody{
+  padding:18px 24px;
+  font-size:var(--exp-font);
+  line-height:1.62;
+  color:#c9d1d9;
+}
+#expBody .badge{
+  display:inline-block;
+  padding:4px 20px;margin-right:16px;
+  border-radius:12px;
+  background:rgba(88,166,255,.24);
+  color:var(--accent);
+  font-weight:900;
+  font-size:.86em;
+  vertical-align:middle;
+}
+#expBody .badge.hit{background:rgba(63,185,80,.24);color:var(--green);}
+#expBody .badge.batch{background:rgba(210,168,255,.24);color:var(--purple);}
+#expBody .badge.ans{background:rgba(210,153,34,.28);color:var(--amber);}
+#expBody strong{color:#ffffff;}
+#expBody code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(110,118,129,.22);
+  border-radius:8px;
+  padding:0 10px;
+  color:#e6edf3;
+}
+#expBody .tip{
+  display:block;margin-top:14px;padding:12px 18px;border-radius:10px;
+  background:rgba(57,211,83,.12);border-left:8px solid var(--teal);
+  color:#c3f0d3;font-size:.92em;
+}
+#expBody .warn{
+  display:block;margin-top:14px;padding:12px 18px;border-radius:10px;
+  background:rgba(210,153,34,.16);border-left:8px solid var(--amber);
+  color:#ffe6b0;font-size:.92em;
+}
+
+/* ============================================================
+   6. 缩略图（VSCode 风格 minimap）
+   ============================================================ */
+#miniBody{
+  flex:1 1 auto;
+  min-height:0;
+  overflow:hidden;
+  padding:8px;
+}
+#miniStage{
+  position:relative;
+  width:100%;
+  height:100%;
+}
+#miniCode{position:absolute;inset:0;}
+.ml{
+  white-space:pre;
+  overflow:hidden;
+  font-family:ui-monospace,Consolas,monospace;
+  color:#8b949e;
+}
+.ml .pp{color:#d2a8ff;}
+.ml .str{color:#7ee787;}
+.ml .cmt{color:#4d5866;font-style:italic;}
+.ml .fn{color:#79c0ff;}
+.ml .kw{color:#ff7b72;}
+.ml .num{color:#e3b341;}
+.ml .op{color:#ffa657;}
+
+/* 视口荧光框 */
+#miniVp{
+  position:absolute; left:-4px; right:-4px; top:0; height:60px;
+  background:rgba(88,166,255,.20);
+  border:2px solid rgba(88,166,255,.75);
+  border-radius:4px;
+  pointer-events:none;
+  box-shadow:0 0 14px rgba(88,166,255,.45);
+  z-index:3;
+}
+/* 当前执行行标记 */
+#miniCur{
+  position:absolute; left:0; right:0; top:0; height:10px;
+  background:rgba(63,185,80,.55);
+  border-left:4px solid #3fb950;
+  pointer-events:none;
+  z-index:4;
+  display:none;
+}
+
+/* ============================================================
+   7. 底部提示条
+   ============================================================ */
+#hint{
+  position:fixed; left:50%; transform:translateX(-50%);
+  bottom:14px;
+  padding:12px 34px;
+  border-radius:14px;
+  background:rgba(13,17,23,.72);
+  border:2px solid var(--border);
+  color:#7d8590;
+  font-size:clamp(26px,1.3vw,34px);
+  z-index:50;
+  pointer-events:none;
+  white-space:nowrap;
+}
+</style>
+</head>
+<body>
+
+<!-- ==================== 全屏代码区 ==================== -->
+<div id="codePane"><div id="codeInner"></div></div>
+
+<!-- ==================== 顶部控制栏 ==================== -->
+<div class="panel" id="pTop">
+  <div class="ph" data-drag>
+    <span class="pt">控制台</span>
+    <button class="btn" id="btnReset">⟲ 重置</button>
+    <button class="btn" id="btnPrev">◀ 上一步</button>
+    <button class="btn primary" id="btnPlay">▶ 自动播放</button>
+    <button class="btn" id="btnNext">下一步 ▶</button>
+    <label class="spd">速度
+      <input type="range" id="spd" min="300" max="3000" step="100" value="1200">
+      <b id="spdLbl">1.20s</b>
+    </label>
+    <button class="btn" id="btnFull">⛶ 全屏</button>
+    <button class="btn" id="btnTog">▣ 面板</button>
+    <button class="btn" id="btnMini">▤ 缩略图</button>
+    <button class="btn" id="btnLayout">⟳ 重置布局</button>
+    <button class="pclose" data-close title="关闭">×</button>
+  </div>
+</div>
+
+<!-- ==================== 变量 / 状态面板 ==================== -->
+<div class="panel" id="pVars">
+  <div class="ph" data-drag>
+    <span class="pt">变量 · 循环条件 · 状态</span>
+    <span class="sp"></span>
+    <button class="pclose" data-close title="关闭">×</button>
+  </div>
+  <div class="pb" id="varBody"></div>
+  <div class="rs" data-resize></div>
+</div>
+
+<!-- ==================== 程序输出面板 ==================== -->
+<div class="panel" id="pOut">
+  <div class="ph" data-drag>
+    <span class="pt">程序运行结果（屏幕输出）</span>
+    <span class="sp"></span>
+    <button class="pclose" data-close title="关闭">×</button>
+  </div>
+  <div class="pb" id="outBody"></div>
+  <div class="rs" data-resize></div>
+</div>
+
+<!-- ==================== 当前语句说明条 ==================== -->
+<div class="panel" id="pExp">
+  <div class="ph" data-drag>
+    <span class="pt">当前语句说明</span>
+    <span class="sp"></span>
+    <button class="pclose" data-close title="关闭">×</button>
+  </div>
+  <div class="pb" id="expBody"></div>
+  <div class="rs" data-resize></div>
+</div>
+
+<!-- ==================== 缩略图 ==================== -->
+<div class="panel" id="pMini">
+  <div class="ph" data-drag>
+    <span class="pt">缩略图</span>
+    <span class="sp"></span>
+    <button class="pclose" data-close title="关闭">×</button>
+  </div>
+  <div class="pb" id="miniBody">
+    <div id="miniStage">
+      <div id="miniCode"></div>
+      <div id="miniVp"></div>
+      <div id="miniCur"></div>
+    </div>
+  </div>
+  <div class="rs" data-resize></div>
+</div>
+
+<div id="hint">空格=播放/暂停 · ←/→=上一步/下一步 · R=重置 · F=全屏 · M=缩略图 · H=显示/隐藏所有面板</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   PART 1 · 源代码（17 行，每行代码与注释同一行，绝不折行）
+   ============================================================ */
+var CODE = [
+  {n:1,  ind:0,  code:'<span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>', cmt:'包含标准输入输出头文件'},
+  {n:2,  ind:0,  code:'<span class="pp">#include</span> <span class="str">"math.h"</span>', cmt:'包含数学函数头文件（本程序未使用）'},
+  {n:3,  ind:0,  code:'<span class="kw">int</span> <span class="fn">main</span>() {', cmt:'定义主函数'},
+  {n:4,  ind:4,  code:'<span class="kw">int</span> i, j, k, c;', cmt:'定义变量'},
+  {n:5,  ind:4,  code:'<span class="kw">for</span> (i<span class="op">=</span><span class="num">1</span>; i<span class="op">&lt;=</span><span class="num">9</span>; i<span class="op">++</span>) {', cmt:'前两位数字，不能为0'},
+  {n:6,  ind:8,  code:'<span class="kw">for</span> (j<span class="op">=</span><span class="num">0</span>; j<span class="op">&lt;=</span><span class="num">9</span>; j<span class="op">++</span>) {', cmt:'后两位数字，可以为0'},
+  {n:7,  ind:12, code:'<span class="kw">if</span> (i <span class="op">!=</span> j) {', cmt:'前后数字不同'},
+  {n:8,  ind:16, code:'k <span class="op">=</span> i<span class="op">*</span><span class="num">1000</span> <span class="op">+</span> i<span class="op">*</span><span class="num">100</span> <span class="op">+</span> j<span class="op">*</span><span class="num">10</span> <span class="op">+</span> j;', cmt:'构造四位数'},
+  {n:9,  ind:16, code:'<span class="kw">for</span> (c<span class="op">=</span><span class="num">31</span>; c<span class="op">*</span>c<span class="op">&lt;</span>k; c<span class="op">++</span>);', cmt:'找到平方根'},
+  {n:10, ind:16, code:'<span class="kw">if</span> (c<span class="op">*</span>c <span class="op">==</span> k) {', cmt:'如果k是平方数'},
+  {n:11, ind:20, code:'<span class="fn">printf</span>(<span class="str">"is %d \\n"</span>, k);', cmt:'输出车牌号'},
+  {n:12, ind:16, code:'}', cmt:'结束 if(c*c==k)'},
+  {n:13, ind:12, code:'}', cmt:'结束 if(i!=j)'},
+  {n:14, ind:8,  code:'}', cmt:'结束内层 for'},
+  {n:15, ind:4,  code:'}', cmt:'结束外层 for'},
+  {n:16, ind:4,  code:'<span class="kw">return</span> <span class="num">0</span>;', cmt:'返回0，程序结束'},
+  {n:17, ind:0,  code:'}', cmt:'结束 main'}
+];
+
+/* ============================================================
+   PART 2 · 逐步执行轨迹（17 行代码真实执行顺序）
+   ============================================================ */
+var STEPS = [];
+var consoleLines = [];   /* 输出快照：唯一内容 "is 7744 " */
+
+function V(o){
+  var base = {
+    i:'—', j:'—', k:'—', c:'—',
+    condI:'—', condJ:'—', condNe:'—', condC:'—',
+    expr:'—', exprVal:'—', sq:'—', note:'—', ret:'—'
+  };
+  if (o) for (var p in o) if (Object.prototype.hasOwnProperty.call(o,p)) base[p]=o[p];
+  return base;
+}
+function push(o){
+  STEPS.push({
+    line: o.line,
+    ctx: o.ctx,
+    vars: V(o.vars),
+    out: consoleLines.slice(),
+    hit: o.hit || [],
+    skip: o.skip || [],
+    title: o.title,
+    desc: o.desc
+  });
+}
+
+/* ---------- 第 1 行 ---------- */
+push({
+  line:1, ctx:'预处理阶段',
+  vars:{ expr:'#include <stdio.h>', exprVal:'引入标准输入输出头文件',
+         note:'预处理指令，编译前已处理，不占运行时间' },
+  hit:[], skip:[],
+  title:'预处理指令 #include &lt;stdio.h&gt;',
+  desc:'预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容引入源文件，让 <code>printf</code> 获得正确的函数声明。<br>这一行不是 C 语句，编译前就被处理完了，不占运行时间，也不产生任何屏幕输出。'
+});
+
+/* ---------- 第 2 行 ---------- */
+push({
+  line:2, ctx:'预处理阶段',
+  vars:{ expr:'#include "math.h"', exprVal:'引入数学函数头文件',
+         note:'本程序其实并没有用到 math.h 里的任何函数' },
+  hit:[], skip:[],
+  title:'预处理指令 #include "math.h"',
+  desc:'用双引号引入数学函数头文件 <code>math.h</code>。<span class="warn"><b>注意：</b>本程序从头到尾<b>并没有调用</b> <code>math.h</code> 里的任何函数——判断平方数用的是 <code>c*c == k</code> 这种整数乘法，所以这一行<b>删掉也不影响结果</b>。它在这里只是一句多余的声明。</span>'
+});
+
+/* ---------- 第 3 行 ---------- */
+push({
+  line:3, ctx:'main · 程序入口',
+  vars:{ expr:'int main()', exprVal:'程序开始', note:'main 是程序入口' },
+  hit:[], skip:[],
+  title:'int main() {  程序从这里开始',
+  desc:'操作系统把控制权交给 <code>main</code>，为它建立<b>栈帧</b>；变量 i、j、k、c 都存放在这个栈帧里。'
+});
+
+/* ---------- 第 4 行 ---------- */
+push({
+  line:4, ctx:'main · 声明变量',
+  vars:{
+    i:'未初始化（不定值）', j:'未初始化（不定值）',
+    k:'未初始化（不定值）', c:'未初始化（不定值）',
+    expr:'int i, j, k, c;', exprVal:'四个变量均未初始化',
+    note:'i=前两位数字  j=后两位数字  k=四位数  c=平方根试探值'
+  },
+  hit:[], skip:[],
+  title:'int i, j, k, c;  声明 4 个变量',
+  desc:'声明 4 个 <b>int</b> 变量：<br>· <b>i</b>：车牌号的<b>前两位数字</b>（1~9，不能为 0）；<br>· <b>j</b>：车牌号的<b>后两位数字</b>（0~9，可以为 0）；<br>· <b>k</b>：由 i、j 拼出来的四位数，形如 <b>iijj</b>；<br>· <b>c</b>：用来试探 k 的平方根的变量。'
+});
+
+/* ---------- 第 5 行：i = 1 ---------- */
+push({
+  line:5, ctx:'main · 外层 i 循环初始化（i = 1）',
+  vars:{
+    i:'1', condI:'1 <= 9 → 真',
+    expr:'for (i=1; i<=9; i++)', exprVal:'i = 1，条件成立',
+    note:'前两位数字从 1 开始，不能为 0'
+  },
+  hit:[5], skip:[],
+  title:'for (i=1; 1 &lt;= 9; i++)  i 初始化为 1',
+  desc:'进入最外层 <code>for</code>，i 从 <b>1</b> 遍历到 <b>9</b>，控制车牌号的<b>前两位数字</b>。<br>车牌是四位数，首位不能为 0，所以 i 从 1 起步。<span class="tip"><b>两层循环的分工：</b><br>· 外层 i：前两位数字（1~9，共 9 种）<br>· 内层 j：后两位数字（0~9，共 10 种）<br>两者组合出 9 × 10 = <b>90 个候选号码</b>，再逐个筛选。</span>'
+});
+
+/* ---------- 第 6 行：j = 0 ---------- */
+push({
+  line:6, ctx:'main · 内层 j 循环初始化（j = 0）',
+  vars:{
+    i:'1', j:'0',
+    condI:'1 <= 9 → 真', condJ:'0 <= 9 → 真',
+    expr:'for (j=0; j<=9; j++)', exprVal:'j = 0，条件成立',
+    note:'后两位数字可以为 0'
+  },
+  hit:[6], skip:[],
+  title:'for (j=0; 0 &lt;= 9; j++)  j 初始化为 0',
+  desc:'进入第二层 <code>for</code>，j 从 <b>0</b> 遍历到 <b>9</b>，控制车牌号的<b>后两位数字</b>，允许为 0。'
+});
+
+/* ---------- 第 7 行：1 != 0 真 ---------- */
+push({
+  line:7, ctx:'main · 判断前后两位数字是否不同',
+  vars:{
+    i:'1', j:'0',
+    condI:'1 <= 9 → 真', condJ:'0 <= 9 → 真',
+    condNe:'1 != 0 → 真',
+    expr:'if (i != j)', exprVal:'条件成立，进入 if 体（第 8~12 行）',
+    note:'前后两位数字必须不同，形如 1111、2222 的要排除'
+  },
+  hit:[7], skip:[],
+  title:'if (i != j)：1 != 0 → 真',
+  desc:'判断前后两位数字是否<b>不同</b>。题目要求"前后数字不同"，也就是形如 <b>iijj</b> 且 i ≠ j。<br>1 ≠ 0，条件为<b>真</b>，进入 <code>if</code> 体继续处理。'
+});
+
+/* ---------- 第 8 行：k = 1100 ---------- */
+push({
+  line:8, ctx:'main · 构造四位数 k',
+  vars:{
+    i:'1', j:'0', k:'1100',
+    condI:'1 <= 9 → 真', condJ:'0 <= 9 → 真', condNe:'1 != 0 → 真',
+    expr:'k = i*1000 + i*100 + j*10 + j',
+    exprVal:'k = 1000 + 100 + 0 + 0 = 1100',
+    note:'把 i、j 拼成形如 iijj 的四位数'
+  },
+  hit:[8], skip:[],
+  title:'k = 1×1000 + 1×100 + 0×10 + 0 = 1100',
+  desc:'把 i、j 拼成一个四位数 <b>iijj</b>：<br>· i×1000 = 1×1000 = 1000（千位）<br>· i×100 = 1×100 = 100（百位）<br>· j×10 = 0×10 = 0（十位）<br>· j = 0（个位）<br>合计 <b>k = 1100</b>。<span class="tip">这个表达式的巧妙之处：<b>i</b> 同时出现在千位和百位，<b>j</b> 同时出现在十位和个位，所以拼出来的数字天然就是 <b>iijj</b> 的形状，不需要字符串拼接。</span>'
+});
+
+/* ---------- 第 9 行：c 循环（k=1100） ---------- */
+push({
+  line:9, ctx:'main · 找平方根（c 循环）',
+  vars:{
+    i:'1', j:'0', k:'1100', c:'34',
+    condC:'34×34 = 1156，1156 < 1100 → 假 → 退出循环',
+    expr:'for (c=31; c*c<k; c++);',
+    exprVal:'c 从 31 递增到 34 后停止',
+    note:'空循环体（末尾分号）：只为找到满足 c*c ≥ k 的最小 c'
+  },
+  hit:[9], skip:[],
+  title:'for (c=31; c*c&lt;1100; c++);  c 从 31 试到 34',
+  desc:'这是一个<b>空循环</b>——循环体就是末尾那个分号，什么都不做，只用来"试"出平方根附近的 c：<br>· c=31：31×31 = 961 &lt; 1100 → c++<br>· c=32：32×32 = 1024 &lt; 1100 → c++<br>· c=33：33×33 = 1089 &lt; 1100 → c++<br>· c=34：34×34 = 1156，<b>1156 &lt; 1100 为假</b> → 退出循环<br>循环结束时 <b>c = 34</b>。<span class="tip">为什么从 31 开始？四位数 k ≥ 1000，而 √1000 ≈ 31.6，最小的平方根就在 31 附近。从 31 起逐次 +1，最终得到的 c 一定是<b>满足 c² ≥ k 的最小整数</b>。</span>'
+});
+
+/* ---------- 第 10 行：1100 不是平方数 ---------- */
+push({
+  line:10, ctx:'main · 判断 k 是否为完全平方数',
+  vars:{
+    i:'1', j:'0', k:'1100', c:'34',
+    condC:'已退出（34×34 ≥ 1100）',
+    sq:'34×34 = 1156，1156 == 1100 → 假',
+    expr:'if (c*c == k)', exprVal:'1156 == 1100 → 假，跳过 printf',
+    note:'k = 1100 不是完全平方数'
+  },
+  hit:[10], skip:[11],
+  title:'1156 == 1100 → 假，1100 不是平方数',
+  desc:'<code>c*c == k</code> 用来判断 k 是不是<b>完全平方数</b>。<br>因为上一步的 c 已经是"≥ √k 的最小整数"，所以<b>只要 c² 恰好等于 k，k 就一定是完全平方数</b>。<br>34×34 = <b>1156</b> ≠ 1100，条件为<b>假</b>，<b>跳过 printf</b>，1100 不是车牌号。'
+});
+
+/* ---------- 第 6 行：j = 1（i == j 跳过） ---------- */
+push({
+  line:6, ctx:'main · 内层 j 循环递增（j = 1）',
+  vars:{
+    i:'1', j:'1',
+    condI:'1 <= 9 → 真', condJ:'1 <= 9 → 真',
+    expr:'for (j=0; j<=9; j++)  →  j++',
+    exprVal:'j 递增到 1，条件成立',
+    note:'j++ 后重新判断 j <= 9'
+  },
+  hit:[6], skip:[],
+  title:'j++ → j = 1：1 &lt;= 9 → 真',
+  desc:'内层循环执行 <code>j++</code>，j 从 0 递增到 <b>1</b>，条件 <code>1 &lt;= 9</code> 仍成立，进入新一轮。'
+});
+
+push({
+  line:7, ctx:'main · 判断前后两位数字是否不同',
+  vars:{
+    i:'1', j:'1',
+    condI:'1 <= 9 → 真', condJ:'1 <= 9 → 真',
+    condNe:'1 != 1 → 假',
+    expr:'if (i != j)', exprVal:'条件不成立，跳过整个 if 体（第 8~12 行）',
+    note:'i 和 j 相同 → 1111 这种"前后一样"的要排除'
+  },
+  hit:[7], skip:[8,9,10,11,12],
+  title:'if (i != j)：1 != 1 → 假，跳过 if 体',
+  desc:'i 和 j 都是 1，条件 <code>1 != 1</code> 为<b>假</b>，<b>整个 if 体（第 8~12 行）被跳过</b>——不构造 k、不找平方根、不判断、不输出。<br>这正好排除了 <b>1111</b> 这种前后数字相同的号码。'
+});
+
+/* ---------- i = 1，j = 2~9 批量 ---------- */
+push({
+  line:6, ctx:'main · i = 1，j = 2 ~ 9 批量枚举',
+  vars:{
+    i:'1', j:'9',
+    condI:'1 <= 9 → 真', condJ:'9 <= 9 → 真',
+    condNe:'i != j → 全部为真',
+    condC:'各轮已退出',
+    expr:'批量：k = 1122 / 1133 / 1144 / 1155 / 1166 / 1177 / 1188 / 1199',
+    exprVal:'c = 34,34,34,34,35,35,35,35；c² 均不等于 k',
+    sq:'8 次判断全部为假，无输出',
+    note:'i = 1 时，j 从 2 到 9 的 8 次检查全部失败'
+  },
+  hit:[6,7,8,9,10], skip:[11],
+  title:'i = 1，j = 2 ~ 9：8 次检查全部失败',
+  desc:'j 依次取 2、3、4、5、6、7、8、9，每次都构造 k 并找平方根、判断平方数：<br>· j=2 → k=1122，c=34，34²=1156 ≠ 1122<br>· j=3 → k=1133，c=34，1156 ≠ 1133<br>· j=4 → k=1144，c=34，1156 ≠ 1144<br>· j=5 → k=1155，c=34，1156 ≠ 1155<br>· j=6 → k=1166，c=35，35²=1225 ≠ 1166<br>· j=7 → k=1177，c=35，1225 ≠ 1177<br>· j=8 → k=1188，c=35，1225 ≠ 1188<br>· j=9 → k=1199，c=35，1225 ≠ 1199<br><b>8 次检查全部为假，没有任何输出。</b><br>j 递增到 10 时 <code>j &lt;= 9</code> 为假，内层循环结束，回到外层 <code>i++</code>。'
+});
+
+/* ---------- i = 2 ~ 6：每个 i 两步（第 5 行 + 批量） ---------- */
+var MID = [
+  { i:2, lastK:'2299', lastC:'48',
+    lines:[
+      '· j=0 → k=2200，c=47，47²=2209 ≠ 2200',
+      '· j=1 → k=2211，c=48，48²=2304 ≠ 2211',
+      '· j=2 → <b>i==j，跳过</b>',
+      '· j=3~9 → k=2233、2244、2255、2266、2277、2288、2299，c=48，2304 均不等于 k'
+    ]},
+  { i:3, lastK:'3399', lastC:'59',
+    lines:[
+      '· j=0、1、2 → k=3300、3311、3322，c=58，58²=3364 均不等于 k',
+      '· j=3 → <b>i==j，跳过</b>',
+      '· j=4、5 → k=3344、3355，c=58，3364 均不等于 k',
+      '· j=6~9 → k=3366、3377、3388、3399，c=59，59²=3481 均不等于 k'
+    ]},
+  { i:4, lastK:'4499', lastC:'68',
+    lines:[
+      '· j=0~3、5~8 → k=4400、4411、4422、4433、4455、4466、4477、4488，c=67，67²=4489 均不等于 k',
+      '· j=4 → <b>i==j，跳过</b>',
+      '· j=9 → k=4499，c=68，68²=4624 ≠ 4499'
+    ]},
+  { i:5, lastK:'5599', lastC:'75',
+    lines:[
+      '· j=0~4、6~9 → k=5500、5511、5522、5533、5544、5566、5577、5588、5599',
+      '  对应 c 全部为 75，75²=5625 均不等于上述任何一个 k',
+      '· j=5 → <b>i==j，跳过</b>'
+    ]},
+  { i:6, lastK:'6699', lastC:'82',
+    lines:[
+      '· j=0~5、7~9 → k=6600、6611、6622、6633、6644、6655、6677、6688、6699',
+      '  对应 c 全部为 82，82²=6724 均不等于上述任何一个 k',
+      '· j=6 → <b>i==j，跳过</b>'
+    ]}
+];
+
+MID.forEach(function(m){
+  push({
+    line:5, ctx:'main · 外层 i 循环递增（i = ' + m.i + '）',
+    vars:{
+      i:String(m.i), j:'—', k:'—', c:'—',
+      condI: m.i + ' <= 9 → 真',
+      expr:'for (i=1; i<=9; i++)  →  i++',
+      exprVal:'i 递增到 ' + m.i + '，内层 j 将重新从 0 开始',
+      note:'内层 j 循环每次都会重新初始化'
+    },
+    hit:[5], skip:[],
+    title:'i++ → i = ' + m.i + '：' + m.i + ' &lt;= 9 → 真',
+    desc:'外层 i 递增到 <b>' + m.i + '</b>，条件成立。进入循环体后，内层 <code>j</code> 会<b>重新从 0 开始</b>枚举到 9。'
+  });
+
+  push({
+    line:6, ctx:'main · i = ' + m.i + '，j = 0 ~ 9 批量枚举',
+    vars:{
+      i:String(m.i), j:'9', k:m.lastK, c:m.lastC,
+      condI: m.i + ' <= 9 → 真',
+      condJ:'9 <= 9 → 真（枚举结束）',
+      condNe:'i != j → 除 j=' + m.i + ' 外均为真',
+      condC:'各轮已退出',
+      expr:'批量：j = 0 ~ 9，共 10 轮',
+      exprVal:'9 轮构造 k 并判断平方数，全部不是平方数',
+      sq:'全部为假，无输出',
+      note:'i = ' + m.i + ' 时没有任何解'
+    },
+    hit:[6,7,8,9,10], skip:[11],
+    title:'i = ' + m.i + '，j = 0 ~ 9：全部失败',
+    desc:'i = ' + m.i + ' 时，j 从 0 遍历到 9：<br>' +
+          m.lines.join('<br>') +
+          '<br><b>没有任何一个 k 是完全平方数，无输出。</b><br>内层 j 循环结束，回到外层 <code>i++</code>。'
+  });
+});
+
+/* ---------- i = 7：批量 j=0~3 → 详细 j=4（命中）→ 批量 j=5~9 ---------- */
+push({
+  line:5, ctx:'main · 外层 i 循环递增（i = 7）',
+  vars:{
+    i:'7', j:'—', k:'—', c:'—',
+    condI:'7 <= 9 → 真',
+    expr:'for (i=1; i<=9; i++)  →  i++',
+    exprVal:'i 递增到 7，内层 j 重新从 0 开始',
+    note:'i = 7 这一轮，答案即将出现'
+  },
+  hit:[5], skip:[],
+  title:'i++ → i = 7：7 &lt;= 9 → 真',
+  desc:'外层 i 递增到 <b>7</b>，条件成立。<br><span class="tip"><b>伏笔：</b>前面 i=1~6 全部失败，答案就在 i=7 这一轮里——因为 88² = <b>7744</b>，恰好是 iijj 的形状。</span>'
+});
+
+push({
+  line:6, ctx:'main · i = 7，j = 0 ~ 3 批量枚举',
+  vars:{
+    i:'7', j:'3', k:'7733', c:'88',
+    condI:'7 <= 9 → 真',
+    condJ:'3 <= 9 → 真',
+    condNe:'i != j → 全部为真',
+    condC:'各轮已退出',
+    expr:'批量：j = 0、1、2、3',
+    exprVal:'k = 7700 / 7711 / 7722 / 7733，c 均为 88',
+    sq:'88² = 7744，与上述 k 全部不相等 → 假',
+    note:'差一点点，但都不等于 7744'
+  },
+  hit:[6,7,8,9,10], skip:[11],
+  title:'i = 7，j = 0 ~ 3：4 次检查全部失败',
+  desc:'i = 7 时，j 从 0 开始：<br>· j=0 → k=7700，c=88，88²=7744 ≠ 7700<br>· j=1 → k=7711，c=88，7744 ≠ 7711<br>· j=2 → k=7722，c=88，7744 ≠ 7722<br>· j=3 → k=7733，c=88，7744 ≠ 7733<br><b>4 次都只差一点，但都不等于 7744，无输出。</b>'
+});
+
+push({
+  line:6, ctx:'main · 内层 j 循环递增（j = 4）',
+  vars:{
+    i:'7', j:'4',
+    condI:'7 <= 9 → 真', condJ:'4 <= 9 → 真',
+    expr:'for (j=0; j<=9; j++)  →  j++',
+    exprVal:'j 递增到 4，条件成立',
+    note:'关键的一轮来了'
+  },
+  hit:[6], skip:[],
+  title:'j++ → j = 4：4 &lt;= 9 → 真',
+  desc:'内层循环 <code>j++</code>，j 递增到 <b>4</b>，条件成立，进入新一轮。'
+});
+
+push({
+  line:7, ctx:'main · 判断前后两位数字是否不同',
+  vars:{
+    i:'7', j:'4',
+    condI:'7 <= 9 → 真', condJ:'4 <= 9 → 真',
+    condNe:'7 != 4 → 真',
+    expr:'if (i != j)', exprVal:'条件成立，进入 if 体',
+    note:'7 ≠ 4，符合"前后数字不同"的要求'
+  },
+  hit:[7], skip:[],
+  title:'if (i != j)：7 != 4 → 真',
+  desc:'7 ≠ 4，条件为<b>真</b>，进入 <code>if</code> 体，开始构造四位数。'
+});
+
+push({
+  line:8, ctx:'main · 构造四位数 k',
+  vars:{
+    i:'7', j:'4', k:'7744',
+    condI:'7 <= 9 → 真', condJ:'4 <= 9 → 真', condNe:'7 != 4 → 真',
+    expr:'k = i*1000 + i*100 + j*10 + j',
+    exprVal:'k = 7000 + 700 + 40 + 4 = 7744',
+    note:'拼出的四位数是 7744'
+  },
+  hit:[8], skip:[],
+  title:'k = 7×1000 + 7×100 + 4×10 + 4 = 7744',
+  desc:'把 i=7、j=4 拼成四位数：<br>· 7×1000 = 7000<br>· 7×100 = 700<br>· 4×10 = 40<br>· 4 = 4<br>合计 <b>k = 7744</b>，正好是 <b>iijj</b> 的形状（前两位 77，后两位 44）。'
+});
+
+push({
+  line:9, ctx:'main · 找平方根（c 循环）',
+  vars:{
+    i:'7', j:'4', k:'7744', c:'88',
+    condC:'88×88 = 7744，7744 < 7744 → 假 → 退出循环',
+    expr:'for (c=31; c*c<k; c++);',
+    exprVal:'c 从 31 一路递增到 88 后停止',
+    note:'空循环体：找满足 c*c ≥ k 的最小 c'
+  },
+  hit:[9], skip:[],
+  title:'for (c=31; c*c&lt;7744; c++);  c 递增到 88',
+  desc:'空循环开始工作，c 从 31 一路往上试：<br>· c=31：961 &lt; 7744 → c++<br>· ……（中间每一次都满足 c² &lt; 7744）……<br>· c=87：87×87 = 7569 &lt; 7744 → c++<br>· c=88：88×88 = <b>7744</b>，<b>7744 &lt; 7744 为假</b> → 退出循环<br>循环结束时 <b>c = 88</b>。'
+});
+
+push({
+  line:10, ctx:'main · 判断 k 是否为完全平方数',
+  vars:{
+    i:'7', j:'4', k:'7744', c:'88',
+    condC:'已退出（88×88 = 7744，不再 < 7744）',
+    sq:'88×88 = 7744，7744 == 7744 → 真',
+    expr:'if (c*c == k)', exprVal:'7744 == 7744 → 真，进入 if 体',
+    note:'7744 是完全平方数！'
+  },
+  hit:[10], skip:[],
+  title:'88×88 = 7744 == 7744 → 真！',
+  desc:'<code>c*c == k</code> 判断 k 是不是完全平方数。<br>88×88 = <b>7744</b>，恰好等于 k = 7744，条件为<b>真</b>！<br><b>7744 是完全平方数，找到车牌号了！</b><span class="tip">为什么空循环能找到平方根？因为 c 从 31 开始一路 +1，直到 c² 不再小于 k 才停下。此时如果 c² 恰好等于 k，k 就是完全平方数——这正是 <code>if (c*c == k)</code> 存在的意义。</span>'
+});
+
+consoleLines.push('is 7744 ');
+
+push({
+  line:11, ctx:'main · printf 输出车牌号',
+  vars:{
+    i:'7', j:'4', k:'7744', c:'88',
+    condC:'已退出',
+    sq:'7744 == 7744 → 真',
+    expr:'printf("is %d \\n", k)',
+    exprVal:'输出 "is 7744 " 并换行',
+    note:'屏幕上出现第一行、也是唯一一行输出'
+  },
+  hit:[11], skip:[],
+  title:'printf("is %d \\n", k)  →  屏幕输出 is 7744',
+  desc:'<code>printf("is %d \\n", k);</code> 输出找到的车牌号。<br>· <code>%d</code> 被实参 <b>k = 7744</b> 替换；<br>· 屏幕上出现 <b>is 7744 </b>（注意 <code>%d</code> 后面还有一个空格，然后 <code>\\n</code> 换行）；<br>· 这正是本题的答案：<b>车牌号是 7744</b>。'
+});
+
+push({
+  line:6, ctx:'main · i = 7，j = 5 ~ 9 批量枚举',
+  vars:{
+    i:'7', j:'9', k:'7799', c:'89',
+    condI:'7 <= 9 → 真',
+    condJ:'9 <= 9 → 真（枚举结束）',
+    condNe:'i != j → 除 j=7 外均为真',
+    condC:'各轮已退出',
+    expr:'批量：j = 5、6、8、9（j=7 跳过）',
+    exprVal:'k = 7755 / 7766 / 7788 / 7799，c 均为 89',
+    sq:'89² = 7921，与上述 k 全部不相等 → 假',
+    note:'i = 7 这一轮结束，共找到 1 个车牌号'
+  },
+  hit:[6,7,8,9,10], skip:[11],
+  title:'i = 7，j = 5 ~ 9：4 次检查全部失败',
+  desc:'继续枚举 i = 7 剩余的 j 值：<br>· j=5 → k=7755，88²=7744 &lt; 7755 → c=89，89²=7921 ≠ 7755<br>· j=6 → k=7766，c=89，7921 ≠ 7766<br>· j=7 → <b>i==j，跳过</b><br>· j=8 → k=7788，c=89，7921 ≠ 7788<br>· j=9 → k=7799，c=89，7921 ≠ 7799<br><b>全部失败，无输出。</b><br>内层 j 循环结束，回到外层 <code>i++</code>。'
+});
+
+/* ---------- i = 8、9 ---------- */
+[
+  { i:8, lastK:'8899', lastC:'95',
+    lines:[
+      '· j=0~3 → k=8800、8811、8822、8833，c=94，94²=8836 均不等于 k',
+      '· j=4~7、9 → k=8844、8855、8866、8877、8899，c=95，95²=9025 均不等于 k',
+      '· j=8 → <b>i==j，跳过</b>'
+    ]},
+  { i:9, lastK:'9988', lastC:'100',
+    lines:[
+      '· j=0~8（j=9 除外）→ k=9900、9911、9922、9933、9944、9955、9966、9977、9988',
+      '  对应 c 全部为 100，100²=10000 均不等于上述任何一个 k',
+      '· j=9 → <b>i==j，跳过</b>'
+    ]}
+].forEach(function(m){
+  push({
+    line:5, ctx:'main · 外层 i 循环递增（i = ' + m.i + '）',
+    vars:{
+      i:String(m.i), j:'—', k:'—', c:'—',
+      condI: m.i + ' <= 9 → 真',
+      expr:'for (i=1; i<=9; i++)  →  i++',
+      exprVal:'i 递增到 ' + m.i + '，内层 j 重新从 0 开始',
+      note:'越往后 k 越大，但都不是平方数'
+    },
+    hit:[5], skip:[],
+    title:'i++ → i = ' + m.i + '：' + m.i + ' &lt;= 9 → 真',
+    desc:'外层 i 递增到 <b>' + m.i + '</b>，条件成立，内层 j 重新从 0 开始枚举。'
+  });
+
+  push({
+    line:6, ctx:'main · i = ' + m.i + '，j = 0 ~ 9 批量枚举',
+    vars:{
+      i:String(m.i), j:'9', k:m.lastK, c:m.lastC,
+      condI: m.i + ' <= 9 → 真',
+      condJ:'9 <= 9 → 真（枚举结束）',
+      condNe:'i != j → 除 j=' + m.i + ' 外均为真',
+      condC:'各轮已退出',
+      expr:'批量：j = 0 ~ 9，共 10 轮',
+      exprVal:'9 轮构造 k 并判断平方数，全部不是平方数',
+      sq:'全部为假，无输出',
+      note:'i = ' + m.i + ' 时没有任何解'
+    },
+    hit:[6,7,8,9,10], skip:[11],
+    title:'i = ' + m.i + '，j = 0 ~ 9：全部失败',
+    desc:'i = ' + m.i + ' 时，j 从 0 遍历到 9：<br>' +
+          m.lines.join('<br>') +
+          '<br><b>没有任何一个 k 是完全平方数，无输出。</b>'
+  });
+});
+
+/* ---------- 第 5 行：外层退出 ---------- */
+push({
+  line:5, ctx:'main · 外层 for 条件（最终，假）',
+  vars:{
+    i:'10', j:'9', k:'9988', c:'100',
+    condI:'10 <= 9 → 假',
+    expr:'for (; i<=9; )  →  10 <= 9',
+    exprVal:'假（0） → 退出外层循环',
+    note:'所有 i、j 组合已遍历完毕'
+  },
+  hit:[5], skip:[6,7,8,9,10,11,12,13,14],
+  title:'i = 10：外层循环结束',
+  desc:'i 递增到 10 后，条件 <code>10 &lt;= 9</code> 为假，<b>两层 for 循环全部结束</b>。<br><b>循环总账：</b>程序总共枚举了 9 × 10 = <b>90</b> 个候选四位数，其中因 i==j 跳过 9 个，实际做了 <b>81</b> 次"构造 k + 找平方根 + 判断平方数"的完整检查，最终找到 <b>1</b> 个车牌号：<b>7744</b>。'
+});
+
+/* ---------- 第 16 行 ---------- */
+push({
+  line:16, ctx:'main · return',
+  vars:{
+    i:'10', j:'9', k:'9988', c:'100',
+    expr:'return 0;', exprVal:'返回 0，程序结束',
+    ret:'0', note:'返回 0 表示程序正常结束'
+  },
+  hit:[16], skip:[],
+  title:'return 0;  结束 main 函数',
+  desc:'<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。约定返回 0 表示程序正常结束。'
+});
+
+/* ---------- 第 17 行 ---------- */
+push({
+  line:17, ctx:'程序结束',
+  vars:{
+    i:'10', j:'9', k:'9988', c:'100',
+    ret:'0', expr:'—', exprVal:'—', sq:'—',
+    note:'栈帧销毁，程序退出'
+  },
+  hit:[], skip:[],
+  title:'main 函数体结束 }',
+  desc:'函数收尾，main 的栈帧被销毁，变量 i、j、k、c 随栈帧一起释放。<br>程序没有输入，只有 <b>1 次 printf 调用</b>，返回值 0。<span class="tip"><b>本程序要点总结：</b><br>① <b>双重 for 嵌套</b>：外层 i 控制前两位数字（1~9），内层 j 控制后两位数字（0~9）；<br>② <b>i != j 筛选</b>：排除 1111、2222 这类前后相同的号码；<br>③ <b>k = i*1000 + i*100 + j*10 + j</b>：用乘法移位的方式拼出 <b>iijj</b> 型四位数；<br>④ <b>空循环 for (c=31; c*c&lt;k; c++);</b>：找满足 c² ≥ k 的最小整数 c（循环体是分号，什么也不做）；<br>⑤ <b>if (c*c == k)</b>：判断 k 是否完全平方数，是则 printf 输出。<br><b>最终结果：唯一满足条件的车牌号是 7744（因为 88 × 88 = 7744）。</b><br><b>常见错误：</b>① 把 <code>i=1</code> 写成 <code>i=0</code>，会多出 0011 这类不是四位数的"号码"；② 忘掉 <code>i != j</code> 判断，会输出 1111、2222 等不合要求的号码；③ 把 c 的初值写成 0 或 1，循环次数暴增但结果不变（效率差）；④ 把 <code>c*c == k</code> 写成 <code>c == k/2</code> 之类的错误等价式。</span>'
+});
+
+/* ============================================================
+   PART 3 · DOM 与渲染
+   ============================================================ */
+var codePane  = document.getElementById('codePane');
+var codeInner = document.getElementById('codeInner');
+var miniCode  = document.getElementById('miniCode');
+var miniVp    = document.getElementById('miniVp');
+var miniCur   = document.getElementById('miniCur');
+var miniBody  = document.getElementById('miniBody');
+var miniStage = document.getElementById('miniStage');
+var varBody   = document.getElementById('varBody');
+var outBody   = document.getElementById('outBody');
+var expBody   = document.getElementById('expBody');
+
+var btnReset  = document.getElementById('btnReset');
+var btnPrev   = document.getElementById('btnPrev');
+var btnPlay   = document.getElementById('btnPlay');
+var btnNext   = document.getElementById('btnNext');
+var btnFull   = document.getElementById('btnFull');
+var btnTog    = document.getElementById('btnTog');
+var btnMini   = document.getElementById('btnMini');
+var btnLayout = document.getElementById('btnLayout');
+var spdInput  = document.getElementById('spd');
+var spdLbl    = document.getElementById('spdLbl');
+
+/* ---------- 渲染代码（全屏 + 缩略图） ---------- */
+var codeLines = [];
+CODE.forEach(function(l){
+  var indent = new Array(l.ind + 1).join(' ');
+  var cmtHtml = l.cmt ? ' <span class="cmt">// ' + l.cmt + '</span>' : '';
+
+  /* 全屏代码行 */
+  var div = document.createElement('div');
+  div.className = 'cl';
+  div.setAttribute('data-line', l.n);
+  div.innerHTML = '<span class="ln">' + l.n + '</span><span class="cd">' +
+                  indent + l.code + cmtHtml + '</span>';
+  codeInner.appendChild(div);
+  codeLines.push(div);
+
+  /* 缩略图行：保留缩进 + 语法高亮 */
+  var m = document.createElement('div');
+  m.className = 'ml';
+  m.style.paddingLeft = (l.ind * 1.4) + 'px';
+  m.innerHTML = l.code + cmtHtml;
+  miniCode.appendChild(m);
+});
+
+/* ---------- 变量表结构 ---------- */
+var VAR_ROWS = [
+  {key:'ctx',   name:'当前执行位置',              kind:'k-ctx'},
+  {key:'i',     name:'i (int) 前两位数字',         kind:'k-main'},
+  {key:'j',     name:'j (int) 后两位数字',         kind:'k-main'},
+  {key:'k',     name:'k (int) 构造的四位数',       kind:'k-money'},
+  {key:'c',     name:'c (int) 平方根试探值',       kind:'k-val'},
+  {key:'condI', name:'外层条件 i <= 9',           kind:'k-sw'},
+  {key:'condJ', name:'内层条件 j <= 9',           kind:'k-sw'},
+  {key:'condNe',name:'判断 i != j',               kind:'k-sw'},
+  {key:'condC', name:'循环条件 c*c < k',          kind:'k-sw'},
+  {key:'expr',  name:'正在求值的表达式',           kind:'k-sub'},
+  {key:'exprVal',name:'表达式结果',                kind:'k-val'},
+  {key:'sq',    name:'平方数判断 c*c == k',        kind:'k-sub'},
+  {key:'note',  name:'关键规则提示',               kind:'k-note'},
+  {key:'ret',   name:'main 返回值',               kind:'k-ret'}
+];
+
+(function buildVarTable(){
+  var html = '';
+  VAR_ROWS.forEach(function(r){
+    html += '<div class="vr ' + r.kind + '" data-key="' + r.key + '">' +
+              '<span class="vn">' + r.name + '</span>' +
+              '<span class="vv">—</span>' +
+            '</div>';
+  });
+  varBody.innerHTML = html;
+})();
+
+var varEls = {};
+VAR_ROWS.forEach(function(r){
+  var row = varBody.querySelector('.vr[data-key="' + r.key + '"]');
+  varEls[r.key] = { row: row, val: row.querySelector('.vv') };
+});
+
+/* ============================================================
+   PART 4 · 逐步执行状态机
+   ============================================================ */
+var current = -1;
+var playing = false;
+var timer = null;
+var speed = Number(spdInput.value);
+var lastOutKey = '';
+
+function renderVars(step){
+  VAR_ROWS.forEach(function(r){
+    var el = varEls[r.key];
+    var v;
+    if (!step) {
+      v = '—';
+    } else if (r.key === 'ctx') {
+      v = step.ctx;
+    } else {
+      v = step.vars[r.key];
+    }
+    v = String(v == null ? '—' : v);
+    if (el.val.textContent !== v) {
+      el.val.textContent = v;
+      el.val.classList.toggle('dim', v === '—');
+      el.val.classList.remove('flash');
+      void el.val.offsetWidth;
+      el.val.classList.add('flash');
+      el.row.classList.add('changed');
+      (function(row){
+        window.setTimeout(function(){ row.classList.remove('changed'); }, 700);
+      })(el.row);
+    }
+  });
+}
+
+function renderCode(step){
+  var activeLine = step ? step.line : null;
+  var hit  = step ? step.hit  : [];
+  var skip = step ? step.skip : [];
+
+  codeLines.forEach(function(el){
+    var n = Number(el.getAttribute('data-line'));
+    el.classList.toggle('active', activeLine !== null && n === activeLine);
+    el.classList.toggle('hit',    hit.indexOf(n)  !== -1 && n !== activeLine);
+    el.classList.toggle('skip',   skip.indexOf(n) !== -1);
+  });
+}
+
+function renderOutput(step){
+  var lines = step ? step.out : [];
+  var key = lines.length + '|' + (lines.length ? lines[lines.length - 1] : '');
+  if (key === lastOutKey) return;
+  lastOutKey = key;
+
+  outBody.innerHTML = '';
+  if (!lines.length) {
+    outBody.innerHTML = '<div class="out-empty">（等待程序输出…）</div>';
+    return;
+  }
+  var frag = document.createDocumentFragment();
+  lines.forEach(function(t){
+    var div = document.createElement('div');
+    div.className = 'out-line';
+    var span = document.createElement('span');
+    span.className = 'seg-ans';
+    span.textContent = t;
+    div.appendChild(span);
+    frag.appendChild(div);
+  });
+  outBody.appendChild(frag);
+  outBody.scrollTop = outBody.scrollHeight;
+}
+
+function renderExplain(step){
+  if (!step) {
+    expBody.innerHTML =
+      '<span class="badge">待开始</span><strong>点击「自动播放」或「下一步」，开始逐条执行程序。</strong>' +
+      '本程序用<b>双重 for 循环</b>枚举形如 <b>iijj</b> 的四位数（i 为前两位、j 为后两位，且 i≠j），' +
+      '再用一个空循环试探平方根，判断它是不是<b>完全平方数</b>，最后 printf 输出车牌号。<br>' +
+      '共枚举 90 个候选号码，实际检查 <b>81</b> 次，最终找到 <b>1</b> 个车牌号：<b>7744</b>。';
+    return;
+  }
+  var cls = step.line === 11 ? ' ans' : (/批量/.test(step.title) ? ' batch' : (step.hit.length ? ' hit' : ''));
+  expBody.innerHTML =
+    '<span class="badge' + cls + '">第 ' + step.line + ' 行</span>' +
+    '<strong>' + step.title + '</strong><br>' + step.desc;
+}
+
+/* ---------- 缩略图同步：荧光框严格等于全屏可见行 ---------- */
+var miniLh = 10;
+var rafPending = false;
+
+function fullLineHeight(){
+  if (!codeLines.length) return 1;
+  var h = codeLines[0].getBoundingClientRect().height;
+  return h > 0 ? h : 1;
+}
+
+function layoutMini(){
+  /* 缩略图单行高度 = 缩略图内容区高度 / 17 */
+  var h = miniBody.clientHeight - 16;   /* 减去 padding 8*2 */
+  if (h <= 0) h = 170;
+  miniLh = h / 17;
+
+  var rows = miniCode.querySelectorAll('.ml');
+  for (var k = 0; k < rows.length; k++) {
+    rows[k].style.height = miniLh + 'px';
+    rows[k].style.lineHeight = miniLh + 'px';
+    rows[k].style.fontSize = Math.max(4, miniLh * 0.66) + 'px';
+  }
+  miniStage.style.height = h + 'px';
+}
+
+function syncMini(){
+  var lh = fullLineHeight();
+  var st = codePane.scrollTop;
+  var ch = codePane.clientHeight;
+
+  /* 荧光框高度 = 可见行数 × 缩略图单行高度 */
+  var visibleLines = ch / lh;
+  miniVp.style.top    = (st / lh) * miniLh + 'px';
+  miniVp.style.height = Math.max(8, visibleLines * miniLh) + 'px';
+
+  /* 当前执行行标记 */
+  var step = current >= 0 ? STEPS[current] : null;
+  if (step) {
+    miniCur.style.display = 'block';
+    miniCur.style.top    = ((step.line - 1) * miniLh) + 'px';
+    miniCur.style.height = miniLh + 'px';
+  } else {
+    miniCur.style.display = 'none';
+  }
+}
+
+function requestMiniSync(){
+  if (rafPending) return;
+  rafPending = true;
+  window.requestAnimationFrame(function(){
+    rafPending = false;
+    syncMini();
+  });
+}
+
+/* ---------- 主渲染 ---------- */
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+
+  renderCode(step);
+  renderVars(step);
+  renderOutput(step);
+  renderExplain(step);
+
+  /* 当前执行行自动滚动到视野中央 */
+  if (step) {
+    var el = codeLines[step.line - 1];
+    if (el) {
+      var lh = fullLineHeight();
+      var targetTop = (step.line - 1) * lh - (codePane.clientHeight - lh) / 2;
+      targetTop = Math.max(0, Math.min(targetTop, codePane.scrollHeight - codePane.clientHeight));
+      codePane.scrollTo({ top: targetTop, behavior: 'smooth' });
+    }
+  }
+
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+
+  requestMiniSync();
+}
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+
+function tick(){
+  if (current >= STEPS.length - 1) { pause(); return; }
+  current += 1;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length - 1) { current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){ pause(); if (current < STEPS.length - 1) { current += 1; render(); } }
+function prevStep(){ pause(); if (current > -1) { current -= 1; render(); } }
+
+function resetAll(){
+  pause();
+  current = -1;
+  lastOutKey = '';
+  outBody.innerHTML = '';
+  codePane.scrollTo({ top: 0, behavior: 'smooth' });
+  render();
+}
+
+/* ============================================================
+   PART 5 · 面板交互：拖动 / 关闭 / 任意调整大小 / 点击置顶
+   ============================================================ */
+var zTop = 100;
+
+function bringToFront(panel){
+  zTop += 1;
+  panel.style.zIndex = zTop;
+  document.querySelectorAll('.panel').forEach(function(p){
+    p.classList.toggle('top', p === panel);
+  });
+}
+
+var DEFAULT_LAYOUT = [
+  {id:'pTop',    left:null, top:10,   w:null, h:null},
+  {id:'pVars',   left:16,   top:120,  w:660,  h:760},
+  {id:'pOut',    left:null, top:null, w:820,  h:400, right:16, bottom:16},
+  {id:'pExp',    left:16,   top:null, w:900,  h:280, bottom:16},
+  {id:'pMini',   left:null, top:120,  w:260,  h:340, right:16}
+];
+
+function layoutPanels(){
+  var W = window.innerWidth;
+  var H = window.innerHeight;
+
+  DEFAULT_LAYOUT.forEach(function(cfg){
+    var el = document.getElementById(cfg.id);
+    if (!el) return;
+
+    if (cfg.w) el.style.width  = cfg.w + 'px';
+    if (cfg.h) el.style.height = cfg.h + 'px';
+
+    var rw = el.offsetWidth;
+    var rh = el.offsetHeight;
+
+    if (cfg.left !== null && cfg.left !== undefined) {
+      el.style.left = cfg.left + 'px';
+    } else if (cfg.right !== null && cfg.right !== undefined) {
+      el.style.left = Math.max(8, W - rw - cfg.right) + 'px';
+    }
+
+    if (cfg.top !== null && cfg.top !== undefined) {
+      el.style.top = cfg.top + 'px';
+    } else if (cfg.bottom !== null && cfg.bottom !== undefined) {
+      el.style.top = Math.max(8, H - rh - cfg.bottom) + 'px';
+    }
+  });
+
+  var top = document.getElementById('pTop');
+  if (top) {
+    top.style.left = Math.max(8, (W - top.offsetWidth) / 2) + 'px';
+    top.style.top = '10px';
+  }
+
+  window.requestAnimationFrame(function(){
+    layoutMini();
+    syncMini();
+  });
+}
+
+function centerTopBar(){
+  var top = document.getElementById('pTop');
+  if (!top) return;
+  if (top.dataset.moved === '1') return;
+  top.style.left = Math.max(8, (window.innerWidth - top.offsetWidth) / 2) + 'px';
+}
+
+function setupPanel(panel){
+  var head = panel.querySelector('.ph');
+  var handle = panel.querySelector('.rs');
+  var state = null;
+
+  panel.addEventListener('pointerdown', function(){ bringToFront(panel); }, true);
+  panel.addEventListener('focusin',     function(){ bringToFront(panel); }, true);
+
+  if (head) {
+    head.addEventListener('pointerdown', function(e){
+      if (e.target.closest('button')) return;
+      if (e.target.closest('input')) return;
+      bringToFront(panel);
+      var r = panel.getBoundingClientRect();
+      state = { mode:'drag', sx:e.clientX, sy:e.clientY, sl:r.left, st:r.top };
+      panel.dataset.moved = '1';
+      try { head.setPointerCapture(e.pointerId); } catch(err){}
+      e.preventDefault();
+    });
+    head.addEventListener('pointermove', function(e){
+      if (!state || state.mode !== 'drag') return;
+      panel.style.left = (state.sl + e.clientX - state.sx) + 'px';
+      panel.style.top  = (state.st + e.clientY - state.sy) + 'px';
+    });
+    head.addEventListener('pointerup', function(e){
+      if (state && state.mode === 'drag') {
+        state = null;
+        try { head.releasePointerCapture(e.pointerId); } catch(err){}
+      }
+    });
+    head.addEventListener('pointercancel', function(){ state = null; });
+  }
+
+  if (handle) {
+    handle.addEventListener('pointerdown', function(e){
+      bringToFront(panel);
+      var r = panel.getBoundingClientRect();
+      state = { mode:'resize', sx:e.clientX, sy:e.clientY, sw:r.width, sh:r.height };
+      try { handle.setPointerCapture(e.pointerId); } catch(err){}
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    handle.addEventListener('pointermove', function(e){
+      if (!state || state.mode !== 'resize') return;
+      var w = state.sw + (e.clientX - state.sx);
+      var h = state.sh + (e.clientY - state.sy);
+      /* 不设最小/最大限制，完全由用户控制 */
+      panel.style.width  = w + 'px';
+      panel.style.height = h + 'px';
+      if (panel.id === 'pMini') {
+        window.requestAnimationFrame(function(){
+          layoutMini();
+          syncMini();
+        });
+      }
+    });
+    handle.addEventListener('pointerup', function(e){
+      if (state && state.mode === 'resize') {
+        state = null;
+        try { handle.releasePointerCapture(e.pointerId); } catch(err){}
+        requestMiniSync();
+      }
+    });
+    handle.addEventListener('pointercancel', function(){ state = null; });
+  }
+
+  var closeBtn = panel.querySelector('[data-close]');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      panel.classList.add('hidden');
+    });
+  }
+}
+
+document.querySelectorAll('.panel').forEach(setupPanel);
+
+/* ============================================================
+   PART 6 · 缩略图点击跳转
+   ============================================================ */
+miniStage.addEventListener('pointerdown', function(e){
+  var r = miniStage.getBoundingClientRect();
+  var y = e.clientY - r.top;
+  var idx = Math.floor(y / miniLh);
+  idx = Math.max(0, Math.min(16, idx));
+
+  var lh = fullLineHeight();
+  var target = idx * lh - (codePane.clientHeight - lh) / 2;
+  target = Math.max(0, Math.min(target, codePane.scrollHeight - codePane.clientHeight));
+  codePane.scrollTo({ top: target, behavior: 'smooth' });
+
+  bringToFront(document.getElementById('pMini'));
+});
+
+/* ============================================================
+   PART 7 · 事件绑定
+   ============================================================ */
+btnPlay.addEventListener('click', function(){ playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+btnFull.addEventListener('click', function(){
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+  } else {
+    document.exitFullscreen && document.exitFullscreen();
+  }
+});
+
+btnTog.addEventListener('click', function(){
+  var panels = document.querySelectorAll('.panel');
+  var anyVisible = false;
+  panels.forEach(function(p){ if (!p.classList.contains('hidden')) anyVisible = true; });
+  panels.forEach(function(p){
+    if (anyVisible) p.classList.add('hidden');
+    else p.classList.remove('hidden');
+  });
+  if (!anyVisible) {
+    document.getElementById('pMini').classList.remove('hidden');
+  }
+  window.requestAnimationFrame(function(){
+    layoutPanels();
+    syncMini();
+  });
+});
+
+btnMini.addEventListener('click', function(){
+  var m = document.getElementById('pMini');
+  m.classList.toggle('hidden');
+  if (!m.classList.contains('hidden')) bringToFront(m);
+  window.requestAnimationFrame(function(){
+    layoutMini();
+    syncMini();
+  });
+});
+
+btnLayout.addEventListener('click', function(){
+  document.querySelectorAll('.panel').forEach(function(p){
+    p.classList.remove('hidden');
+    p.dataset.moved = '0';
+    p.style.width = '';
+    p.style.height = '';
+  });
+  window.requestAnimationFrame(function(){
+    layoutPanels();
+    window.requestAnimationFrame(function(){
+      centerTopBar();
+      syncMini();
+    });
+  });
+});
+
+spdInput.addEventListener('input', function(){
+  speed = Number(spdInput.value);
+  spdLbl.textContent = (speed / 1000).toFixed(2) + 's';
+  if (playing) {
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+/* 全局快捷键：不依赖面板是否可见 */
+document.addEventListener('keydown', function(e){
+  var tag = (e.target && e.target.tagName) || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA') {
+    if (e.code !== 'Space') return;
+  }
+  if (e.code === 'Space')            { e.preventDefault(); playing ? pause() : play(); }
+  else if (e.code === 'ArrowRight')  { e.preventDefault(); nextStep(); }
+  else if (e.code === 'ArrowLeft')   { e.preventDefault(); prevStep(); }
+  else if (e.code === 'KeyR')        { resetAll(); }
+  else if (e.code === 'KeyF')        { btnFull.click(); }
+  else if (e.code === 'KeyM')        { btnMini.click(); }
+  else if (e.code === 'KeyH')        {
+    var panels = document.querySelectorAll('.panel');
+    var anyVisible = false;
+    panels.forEach(function(p){ if (!p.classList.contains('hidden')) anyVisible = true; });
+    panels.forEach(function(p){ p.classList.toggle('hidden', anyVisible); });
+    if (!anyVisible) {
+      document.getElementById('pMini').classList.remove('hidden');
+    }
+    window.requestAnimationFrame(function(){
+      layoutPanels();
+      syncMini();
+    });
+  }
+});
+
+/* 滚动 / 尺寸同步 */
+codePane.addEventListener('scroll', requestMiniSync, { passive: true });
+window.addEventListener('resize', function(){
+  requestMiniSync();
+  centerTopBar();
+}, { passive: true });
+
+/* 字体加载完成后重新测量行高 */
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(function(){
+    window.requestAnimationFrame(function(){
+      layoutMini();
+      syncMini();
+    });
+  });
+}
+
+/* 面板尺寸变化 → 重新同步缩略图 */
+if (window.ResizeObserver) {
+  var ro = new ResizeObserver(function(){
+    layoutMini();
+    requestMiniSync();
+  });
+  ro.observe(codePane);
+  ro.observe(miniBody);
+}
+
+/* ============================================================
+   PART 8 · 启动
+   ============================================================ */
+spdLbl.textContent = (speed / 1000).toFixed(2) + 's';
+
+window.requestAnimationFrame(function(){
+  layoutPanels();
+  window.requestAnimationFrame(function(){
+    centerTopBar();
+    layoutMini();
+    syncMini();
+    render();
+  });
+});
+
+})();
+</script>
+</body>
+</html>

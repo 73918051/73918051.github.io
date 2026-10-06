@@ -1,0 +1,1504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 计算一年中的第几天 · 打鱼晒网 · 演示输入 2024 3 15</title>
+<style>
+/* ============ 全局变量：极端大字号，后排 10 米可见 ============ */
+:root{
+  --code-font:    clamp(80px, 4.6vw, 118px);   /* 代码正文 ≥80px */
+  --ln-font:      clamp(56px, 3.0vw, 82px);    /* 行号 ≥56px */
+  --out-font:     clamp(72px, 4.2vw, 108px);   /* 输出 ≥72px */
+  --var-font:     clamp(40px, 2.3vw, 56px);    /* 变量表 ≥40px */
+  --explain-font: clamp(48px, 2.6vw, 66px);    /* 说明 ≥48px */
+  --btn-font:     clamp(40px, 2.0vw, 54px);    /* 按钮 ≥40px */
+  --title-font:   clamp(40px, 2.3vw, 56px);    /* 面板标题 */
+  --panel-bg:     rgba(13,17,23,.80);
+  --panel-border: rgba(56,189,248,.35);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;background:#0d1117;}
+body{
+  font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+  color:#e6edf3;
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* ============ 全屏代码区（不透明，永不永久遮挡） ============ */
+#stage{position:fixed;inset:0;background:#0d1117;z-index:0;}
+#codeScroll{
+  position:absolute;inset:0;
+  overflow:auto;
+  padding:0 0 40vh 0;              /* 底部留白，使最后一行也能居中 */
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+}
+#codeScroll::-webkit-scrollbar{width:16px;height:16px;}
+#codeScroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+#codeScroll::-webkit-scrollbar-track{background:#0d1117;}
+
+.code-line{
+  display:flex;
+  align-items:flex-start;
+  white-space:pre;                 /* 关键：不折行，超出横向滚动 */
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  line-height:1.5;
+  border-left:14px solid transparent;
+  transition:background-color .25s,border-color .25s,opacity .25s;
+}
+.code-line .ln{
+  flex:0 0 auto;
+  width:3.6ch;
+  text-align:right;
+  margin-right:1.6rem;
+  font-size:var(--ln-font);
+  color:#3d4f66;
+  user-select:none;
+  font-variant-numeric:tabular-nums;
+}
+.code-line .src{flex:0 0 auto;padding-right:10rem;}
+
+/* 语法高亮 */
+.pp  {color:#c084fc;font-weight:600;}
+.str {color:#4ade80;}
+.cmt {color:#5b6f8c;font-style:italic;}
+.fn  {color:#38bdf8;}
+.kw  {color:#f472b6;font-weight:600;}
+.num {color:#fbbf24;}
+.op  {color:#fb923c;font-weight:700;}
+
+/* 当前执行行 */
+.code-line.active{
+  background:linear-gradient(90deg,rgba(56,189,248,.28),rgba(56,189,248,.03));
+  border-left-color:#38bdf8;
+  box-shadow:inset 0 0 0 4px rgba(56,189,248,.22);
+}
+.code-line.active .ln{color:#38bdf8;font-weight:700;}
+.code-line.active .src{color:#ffffff;}
+/* 已执行行 */
+.code-line.hit{background:linear-gradient(90deg,rgba(74,222,128,.15),rgba(74,222,128,0));}
+.code-line.hit .ln{color:#4ade80;}
+/* 被跳过行 */
+.code-line.skip{opacity:.22;}
+.code-line.skip .ln{color:#4d5f78;}
+
+/* ============ 悬浮面板通用 ============ */
+.panel{
+  position:fixed;
+  background:var(--panel-bg);
+  -webkit-backdrop-filter:blur(14px);
+  backdrop-filter:blur(14px);
+  border:3px solid var(--panel-border);
+  border-radius:20px;
+  box-shadow:0 16px 48px rgba(0,0,0,.7);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  z-index:100;
+  min-width:0;min-height:0;
+  transition:border-color .18s,box-shadow .18s,opacity .18s;
+}
+.panel:hover{background:rgba(13,17,23,.92);}
+.panel.active{
+  border-color:#38bdf8;
+  box-shadow:0 0 0 5px rgba(56,189,248,.45),0 16px 48px rgba(0,0,0,.8);
+}
+.panel.hidden{display:none !important;}
+
+.phead{
+  flex:0 0 auto;
+  display:flex;align-items:center;gap:1rem;
+  padding:.3rem .7rem;
+  background:rgba(30,41,59,.95);
+  border-bottom:3px solid rgba(56,189,248,.25);
+  cursor:move;
+  user-select:none;
+  touch-action:none;
+}
+.ptitle{
+  font-size:var(--title-font);
+  font-weight:700;
+  color:#7dd3fc;
+  white-space:nowrap;
+  letter-spacing:.04em;
+}
+.pspacer{flex:1 1 auto;}
+.pbtn{
+  flex:0 0 auto;
+  font:inherit;
+  font-size:var(--btn-font);
+  line-height:1;
+  min-width:72px;min-height:72px;
+  border-radius:16px;
+  border:3px solid rgba(148,163,184,.30);
+  background:rgba(30,41,59,.8);
+  color:#cbd5e1;
+  cursor:pointer;
+  transition:background .15s,border-color .15s,transform .1s;
+}
+.pbtn:hover{background:rgba(56,189,248,.25);border-color:#38bdf8;color:#fff;}
+.pbtn:active{transform:translateY(2px);}
+.pclose{color:#fca5a5;border-color:rgba(248,113,113,.4);}
+.pclose:hover{background:rgba(248,113,113,.3);border-color:#f87171;color:#fff;}
+
+.pbody{
+  flex:1 1 auto;min-height:0;min-width:0;
+  overflow:auto;
+  padding:.5rem .7rem;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+}
+.pbody::-webkit-scrollbar{width:14px;height:14px;}
+.pbody::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+
+/* 右下角缩放手柄（不设最小/最大限制） */
+.presize{
+  position:absolute;right:0;bottom:0;
+  width:64px;height:64px;
+  cursor:nwse-resize;
+  touch-action:none;
+  background:
+    linear-gradient(135deg,transparent 38%,rgba(56,189,248,.9) 39%,rgba(56,189,248,.9) 52%,transparent 53%,
+                    transparent 60%,rgba(56,189,248,.9) 61%,rgba(56,189,248,.9) 74%,transparent 75%,
+                    transparent 80%,rgba(56,189,248,.9) 81%,rgba(56,189,248,.9) 94%,transparent 95%);
+}
+.presize:hover{background-color:rgba(56,189,248,.22);}
+.panel.collapsed .pbody{display:none;}
+
+/* ============ 顶部控制栏 ============ */
+#p-top{left:20px;top:16px;}
+#p-top .pbody{display:flex;flex-wrap:wrap;align-items:center;gap:18px;}
+.ctl{
+  font:inherit;font-size:var(--btn-font);
+  min-height:84px;
+  padding:.3rem 1.2rem;
+  border-radius:18px;
+  border:3px solid rgba(148,163,184,.30);
+  background:rgba(30,41,59,.8);
+  color:#dbeafe;cursor:pointer;
+  white-space:nowrap;
+  transition:background .15s,border-color .15s,transform .1s;
+  touch-action:manipulation;
+}
+.ctl:hover{background:rgba(56,189,248,.25);border-color:#38bdf8;color:#fff;}
+.ctl:active{transform:translateY(2px);}
+.ctl:disabled{opacity:.30;cursor:not-allowed;}
+.ctl.primary{
+  background:linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#38bdf8;color:#04121f;font-weight:800;
+}
+.ctl.primary.playing{
+  background:linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24;color:#1a1200;
+}
+.speedbox{
+  display:flex;align-items:center;gap:.7rem;
+  font-size:var(--btn-font);color:#94a3b8;white-space:nowrap;
+}
+.speedbox input[type=range]{
+  width:clamp(180px,13vw,320px);
+  height:52px;
+  accent-color:#38bdf8;cursor:pointer;
+}
+.speedbox b{color:#38bdf8;min-width:5ch;font-variant-numeric:tabular-nums;}
+
+/* ============ 变量 / 数组面板 ============ */
+#p-vars{left:20px;top:210px;}
+.arr-title{
+  font-size:var(--var-font);
+  color:#7d93b3;
+  margin-bottom:.4rem;
+  white-space:normal;
+}
+.arr-title b{color:#38bdf8;}
+.arr-title i{color:#f472b6;font-style:normal;}
+.arr-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.32rem;margin-bottom:.6rem;}
+.acell{
+  text-align:center;border-radius:10px;padding:.18rem .02rem .22rem;
+  background:#0d1728;border:2px solid #1b293f;
+  transition:background .3s,border-color .3s,box-shadow .3s,transform .3s;
+  overflow:hidden;
+}
+.acell .aidx{
+  display:block;font-size:calc(var(--var-font) * .7);color:#5f7796;
+  line-height:1.25;font-variant-numeric:tabular-nums;
+}
+.acell .aval{
+  display:block;font-family:ui-monospace,Consolas,monospace;
+  font-weight:800;font-size:calc(var(--var-font) * 1.0);color:#38bdf8;
+  font-variant-numeric:tabular-nums;line-height:1.3;white-space:nowrap;
+}
+.acell.is-feb{border-color:rgba(244,114,182,.55);}
+.acell.is-feb .aval{color:#f472b6;}
+.acell.is-hl{
+  border-color:#38bdf8;background:rgba(56,189,248,.18);
+  box-shadow:0 0 0 3px rgba(56,189,248,.4),0 0 20px rgba(56,189,248,.35);
+  transform:translateY(-3px);
+}
+.acell.is-hl .aval{color:#ffffff;}
+.acell.is-hl .aidx{color:#38bdf8;}
+@keyframes cellFlash{0%{transform:scale(1);}40%{transform:scale(1.35);color:#fff;}100%{transform:scale(1);}}
+.acell .aval.flash{animation:cellFlash .55s ease-out;}
+
+.vtable{display:flex;flex-direction:column;gap:.22rem;}
+.vrow{
+  display:flex;justify-content:space-between;align-items:flex-start;gap:.7rem;
+  padding:.22rem .6rem;border-radius:12px;
+  background:#0d1728;border:2px solid #1b293f;
+  font-size:var(--var-font);
+  transition:background .3s,border-color .3s;
+}
+.vrow.changed{border-color:rgba(56,189,248,.9);background:rgba(56,189,248,.15);}
+.vk{color:#8ba3c4;white-space:normal;flex:1 1 auto;min-width:0;}
+.vv{
+  font-family:ui-monospace,Consolas,monospace;
+  font-weight:800;color:#38bdf8;text-align:right;
+  white-space:normal;flex:0 0 auto;max-width:64%;
+  word-break:break-all;
+  font-variant-numeric:tabular-nums;
+}
+.vv.dim{color:#5f7796;font-weight:500;}
+.r-ctx   .vv{color:#4ade80;}
+.r-year  .vv{color:#38bdf8;}
+.r-month .vv{color:#38bdf8;}
+.r-day   .vv{color:#38bdf8;}
+.r-i     .vv{color:#f472b6;}
+.r-days  .vv{color:#fbbf24;}
+.r-cond  .vv{color:#2dd4bf;}
+.r-ifc   .vv{color:#a5b4fc;}
+.r-expr  .vv{color:#a5b4fc;}
+.r-eval  .vv{color:#a5b4fc;}
+.r-note  .vv{color:#2dd4bf;font-size:calc(var(--var-font) * .92);}
+.r-sc    .vv{color:#fb923c;}
+.r-pf    .vv{color:#fb923c;}
+.r-ret   .vv{color:#fbbf24;}
+@keyframes vflash{0%{transform:scale(1);}35%{transform:scale(1.24);color:#fff;}100%{transform:scale(1);}}
+.vv.flash{animation:vflash .5s ease-out;}
+
+/* ============ 输出面板 ============ */
+#p-out{right:20px;bottom:16px;}
+.console{
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);
+  line-height:1.55;
+  color:#fbbf24;
+  white-space:pre;
+  min-height:1.2em;
+}
+.console:empty::before{content:"（等待程序输出…）";color:#3d5474;font-size:calc(var(--out-font) * .5);}
+@keyframes slideIn{from{opacity:0;transform:translateX(-1.2rem);}to{opacity:1;transform:none;}}
+.outline{animation:slideIn .35s ease-out;min-height:1.2em;}
+
+/* ============ 说明条 ============ */
+#p-explain{left:20px;bottom:16px;}
+.exhead{
+  display:inline-block;margin-right:.7rem;
+  padding:.1rem .65rem;border-radius:.4em;
+  background:rgba(56,189,248,.22);color:#38bdf8;
+  font-weight:800;font-size:calc(var(--explain-font) * .78);
+  vertical-align:middle;
+}
+.exhead.ans{background:rgba(251,191,36,.28);color:#fbbf24;}
+.exhead.hit{background:rgba(74,222,128,.25);color:#4ade80;}
+#explainBody{
+  font-size:var(--explain-font);
+  line-height:1.5;
+  color:#c3d3e8;
+}
+#explainBody strong{color:#fff;}
+#explainBody code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(148,163,184,.18);border-radius:.3rem;
+  padding:0 .3rem;color:#e2e8f0;
+}
+#explainBody .tip{
+  display:block;margin-top:.5rem;padding:.4rem .75rem;
+  border-radius:.5rem;background:rgba(45,212,191,.12);
+  border-left:8px solid #2dd4bf;color:#bff5ec;
+  font-size:calc(var(--explain-font) * .88);
+}
+#explainBody .warn{
+  display:block;margin-top:.5rem;padding:.4rem .75rem;
+  border-radius:.5rem;background:rgba(251,191,36,.14);
+  border-left:8px solid #fbbf24;color:#ffe6b0;
+  font-size:calc(var(--explain-font) * .88);
+}
+
+/* ============ 缩略图（VSCode minimap 风格） ============ */
+#p-mini{right:20px;top:16px;}
+#miniBody{
+  position:relative;
+  flex:1 1 auto;min-height:0;min-width:0;
+  overflow:hidden;
+  padding:0 !important;
+  background:rgba(5,10,18,.6);
+}
+#miniContent{position:absolute;inset:0;}
+.mini-line{
+  overflow:hidden;white-space:pre;
+  font-family:ui-monospace,Consolas,monospace;
+  color:#8ba3c4;
+  padding-left:6px;
+  border-left:4px solid transparent;
+  opacity:.85;
+  transition:background .2s,border-color .2s,opacity .2s;
+}
+.mini-line.hit{opacity:.62;}
+.mini-line.skip{opacity:.26;}
+.mini-line.cur{
+  background:rgba(56,189,248,.38);
+  border-left-color:#38bdf8;
+  opacity:1;
+}
+#miniView{
+  position:absolute;left:0;right:0;
+  border:4px solid #38bdf8;
+  background:rgba(56,189,248,.15);
+  box-shadow:0 0 18px rgba(56,189,248,.6);
+  pointer-events:none;
+  border-radius:6px;
+}
+
+/* ============ 小屏兜底 ============ */
+@media (max-width:900px){
+  :root{
+    --code-font:clamp(40px,7vw,64px);
+    --ln-font:clamp(28px,4vw,40px);
+    --out-font:clamp(48px,8vw,80px);
+    --var-font:clamp(24px,4vw,36px);
+    --explain-font:clamp(26px,4.5vw,40px);
+    --btn-font:clamp(24px,4vw,34px);
+    --title-font:clamp(22px,3.5vw,30px);
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ================= 全屏代码区 ================= -->
+<div id="stage">
+  <div id="codeScroll"></div>
+</div>
+
+<!-- ================= 顶部控制栏 ================= -->
+<div class="panel" id="p-top" data-panel>
+  <div class="phead">
+    <span class="ptitle">控制台</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody">
+    <button class="ctl" id="btnReset">⟲ 重置</button>
+    <button class="ctl" id="btnPrev">◀ 上一步</button>
+    <button class="ctl primary" id="btnPlay">▶ 自动播放</button>
+    <button class="ctl" id="btnNext">下一步 ▶</button>
+    <span class="speedbox">
+      速度
+      <input type="range" id="speed" min="200" max="2000" step="50" value="800">
+      <b id="speedLabel">0.80s</b>
+    </span>
+    <button class="ctl" id="btnFull">⛶ 全屏</button>
+    <button class="ctl" id="btnPanels">▤ 面板</button>
+    <button class="ctl" id="btnMini">▥ 缩略图</button>
+    <button class="ctl" id="btnLayout">⤢ 重置布局</button>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<!-- ================= 变量 / 数组 / 状态面板 ================= -->
+<div class="panel" id="p-vars" data-panel>
+  <div class="phead">
+    <span class="ptitle">数组 m[13] · 变量 · 状态</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody">
+    <div class="arr-title">
+      数组 m[13]（下标 0~12）　正在读取 <b>蓝色</b>　m[2] 二月（闰年需 +1）<i>粉色</i>
+    </div>
+    <div class="arr-grid" id="arrGrid"></div>
+    <div class="vtable" id="varTable"></div>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<!-- ================= 缩略图 ================= -->
+<div class="panel" id="p-mini" data-panel>
+  <div class="phead">
+    <span class="ptitle">缩略图</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody" id="miniBody">
+    <div id="miniContent"></div>
+    <div id="miniView"></div>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<!-- ================= 程序输出 ================= -->
+<div class="panel" id="p-out" data-panel>
+  <div class="phead">
+    <span class="ptitle">程序运行结果</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody">
+    <div class="console" id="consoleBody"></div>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<!-- ================= 当前语句说明条 ================= -->
+<div class="panel" id="p-explain" data-panel>
+  <div class="phead">
+    <span class="ptitle">当前语句说明</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody">
+    <div id="explainBody"></div>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+/* =========================================================
+   1) 源代码（28 行，行号 / 缩进 / 行尾注释 与真实 C 程序一致）
+   ========================================================= */
+var CODE = [
+  {n:1,  html:'<span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                             <span class="cmt">// 包含标准输入输出头文件</span>'},
+  {n:2,  html:'<span class="kw">int</span> <span class="fn">main</span>() {                                      <span class="cmt">// 定义主函数</span>'},
+  {n:3,  html:'    <span class="kw">int</span> year, month, day, i, days<span class="op">=</span><span class="num">0</span>;             <span class="cmt">// 定义年、月、日、循环变量和天数</span>'},
+  {n:4,  html:'    <span class="kw">static</span> <span class="kw">int</span> m[<span class="num">13</span>] <span class="op">=</span> {<span class="num">0</span>,<span class="num">31</span>,<span class="num">28</span>,<span class="num">31</span>,<span class="num">30</span>,<span class="num">31</span>,<span class="num">30</span>,<span class="num">31</span>,<span class="num">31</span>,<span class="num">30</span>,<span class="num">31</span>,<span class="num">30</span>,<span class="num">31</span>}; <span class="cmt">// 每月天数数组</span>'},
+  {n:5,  html:'    <span class="fn">printf</span>(<span class="str">"Input year/month/day:"</span>);              <span class="cmt">// 提示输入</span>'},
+  {n:6,  html:'    <span class="fn">scanf</span>(<span class="str">"%d%d%d"</span>, <span class="op">&amp;</span>year, <span class="op">&amp;</span>month, <span class="op">&amp;</span>day);       <span class="cmt">// 输入年月日</span>'},
+  {n:7,  html:'    <span class="kw">if</span>(month <span class="op">==</span> <span class="num">1</span>) {                             <span class="cmt">// 如果月份是 1 月</span>'},
+  {n:8,  html:'        days <span class="op">=</span> day;                              <span class="cmt">// 天数直接等于日</span>'},
+  {n:9,  html:'    } <span class="kw">else</span> {                                     <span class="cmt">// 否则</span>'},
+  {n:10, html:'        <span class="kw">for</span>(i<span class="op">=</span><span class="num">0</span>; i<span class="op">&lt;</span>month; i<span class="op">++</span>) {                <span class="cmt">// 累加前 month-1 个月的天数</span>'},
+  {n:11, html:'            days <span class="op">+=</span> m[i];                         <span class="cmt">// 加上第 i 个月的天数</span>'},
+  {n:12, html:'        }'},
+  {n:13, html:'        days <span class="op">=</span> days <span class="op">+</span> day;                       <span class="cmt">// 加上当前月的天数</span>'},
+  {n:14, html:'    }'},
+  {n:15, html:'    <span class="kw">if</span>((year<span class="op">%</span><span class="num">4</span><span class="op">==</span><span class="num">0</span> <span class="op">&amp;&amp;</span> year<span class="op">%</span><span class="num">100</span><span class="op">!=</span><span class="num">0</span>) <span class="op">||</span> year<span class="op">%</span><span class="num">400</span><span class="op">==</span><span class="num">0</span>) { <span class="cmt">// 如果是闰年</span>'},
+  {n:16, html:'        <span class="kw">if</span>(month <span class="op">&gt;</span> <span class="num">2</span>) {                        <span class="cmt">// 且月份大于 2</span>'},
+  {n:17, html:'            days <span class="op">=</span> days <span class="op">+</span> <span class="num">1</span>;                     <span class="cmt">// 闰年 2 月加 1 天</span>'},
+  {n:18, html:'        }'},
+  {n:19, html:'    }'},
+  {n:20, html:'    <span class="fn">printf</span>(<span class="str">"days=%d\\n"</span>, days);                 <span class="cmt">// 输出总天数</span>'},
+  {n:21, html:'    i <span class="op">=</span> days <span class="op">%</span> <span class="num">5</span>;                              <span class="cmt">// 计算天数对 5 取余</span>'},
+  {n:22, html:'    <span class="kw">if</span>(i<span class="op">&gt;</span><span class="num">0</span> <span class="op">&amp;&amp;</span> i<span class="op">&lt;</span><span class="num">3</span>) {                          <span class="cmt">// 如果余数为 1 或 2</span>'},
+  {n:23, html:'        <span class="fn">printf</span>(<span class="str">"He was sleeping!"</span>);              <span class="cmt">// 晒网</span>'},
+  {n:24, html:'    } <span class="kw">else</span> {                                     <span class="cmt">// 否则</span>'},
+  {n:25, html:'        <span class="fn">printf</span>(<span class="str">"He was fishing!"</span>);               <span class="cmt">// 打鱼</span>'},
+  {n:26, html:'    }'},
+  {n:27, html:'    <span class="kw">return</span> <span class="num">0</span>;                                    <span class="cmt">// 返回 0，程序结束</span>'},
+  {n:28, html:'}'}
+];
+
+/* =========================================================
+   2) 逐步执行数据（演示输入 2024 3 15）
+   严格按真实 C 执行顺序：38 个步骤，行号全部对齐真实代码
+   输出：2 行 "Input year/month/day:days=75" + "He was fishing!"
+   printf 共 3 次（第 5、20、25 行）
+   scanf 共 1 次（第 6 行）
+   最终 year=2024, month=3, day=15, i=0, days=75, 返回值 0
+   ========================================================= */
+var YEAR = 2024, MONTH = 3, DAY = 15;
+var MARR = [0,31,28,31,30,31,30,31,31,30,31,30,31];
+
+var STEPS = [];
+var outText = '';
+
+function V(o) {
+  var base = {
+    year: '—', month: '—', day: '—', i: '—', days: '—',
+    cond: '—', ifc: '—', expr: '—', exprVal: '—',
+    note: '—', scanfN: '0', printfN: '0', ret: '—'
+  };
+  if (o) {
+    for (var p in o) {
+      if (Object.prototype.hasOwnProperty.call(o, p)) base[p] = o[p];
+    }
+  }
+  return base;
+}
+
+function push(o) {
+  STEPS.push({
+    line: o.line,
+    ctx: o.ctx || '—',
+    vars: V(o.vars),
+    hl: o.hl || [],
+    out: outText,
+    hit: o.hit || [],
+    skip: o.skip || [],
+    title: o.title,
+    desc: o.desc
+  });
+}
+
+/* ---------------- 第 1 行 ---------------- */
+push({
+  line: 1, ctx: '预处理阶段 · 编译前已完成',
+  vars: { note: '预处理指令，不占运行时间' },
+  hit: [1],
+  title: '#include &lt;stdio.h&gt;　引入标准输入输出头文件',
+  desc: '预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容引入源文件，让 <code>printf</code> 与 <code>scanf</code> 获得函数声明。这一行<b>不是 C 语句</b>，编译前就处理完了，不产生任何屏幕输出。'
+});
+
+/* ---------------- 第 2 行 ---------------- */
+push({
+  line: 2, ctx: 'main 函数入口',
+  vars: { note: '程序从 main 开始执行' },
+  hit: [2],
+  title: 'int main() {　程序从这里开始',
+  desc: '操作系统把控制权交给 <code>main</code>，程序正式开始。系统为 main 建立<b>栈帧</b>，变量 <code>year</code>、<code>month</code>、<code>day</code>、<code>i</code>、<code>days</code> 都存放在这个栈帧里。'
+});
+
+/* ---------------- 第 3 行 ---------------- */
+push({
+  line: 3, ctx: 'main · 声明 5 个 int 变量',
+  vars: {
+    year: '未初始化（不定值）', month: '未初始化（不定值）',
+    day: '未初始化（不定值）', i: '未初始化（不定值）', days: '0',
+    note: 'days 已初始化为 0，其余 4 个未初始化'
+  },
+  hit: [3],
+  title: 'int year, month, day, i, days=0;　声明 5 个变量',
+  desc: '一次声明 <b>5 个 int</b> 变量：<br>· <b>year、month、day</b>：年、月、日，<b>未初始化</b>，等待 scanf 读入；<br>· <b>i</b>：循环变量，<b>未初始化</b>；<br>· <b>days = 0</b>：年内累计天数，<b>从 0 开始累加</b>。<span class="tip"><b>为什么 days 必须初始化为 0？</b>因为后面要用 <code>days += m[i]</code> 往上累加。如果 days 里是不定值，加出来的结果就是垃圾数据。<b>凡是"累加型"变量，起始值必须显式置 0。</b></span>'
+});
+
+/* ---------------- 第 4 行 ---------------- */
+push({
+  line: 4, ctx: 'main · static 数组 m[13] 初始化',
+  vars: {
+    year: '未初始化（不定值）', month: '未初始化（不定值）',
+    day: '未初始化（不定值）', i: '未初始化（不定值）', days: '0',
+    note: 'm[0]~m[12] 全部赋好初值，元素个数与初值个数相等'
+  },
+  hit: [4],
+  title: 'static int m[13] = {0,31,28,31,30,31,30,31,31,30,31,30,31};　月份天数表',
+  desc: '声明一个 <b>int 数组 m</b>，长度 <b>13</b>，花括号里给了 <b>13 个初值</b>，一一对应。<br>· 表里存的是<b>每个月的天数</b>；<br>· <b>m[0] = 0</b> 是<b>占位</b>用的 —— 让 m[1] 对应 1 月、m[2] 对应 2 月…… 这样"月份数"和"下标"就<b>直接对齐</b>，写起来最省心。<span class="tip"><b>为什么不写成 m[12] 让 m[0] 对应 1 月？</b>那样每次都要写成 <code>m[i-1]</code>，容易出错。多花 1 个 int 的空间，换来"m[月份] 就是该月天数"的直觉，非常值得。<br><b>static 的含义：</b>static 数组属于"静态存储区"，程序一启动就已经把初值填好了，而不是每次进 main 才填。</span>'
+});
+
+/* ---------------- 第 5 行 ---------------- */
+outText += 'Input year/month/day:';
+push({
+  line: 5, ctx: 'main · printf 输出提示',
+  vars: {
+    year: '未初始化（不定值）', month: '未初始化（不定值）',
+    day: '未初始化（不定值）', i: '未初始化（不定值）', days: '0',
+    expr: 'printf("Input year/month/day:")',
+    exprVal: '向屏幕输出 "Input year/month/day:"（无换行）',
+    note: '屏幕出现提示文字，光标停在原地等待输入',
+    printfN: '1'
+  },
+  hit: [5],
+  title: 'printf("Input year/month/day:");　→　输出 Input year/month/day:',
+  desc: '<code>printf("Input year/month/day:");</code> 只输出<b>提示文字</b>，告诉用户该输入什么。<br>· 格式串里<b>没有 <code>\\n</code></b>，所以输出后<b>不换行</b>，光标停在冒号后面；<br>· 这样用户输入的数字就会<b>紧接着</b>提示文字出现在同一行，看起来更自然；<br>· 这一句<b>不读取任何输入</b>，只是"喊一声"。'
+});
+
+/* ---------------- 第 6 行 ---------------- */
+push({
+  line: 6, ctx: 'main · scanf 读入年、月、日',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '未初始化（不定值）', days: '0',
+    expr: 'scanf("%d%d%d", &year, &month, &day)',
+    exprVal: '依次读入 2024、3、15，分别存入 year、month、day',
+    note: '本次演示输入 2024 3 15',
+    scanfN: '1', printfN: '1'
+  },
+  hit: [6],
+  title: 'scanf("%d%d%d", &amp;year, &amp;month, &amp;day);　→　读入 2024 3 15',
+  desc: '<code>scanf("%d%d%d", ...)</code> 里<b>连着 3 个 <code>%d</code></b>，会连续读入 <b>3 个整数</b>：<br>· 第 1 个 <code>%d</code> ← <b>2024</b> 存入 year；<br>· 第 2 个 <code>%d</code> ← <b>3</b> 存入 month；<br>· 第 3 个 <code>%d</code> ← <b>15</b> 存入 day。<span class="warn"><b>输入的 3 个数可以用空格、Tab 或回车分隔</b>，scanf 会自动跳过它们之间的空白字符。但一定要保证<b>一共输入 3 个整数</b>，少输一个就会一直等。<br>另外每个变量前都必须写 <code>&amp;</code> 取地址，漏写会崩溃。</span>'
+});
+
+/* ---------------- 第 7 行 ---------------- */
+push({
+  line: 7, ctx: 'main · 判断月份是否为 1 月',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '未初始化（不定值）', days: '0',
+    expr: 'if(month == 1)',
+    exprVal: 'month = 3，3 == 1 → 假',
+    note: '不是 1 月 → 跳过第 8 行，走第 9 行 else 分支',
+    scanfN: '1', printfN: '1'
+  },
+  hit: [7], skip: [8],
+  title: 'if(month == 1)   →   3 == 1 → 假，进入 else 分支',
+  desc: '判断 month 是不是 1 月：<br>· month = <b>3</b>，<code>3 == 1</code> 为<b>假</b>；<br>· 所以<b>跳过第 8 行</b>（<code>days = day;</code>），转到第 9 行的 <code>else</code>；<br>· 也就是走"累加前面各月天数"的那条路。<span class="tip"><b>注意 <code>==</code> 和 <code>=</code> 的区别：</b><br><code>if(month == 1)</code> 中的 <b><code>==</code> 是"判断相等"</b>；如果误写成 <code>if(month = 1)</code>，就变成了"把 1 赋给 month"，条件永远为真，而且 month 的值也被改坏了 —— 这是 C 语言最经典的坑之一。</span>'
+});
+
+/* ---------------- 第 9 行（else） ---------------- */
+push({
+  line: 9, ctx: 'main · 进入 else 分支',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '未初始化（不定值）', days: '0',
+    expr: 'else',
+    exprVal: 'month 不是 1 月，进入 else 分支',
+    note: '准备执行 for 循环累加前 month-1 个月的天数',
+    scanfN: '1', printfN: '1'
+  },
+  hit: [9],
+  title: '} else {   →   进入 else 分支',
+  desc: '<code>else</code> 分支在 <code>if(month == 1)</code> 为假时执行。<br>· month = <b>3</b>，不是 1 月；<br>· 接下来要<b>累加前 <code>month-1</code> 个月的天数</b>，也就是 1 月和 2 月；<br>· 用 <code>for</code> 循环配合月份表 <code>m[]</code> 来完成。<br>本程序 <code>days</code> 已经在第 3 行初始化为 0，所以可以直接往上累加。'
+});
+
+/* ---------------- 第 10~12 行：for 循环累加（3 轮） ---------------- */
+var acc = 0;
+for (var ii = 0; ii < MONTH; ii++) {
+
+  /* 第 10 行：for 判断为真 */
+  push({
+    line: 10, ctx: 'main · for 判断：i = ' + ii,
+    vars: {
+      year: '2024', month: '3', day: '15',
+      i: String(ii), days: String(acc),
+      cond: 'i=' + ii + ' < month=3 → 真',
+      expr: 'for(i=0; i<month; i++)',
+      exprVal: (ii === 0)
+        ? '先执行 i=0，再判断 0<3 成立 → 进入循环体'
+        : 'i++ 后 i=' + ii + '，' + ii + '<3 成立 → 继续循环',
+      note: 'i 从 0 走到 2，共 3 轮',
+      scanfN: '1', printfN: '1'
+    },
+    hl: [ii], hit: [10],
+    title: 'for(i=0; i&lt;month; i++)   第 ' + (ii + 1) + ' 轮：i = ' + ii + '，条件为真',
+    desc: '<code>for</code> 的执行顺序是：<b>① 初始化 <code>i=0</code>；② 判断 <code>i&lt;month</code>；③ 执行循环体；④ <code>i++</code> 后回到 ②。</b><br>· 当前 i = <b>' + ii + '</b>，month = <b>3</b>，' + ii + ' &lt; 3 成立 → 进入循环体；<br>· 循环总共执行 <b>3 轮</b>（i = 0, 1, 2）。<span class="tip"><b>为什么是 i&lt;month 而不是 i&lt;=month？</b>因为我们要累加的是"<b>当前月之前</b>的月份"，也就是 1 月到 month−1 月。当 month=3 时，只需累加 1 月和 2 月，对应下标 <b>1 和 2</b>。<br>再配合 m[0]=0 这个占位，循环写成 <code>i=0; i&lt;month</code> 就刚好把 m[0]+m[1]+m[2] 加起来，前两项刚好是 1 月 + 2 月，非常巧妙。</span>'
+  });
+
+  /* 第 11 行：days += m[i] */
+  acc += MARR[ii];
+  push({
+    line: 11, ctx: 'main · days += m[' + ii + ']',
+    vars: {
+      year: '2024', month: '3', day: '15',
+      i: String(ii), days: String(acc),
+      cond: 'i=' + ii + ' < 3 → 真',
+      expr: 'days += m[' + ii + ']',
+      exprVal: 'days = ' + (acc - MARR[ii]) + ' + ' + MARR[ii] + ' = ' + acc,
+      note: 'm[' + ii + '] = ' + MARR[ii] + ' 天（m[0] 是占位 0）',
+      scanfN: '1', printfN: '1'
+    },
+    hl: [ii], hit: [11],
+    title: 'days += m[' + ii + '];   →   days = ' + (acc - MARR[ii]) + ' + ' + MARR[ii] + ' = ' + acc,
+    desc: '<code>days += m[i]</code> 等价于 <code>days = days + m[i]</code>。<br>· <b>m[' + ii + '] = ' + MARR[ii] + '</b>' + (ii === 0 ? '（占位元素，加 0 不影响结果）' : '（' + ii + ' 月的天数）') + '；<br>· days 从 <b>' + (acc - MARR[ii]) + '</b> 累加到 <b>' + acc + '</b>。<br>循环结束后，days 就是"<b>当前月之前所有月份的天数之和</b>"。'
+  });
+
+  /* 第 12 行：for 循环体结束 */
+  push({
+    line: 12, ctx: 'main · for 循环体结束（第 ' + (ii + 1) + ' 轮）',
+    vars: {
+      year: '2024', month: '3', day: '15',
+      i: String(ii), days: String(acc),
+      cond: 'i=' + ii + ' < 3 → 真',
+      expr: '}',
+      exprVal: '第 10 行 for 的循环体结束，回到第 10 行执行 i++',
+      note: '每轮循环体执行完后回到 for 头部做 i++',
+      scanfN: '1', printfN: '1'
+    },
+    hl: [ii], hit: [12],
+    title: '}　for 循环体结束，回到第 10 行',
+    desc: '这个 <code>}</code> 结束了第 10 行 for 的<b>循环体</b>。控制流回到第 10 行 for 头部：<br>· 先执行 <b>i++</b>；<br>· 再判断 <code>i&lt;month</code>；<br>· 成立就进入下一轮，不成立就退出循环。'
+  });
+}
+
+/* ---------------- 第 10 行：条件不成立，退出循环 ---------------- */
+push({
+  line: 10, ctx: 'main · for 判断失败，累加循环结束',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '3', days: '59',
+    cond: 'i=3 < month=3 → 假',
+    expr: 'for(i=0; i<month; i++)',
+    exprVal: 'i++ 后 i=3，3<3 不成立 → 退出循环',
+    note: '循环体共执行 3 轮，累加到 1 月 + 2 月 = 59 天',
+    scanfN: '1', printfN: '1'
+  },
+  hit: [], skip: [11, 12],
+  title: 'for(i=0; i&lt;month; i++)   i = 3，3 &lt; 3 为假 → 退出循环',
+  desc: '第 3 轮结束后回到 for 头部：<br>· 执行 <b>i++</b>，i 由 2 变成 <b>3</b>；<br>· 判断 <b>3 &lt; 3</b> 为<b>假</b> → 循环结束，跳到第 12 行 <code>}</code> 之后。<br>此时 <b>days = 59</b>，正好是 2024 年 1 月（31 天）+ 2 月（28 天，注意还没闰年调整）。'
+});
+
+/* ---------------- 第 13 行 ---------------- */
+push({
+  line: 13, ctx: 'main · 加上当前月的天数',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '3', days: '74',
+    expr: 'days = days + day',
+    exprVal: 'days = 59 + 15 = 74',
+    note: '前两个月 59 天 + 本月 15 天 = 第 74 天（暂未做闰年修正）',
+    scanfN: '1', printfN: '1'
+  },
+  hit: [13],
+  title: 'days = days + day;   →   59 + 15 = 74',
+  desc: '把"<b>前面各月总天数</b>"和"<b>本月已过的天数</b>"加起来：<br>· 前面各月（1 月 + 2 月）= <b>59</b> 天；<br>· 本月已过 = <b>day = 15</b> 天；<br>· 合计 <b>59 + 15 = 74</b>。<br>此时 days = <b>74</b>，但这是<b>按平年 2 月 28 天</b>算的，还没考虑闰年。'
+});
+
+/* ---------------- 第 14 行 ---------------- */
+push({
+  line: 14, ctx: 'main · else 分支结束',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '3', days: '74',
+    expr: '}',
+    exprVal: 'else 复合语句块结束',
+    note: 'month 不是 1 月的分支全部执行完毕',
+    scanfN: '1', printfN: '1'
+  },
+  hit: [14],
+  title: '}　else 分支结束',
+  desc: '这个 <code>}</code> 结束了 <code>if(month == 1) ... else { ... }</code> 的 <b>else 复合语句块</b>。<br>· 到这里，<b>无论月份是不是 1 月，days 都已经算好了"平年口径下"的第几天</b>；<br>· 接下来的闰年判断是<b>对所有月份通用</b>的修正步骤。'
+});
+
+/* ---------------- 第 15 行：先算前半部分 ---------------- */
+push({
+  line: 15, ctx: 'main · 闰年判断：先算前半部分',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '3', days: '74',
+    expr: 'year%4==0 && year%100!=0',
+    exprVal: '2024%4=0（真） && 2024%100=24≠0（真） → 真',
+    note: '整百年不是闰年，2024 不是整百年，条件通过',
+    scanfN: '1', printfN: '1'
+  },
+  hit: [15],
+  title: '先算 (year%4==0 &amp;&amp; year%100!=0)   →   真',
+  desc: '闰年判断的第一部分：<b>能被 4 整除，但不能被 100 整除</b>。<br>· <code>2024 % 4</code> = <b>0</b> → 真；<br>· <code>2024 % 100</code> = <b>24</b>，<code>24 != 0</code> → 真；<br>· 两部分用 <b><code>&amp;&amp;</code>（并且）</b>连接，两个都真 → 整个子表达式为<b>真</b>。<span class="tip"><b>为什么要排除 100 的倍数？</b>因为公历规定"整百年不闰"，比如 1900 年能被 4 整除，但它是平年。不过还要再补一条例外 —— 见下一个判断。</span>'
+});
+
+/* ---------------- 第 15 行：完整条件 ---------------- */
+push({
+  line: 15, ctx: 'main · 闰年判断：完整条件为真',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '3', days: '74',
+    expr: '(year%4==0 && year%100!=0) || year%400==0',
+    exprVal: '真 || (2024%400=24≠0 → 假) → 真 || 假 = 真',
+    note: '2024 是闰年',
+    scanfN: '1', printfN: '1'
+  },
+  hit: [15],
+  title: 'if((year%4==0 &amp;&amp; year%100!=0) || year%400==0)   →   真 || 假 = 真',
+  desc: '完整的闰年条件由两部分用 <b><code>||</code>（或者）</b>连接：<br>· 左边（刚才算的）：<b>真</b>；<br>· 右边 <code>year%400==0</code>：<code>2024 % 400 = 24</code>，<code>24 == 0</code> 为<b>假</b>；<br>· <b>真 || 假 = 真</b> → 整个条件成立 → 进入 if 体。<span class="tip"><b>|| 的"短路"特性：</b>左边已经为真，右边的 <code>year%400==0</code> <b>根本不会被计算</b>。C 语言保证 <code>||</code> 左边为真时立刻返回真，不再算右边 —— 这叫<b>短路求值</b>。<br><b>完整闰年规则：</b>能被 4 整除<b>且</b>不能被 100 整除，<b>或者</b>能被 400 整除。<br>例：2024 闰年 ✓　1900 平年 ✗　2000 闰年 ✓　2023 平年 ✗</span>'
+});
+
+/* ---------------- 第 16 行 ---------------- */
+push({
+  line: 16, ctx: 'main · 判断月份是否大于 2',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '3', days: '74',
+    expr: 'if(month > 2)',
+    exprVal: 'month = 3，3 > 2 → 真',
+    note: '3 月 > 2 月，需要补 2 月少的那 1 天',
+    scanfN: '1', printfN: '1'
+  },
+  hit: [16],
+  title: 'if(month &gt; 2)   →   3 &gt; 2 → 真，进入 if 体',
+  desc: '虽然已经确定 2024 是闰年，但<b>还得看月份</b>：<br>· 如果月份是 <b>1 月或 2 月</b>，2 月还没过完（或者正在 2 月），多出来的 2 月 29 日<b>不该算进去</b>；<br>· 当前 month = <b>3</b>，<b>3 &gt; 2 成立</b> → 说明 2 月已经<b>完整地过去了</b>，应该把多出的 1 天补上；<br>· 于是进入 if 体，执行第 17 行。<span class="warn"><b>两个条件缺一不可：</b>必须是"<b>闰年</b>"并且"<b>月份 &gt; 2</b>"，两个条件同时满足才 +1。如果只判断闰年就加 1，那么 2024/1/15 会被算成第 16 天（实际是第 15 天），结果就错了。</span>'
+});
+
+/* ---------------- 第 17 行 ---------------- */
+push({
+  line: 17, ctx: 'main · 闰年补上 2 月多出的 1 天',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '3', days: '75',
+    expr: 'days = days + 1',
+    exprVal: 'days = 74 + 1 = 75',
+    note: '闰年 2 月有 29 天，比平年多 1 天',
+    scanfN: '1', printfN: '1'
+  },
+  hit: [17],
+  title: 'days = days + 1;   →   74 + 1 = 75',
+  desc: '闰年的 2 月有 <b>29 天</b>，比平年的 28 天<b>多 1 天</b>。<br>· 前面累加时用的是 m[2] = 28（平年值）；<br>· 既然是闰年且 2 月已过完，就要把这漏掉的 <b>1 天补回来</b>；<br>· days 由 <b>74</b> 变成 <b>75</b>。<br><b>2024 年 3 月 15 日是一年中的第 75 天。</b>'
+});
+
+/* ---------------- 第 18 行 ---------------- */
+push({
+  line: 18, ctx: 'main · 内层 if 体结束',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '3', days: '75',
+    expr: '}',
+    exprVal: '内层 if(month > 2) 体结束',
+    note: '闰年修正完成，days = 75',
+    scanfN: '1', printfN: '1'
+  },
+  hit: [18],
+  title: '}　内层 if 体结束',
+  desc: '这个 <code>}</code> 结束了 <code>if(month &gt; 2)</code> 的<b>复合语句块</b>。闰年修正完成，days = <b>75</b>。'
+});
+
+/* ---------------- 第 19 行 ---------------- */
+push({
+  line: 19, ctx: 'main · 外层 if 体结束',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '3', days: '75',
+    expr: '}',
+    exprVal: '外层 if(闰年条件) 体结束',
+    note: '闰年判断块全部结束',
+    scanfN: '1', printfN: '1'
+  },
+  hit: [19],
+  title: '}　外层 if 体结束',
+  desc: '这个 <code>}</code> 结束了 <code>if((year%4==0 &amp;&amp; year%100!=0) || year%400==0)</code> 的<b>复合语句块</b>。<br>至此，<b>days 已经完成了闰年修正</b>，无论闰年与否，days 都是准确的"年内第几天"。'
+});
+
+/* ---------------- 第 20 行 ---------------- */
+outText += 'days=75\n';
+push({
+  line: 20, ctx: 'main · printf 输出总天数',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '3', days: '75',
+    expr: 'printf("days=%d\\n", days)',
+    exprVal: '把 days=75 填入 %d，输出 "days=75" 并换行',
+    note: '屏幕出现第 1 行完整输出',
+    scanfN: '1', printfN: '2'
+  },
+  hit: [20],
+  title: 'printf("days=%d\\n", days);   →   输出 days=75 并换行',
+  desc: '<code>printf("days=%d\\n", days);</code> 把 <code>%d</code> 用实参 <b>days = 75</b> 替换：<br>· 输出 <b>days=75</b>；<br>· 末尾的 <code>\\n</code> 让它<b>换行</b>，光标移到下一行开头。<br>所以屏幕上第一行现在是 <code>Input year/month/day:days=75</code>（提示文字和数字连在一起），第二行开头等待后续输出。'
+});
+
+/* ---------------- 第 21 行 ---------------- */
+push({
+  line: 21, ctx: 'main · 计算 days 对 5 取余',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '0', days: '75',
+    expr: 'i = days % 5',
+    exprVal: '75 % 5 = 0，存入 i',
+    note: 'i 被重新赋值，不再当循环变量用了',
+    scanfN: '1', printfN: '2'
+  },
+  hit: [21],
+  title: 'i = days % 5;   →   75 % 5 = 0',
+  desc: '<code>%</code> 是<b>取余运算符</b>，<code>days % 5</code> 求 days 除以 5 的<b>余数</b>：<br>· <code>75 ÷ 5 = 15 余 0</code> → 余数为 <b>0</b>；<br>· 把 0 存入变量 <b>i</b>。<span class="tip"><b>i 在这里"改行"了：</b>前面 i 是 for 循环的循环变量，循环结束后已经没用了，这里<b>重新利用</b> i 来存余数。<br><b>"三天打鱼两天晒网"的含义：</b>把天数的余数看作一个 5 天周期 —— 余 0、3、4 打鱼，余 1、2 晒网（3 天打鱼 + 2 天晒网正好 5 天）。</span>'
+});
+
+/* ---------------- 第 22 行 ---------------- */
+push({
+  line: 22, ctx: 'main · 判断余数是否为 1 或 2',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '0', days: '75',
+    expr: 'if(i>0 && i<3)',
+    exprVal: 'i=0，0>0 → 假，&& 短路，整体为假',
+    note: '余数不是 1 或 2 → 跳过第 23 行，走第 24 行 else',
+    scanfN: '1', printfN: '2'
+  },
+  hit: [22], skip: [23],
+  title: 'if(i&gt;0 &amp;&amp; i&lt;3)   →   0&gt;0 为假 → 整体为假，进入 else',
+  desc: '判断 i 是否落在 <b>1 或 2</b> 这个区间：<br>· 先算左边的 <code>i &gt; 0</code>：i = <b>0</b>，<code>0 &gt; 0</code> 为<b>假</b>；<br>· 由于 <code>&amp;&amp;</code> 是"<b>并且</b>"，左边已经是假，<b>右边 <code>i&lt;3</code> 根本不会被计算</b>（短路）；<br>· 整个条件为<b>假</b> → <b>跳过第 23 行</b>，进入第 24 行的 <code>else</code>。<span class="tip"><b>为什么用 i&gt;0 &amp;&amp; i&lt;3 而不是写成 1&lt;=i&lt;=2？</b><br>C 语言里 <code>1&lt;=i&lt;=2</code> 会被理解成 <code>(1&lt;=i)&lt;=2</code>：先算 <code>1&lt;=i</code> 得到 0 或 1，再和 2 比较 —— 而 0 和 1 都 ≤ 2，所以这个表达式<b>永远为真</b>，是个隐蔽的错误。<b>必须用 &amp;&amp; 把两个比较分开写。</b></span>'
+});
+
+/* ---------------- 第 24 行 ---------------- */
+push({
+  line: 24, ctx: 'main · 进入 else 分支（打鱼）',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '0', days: '75',
+    expr: 'else',
+    exprVal: 'i = 0，不在 {1, 2} 内，进入 else 分支',
+    note: '余数为 0（或 3、4），执行打鱼',
+    scanfN: '1', printfN: '2'
+  },
+  hit: [24],
+  title: '} else {   →   进入 else 分支（打鱼）',
+  desc: '<code>else</code> 分支在 <code>if(i&gt;0 &amp;&amp; i&lt;3)</code> 为假时执行。<br>· i = <b>0</b>，不在 {1, 2} 范围内；<br>· 说明 75 天对 5 取余为 0，处在"打鱼"的 3 天里；<br>· 接下来输出打鱼提示。'
+});
+
+/* ---------------- 第 25 行 ---------------- */
+outText += 'He was fishing!';
+push({
+  line: 25, ctx: 'main · printf 输出"打鱼"',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '0', days: '75',
+    expr: 'printf("He was fishing!")',
+    exprVal: '输出 "He was fishing!"（无换行）',
+    note: '屏幕出现第 2 行输出',
+    scanfN: '1', printfN: '3'
+  },
+  hit: [25],
+  title: 'printf("He was fishing!");   →   输出 He was fishing!',
+  desc: '<code>printf("He was fishing!");</code> 直接输出这段固定文字。<br>· 格式串里<b>没有 <code>%d</code></b>，也没有 <code>\\n</code>，所以原样输出且不换行；<br>· 屏幕上现在是：<br><code>Input year/month/day:days=75</code><br><code>He was fishing!</code><br><b>余数为 0，这天在打鱼。</b>'
+});
+
+/* ---------------- 第 26 行 ---------------- */
+push({
+  line: 26, ctx: 'main · else 分支结束',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '0', days: '75',
+    expr: '}',
+    exprVal: '打鱼/晒网判断块结束',
+    note: '分支全部走完，准备返回',
+    scanfN: '1', printfN: '3'
+  },
+  hit: [26],
+  title: '}　else 分支结束',
+  desc: '这个 <code>}</code> 结束了 <code>if(i&gt;0 &amp;&amp; i&lt;3) ... else { ... }</code> 的 <b>else 复合语句块</b>。<br>至此，程序主体功能已完成，剩下收尾。'
+});
+
+/* ---------------- 第 27 行 ---------------- */
+push({
+  line: 27, ctx: 'main · return 返回',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '0', days: '75',
+    ret: '0',
+    expr: 'return 0;',
+    exprVal: '返回 0，程序正常结束',
+    note: 'main 返回值 = 0',
+    scanfN: '1', printfN: '3'
+  },
+  hit: [27],
+  title: 'return 0;   结束 main 函数',
+  desc: '<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。约定返回 0 表示程序<b>正常结束</b>。'
+});
+
+/* ---------------- 第 28 行 ---------------- */
+push({
+  line: 28, ctx: '程序结束',
+  vars: {
+    year: '2024', month: '3', day: '15',
+    i: '0', days: '75',
+    ret: '0',
+    note: '栈帧销毁，程序退出',
+    scanfN: '1', printfN: '3'
+  },
+  hit: [28],
+  title: 'main 函数体结束 }',
+  desc: '函数收尾，main 的栈帧被销毁，变量 year、month、day、i、days 随栈帧一起释放（m 是 static，不属于栈帧，但程序即将退出）。<br>程序共调用 <b>3 次 printf</b>、<b>1 次 scanf</b>，返回值 0。<span class="tip"><b>本程序要点总结：</b><br>① <b>月份表数组</b>：<code>m[13] = {0,31,28,...}</code> 用 m[月份] 直接查天数，<b>m[0]=0 是占位</b>，让下标和月份对齐；<br>② <b>static 数组</b>：静态存储，程序启动即初始化完成；<br>③ <b>累加前 month−1 个月</b>：<code>for(i=0; i&lt;month; i++) days += m[i];</code> 因为 m[0]=0，所以循环从 0 开始、条件 i&lt;month，累加的正好是 1 月到 month−1 月；<br>④ <b>闰年规则</b>：<code>(year%4==0 &amp;&amp; year%100!=0) || year%400==0</code> —— 能整除 4 且不能整除 100，<b>或者</b>能整除 400；<br>⑤ <b>闰年修正</b>：只有在"<b>是闰年</b>"并且"<b>month &gt; 2</b>"时才 +1，两个条件必须同时满足；<br>⑥ <b>取余判周期</b>：<code>i = days % 5;</code> 把天数映射到 5 天周期上；<br>⑦ <b>区间判断</b>：<code>i&gt;0 &amp;&amp; i&lt;3</code> 等价于 i ∈ {1, 2}，<b>不能写成 1&lt;=i&lt;=2</b>。<br><b>演示输入 2024 3 15 的完整推导：</b><br>· 累加循环：days = 0 + m[0] + m[1] + m[2] = 0 + 0 + 31 + 28 = <b>59</b>；<br>· 加上本月：59 + 15 = <b>74</b>；<br>· 2024 是闰年且 3 &gt; 2 → 74 + 1 = <b>75</b>；<br>· 75 % 5 = <b>0</b> → 不在 {1,2} 内 → <b>打鱼</b>。<br><b>屏幕输出：</b><br><code>Input year/month/day:days=75</code><br><code>He was fishing!</code><br><b>其他输入对照：</b><br>· 2024 1 15 → month==1 → days=15 → 闰年但 month 不 &gt; 2，不加 → 15%5=0 → 打鱼；<br>· 2023 3 1 → 59+1=60 → 2023 非闰年 → 60%5=0 → 打鱼；<br>· 2024 3 2 → 59+2=61 → +1=62 → 62%5=2 → <b>晒网</b>。<br><b>常见错误：</b>① 数组写成 <code>m[12]</code> 却按 <code>m[月份]</code> 访问，3 月就<b>越界</b>了；② 循环写成 <code>i&lt;=month</code>，会多累加一个月；③ 闰年条件漏掉 <code>|| year%400==0</code>，2000 年会被误判为平年；④ 闰年修正时忘记判断 <code>month &gt; 2</code>，1 月、2 月的日期会被算多一天；⑤ 区间判断写成 <code>1&lt;=i&lt;=2</code>，条件恒真；⑥ <code>days</code> 忘记初始化为 0，累加结果全是垃圾值。</span>'
+});
+
+/* =========================================================
+   3) DOM 构建
+   ========================================================= */
+var codeScroll  = document.getElementById('codeScroll');
+var arrGrid     = document.getElementById('arrGrid');
+var varTable    = document.getElementById('varTable');
+var consoleBody = document.getElementById('consoleBody');
+var explainBody = document.getElementById('explainBody');
+var miniBody    = document.getElementById('miniBody');
+var miniContent = document.getElementById('miniContent');
+var miniView    = document.getElementById('miniView');
+var btnPlay     = document.getElementById('btnPlay');
+var btnPrev     = document.getElementById('btnPrev');
+var btnNext     = document.getElementById('btnNext');
+var btnReset    = document.getElementById('btnReset');
+var btnFull     = document.getElementById('btnFull');
+var btnPanels   = document.getElementById('btnPanels');
+var btnMini     = document.getElementById('btnMini');
+var btnLayout   = document.getElementById('btnLayout');
+var speedInput  = document.getElementById('speed');
+var speedLabel  = document.getElementById('speedLabel');
+
+/* 全屏代码（28 行） */
+codeScroll.innerHTML = CODE.map(function (c) {
+  return '<div class="code-line" data-line="' + c.n + '">' +
+           '<span class="ln">' + c.n + '</span>' +
+           '<span class="src">' + c.html + '</span>' +
+         '</div>';
+}).join('');
+var codeLines = Array.prototype.slice.call(codeScroll.querySelectorAll('.code-line'));
+
+/* 缩略图：完整渲染 28 行缩小版代码 */
+miniContent.innerHTML = CODE.map(function (c) {
+  return '<div class="mini-line" data-line="' + c.n + '">' + c.html + '</div>';
+}).join('');
+var miniLines = Array.prototype.slice.call(miniContent.querySelectorAll('.mini-line'));
+
+/* 数组 m[13] 的 13 个格子 */
+(function buildArr() {
+  var html = '';
+  for (var n = 0; n < 13; n++) {
+    html += '<div class="acell' + (n === 2 ? ' is-feb' : '') + '" data-idx="' + n + '">' +
+              '<span class="aidx">' + n + '</span>' +
+              '<span class="aval">' + MARR[n] + '</span>' +
+            '</div>';
+  }
+  arrGrid.innerHTML = html;
+})();
+var arrCells = Array.prototype.slice.call(arrGrid.querySelectorAll('.acell'));
+
+/* 变量表 —— 包含 scanf/printf 调用次数（原版本缺） */
+var VAR_ROWS = [
+  {k:'ctx',      label:'当前执行位置',                        cls:'r-ctx'},
+  {k:'year',     label:'year   (int)   年',                   cls:'r-year'},
+  {k:'month',    label:'month  (int)   月',                   cls:'r-month'},
+  {k:'day',      label:'day    (int)   日',                   cls:'r-day'},
+  {k:'i',        label:'i      (int)   循环变量 / 余数',        cls:'r-i'},
+  {k:'days',     label:'days   (int)   年内第几天',            cls:'r-days'},
+  {k:'cond',     label:'循环条件  i < month',                 cls:'r-cond'},
+  {k:'ifc',      label:'if 条件  最近一次判断',                cls:'r-ifc'},
+  {k:'expr',     label:'正在求值的表达式',                     cls:'r-expr'},
+  {k:'exprVal',  label:'表达式结果',                          cls:'r-eval'},
+  {k:'note',     label:'关键规则提示',                         cls:'r-note'},
+  {k:'scanfN',   label:'scanf 调用次数',                      cls:'r-sc'},
+  {k:'printfN',  label:'printf 调用次数',                     cls:'r-pf'},
+  {k:'ret',      label:'main 返回值',                         cls:'r-ret'}
+];
+varTable.innerHTML = VAR_ROWS.map(function (r) {
+  return '<div class="vrow ' + r.cls + '" data-key="' + r.k + '">' +
+           '<span class="vk">' + r.label + '</span>' +
+           '<span class="vv dim">—</span>' +
+         '</div>';
+}).join('');
+
+/* =========================================================
+   4) 状态与渲染
+   ========================================================= */
+var current = -1;
+var playing = false;
+var timer   = null;
+var speed   = Number(speedInput.value);
+var lastOut = null;
+
+function getFullLineHeight() {
+  if (codeLines.length > 1) {
+    var d = codeLines[1].offsetTop - codeLines[0].offsetTop;
+    if (d > 0) return d;
+  }
+  return (codeLines[0] && codeLines[0].offsetHeight) || 1;
+}
+
+function renderCode(step) {
+  var activeLine = step ? step.line : -1;
+  var hitLines   = step ? step.hit  : [];
+  var skipLines  = step ? step.skip : [];
+  codeLines.forEach(function (el) {
+    var n = Number(el.dataset.line);
+    el.classList.toggle('active', n === activeLine);
+    el.classList.toggle('hit',    hitLines.indexOf(n)  !== -1);
+    el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+  });
+}
+
+function centerActiveLine() {
+  var el = codeScroll.querySelector('.code-line.active');
+  if (!el) return;
+  var lh = getFullLineHeight();
+  var maxScroll = codeScroll.scrollHeight - codeScroll.clientHeight;
+  if (maxScroll <= 0) return;
+  var target = el.offsetTop - (codeScroll.clientHeight - lh) / 2;
+  target = Math.max(0, Math.min(maxScroll, target));
+  if (Math.abs(target - codeScroll.scrollTop) < 4) return;
+  codeScroll.scrollTo({ top: target, behavior: 'smooth' });
+}
+
+function renderVars(step) {
+  VAR_ROWS.forEach(function (r) {
+    var row = varTable.querySelector('.vrow[data-key="' + r.k + '"]');
+    if (!row) return;
+    var el = row.querySelector('.vv');
+    var v = step ? step.vars[r.k] : '—';
+    var val = String(v === undefined || v === null ? '—' : v);
+    if (el.textContent !== val) {
+      el.textContent = val;
+      el.classList.toggle('dim', val === '—');
+      el.classList.remove('flash');
+      void el.offsetWidth;
+      el.classList.add('flash');
+    }
+  });
+}
+
+function renderArr(step) {
+  var hl = (step && step.hl) || [];
+  arrCells.forEach(function (cell, idx) {
+    cell.classList.toggle('is-hl', hl.indexOf(idx) !== -1);
+  });
+}
+
+/* 输出：按行增量更新，避免整屏重绘；处理末尾换行 */
+function renderOut(text) {
+  if (text === lastOut) return;
+  lastOut = text;
+
+  var lines = text ? text.split('\n') : [];
+  if (lines.length && lines[lines.length - 1] === '') lines.pop();
+
+  while (consoleBody.children.length > lines.length) {
+    consoleBody.removeChild(consoleBody.lastChild);
+  }
+  for (var n = 0; n < lines.length; n++) {
+    var div = consoleBody.children[n];
+    if (!div) {
+      div = document.createElement('div');
+      div.className = 'outline';
+      consoleBody.appendChild(div);
+    }
+    if (div.textContent !== lines[n]) div.textContent = lines[n];
+  }
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+function renderExplain(step) {
+  if (!step) {
+    explainBody.innerHTML =
+      '<span class="exhead">准备就绪</span>' +
+      '<strong>点击「自动播放」或「下一步」，开始逐条执行程序。</strong><br>' +
+      '本程序计算某年某月某日是<b>一年中的第几天</b>，再用"三天打鱼两天晒网"判断状态：<br>' +
+      '· <code>m[13] = {0,31,28,...}</code> 是月份天数表，<b>m[0]=0 占位</b>让下标与月份对齐；<br>' +
+      '· <code>for(i=0; i&lt;month; i++) days += m[i];</code> 累加<b>前 month−1 个月</b>的天数；<br>' +
+      '· <code>days = days + day;</code> 再加上本月已过的天数；<br>' +
+      '· <code>(year%4==0 &amp;&amp; year%100!=0) || year%400==0</code> 判断闰年，若 <code>month&gt;2</code> 则 +1；<br>' +
+      '· <code>i = days % 5;</code> 再判断 <code>i&gt;0 &amp;&amp; i&lt;3</code>：是则"晒网"，否则"打鱼"。<br>' +
+      '<b>示例输入：2024 3 15</b>（闰年第 75 天，75%5=0 → 输出 days=75 和 He was fishing!）。';
+    return;
+  }
+  var isHit = step.hit && step.hit.length > 0;
+  var isAns = (step.line === 6 || step.line === 17 || step.line === 20 || step.line === 25);
+  var cls = isAns ? ' ans' : (isHit ? ' hit' : '');
+  explainBody.innerHTML =
+    '<span class="exhead' + cls + '">第 ' + step.line + ' 行</span>' +
+    '<strong>' + step.title + '</strong><br>' + step.desc;
+}
+
+/* 缩略图：28 行等分高度 + 荧光框 = 全屏可见区域（完全对齐） */
+function syncMini() {
+  var H = miniBody.clientHeight;
+  if (H <= 0) return;
+
+  var miniLineH = H / 28;
+  for (var n = 0; n < miniLines.length; n++) {
+    var l = miniLines[n];
+    l.style.height = miniLineH + 'px';
+    l.style.lineHeight = miniLineH + 'px';
+    l.style.fontSize = Math.max(4, Math.round(miniLineH * 0.62)) + 'px';
+  }
+
+  var fullLineH = getFullLineHeight();
+  if (fullLineH <= 0) return;
+
+  var visRows = codeScroll.clientHeight / fullLineH;
+  var boxH = Math.min(H, visRows * miniLineH);
+  var boxTop = (codeScroll.scrollTop / fullLineH) * miniLineH;
+  boxTop = Math.max(0, Math.min(H - boxH, boxTop));
+
+  miniView.style.top = boxTop + 'px';
+  miniView.style.height = boxH + 'px';
+}
+
+function markMiniCurrent(step) {
+  var line = step ? step.line : -1;
+  var hitLines  = step ? step.hit  : [];
+  var skipLines = step ? step.skip : [];
+  miniLines.forEach(function (l) {
+    var n = Number(l.dataset.line);
+    l.classList.toggle('cur',  n === line);
+    l.classList.toggle('hit',  hitLines.indexOf(n)  !== -1);
+    l.classList.toggle('skip', skipLines.indexOf(n) !== -1);
+  });
+}
+
+function render() {
+  var step = current >= 0 ? STEPS[current] : null;
+
+  renderCode(step);
+  renderVars(step);
+  renderArr(step);
+  renderOut(step ? step.out : '');
+  renderExplain(step);
+  markMiniCurrent(step);
+  syncMini();
+  centerActiveLine();
+
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+}
+
+/* =========================================================
+   5) 播放控制
+   ========================================================= */
+function updatePlayBtn() {
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+function tick() {
+  if (current >= STEPS.length - 1) { pause(); return; }
+  current += 1;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+function play() {
+  if (playing) return;
+  if (current >= STEPS.length - 1) { current = -1; lastOut = null; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+function pause() {
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+function nextStep() {
+  pause();
+  if (current < STEPS.length - 1) { current += 1; render(); }
+}
+function prevStep() {
+  pause();
+  if (current > -1) { current -= 1; render(); }
+}
+function resetAll() {
+  pause();
+  current = -1;
+  lastOut = null;
+  consoleBody.innerHTML = '';
+  codeScroll.scrollTop = 0;
+  render();
+}
+
+btnPlay.addEventListener('click', function () { playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function () {
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if (playing) {
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+/* =========================================================
+   6) 面板：拖动 / 缩放 / 置顶 / 关闭 / 折叠
+   ========================================================= */
+var zTop = 100;
+var panelEls = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+
+function bringToFront(el) {
+  zTop += 1;
+  el.style.zIndex = zTop;
+  panelEls.forEach(function (p) { p.classList.remove('active'); });
+  el.classList.add('active');
+}
+
+panelEls.forEach(function (panel) {
+  var head     = panel.querySelector('.phead');
+  var handle   = panel.querySelector('.presize');
+  var closeBtn = panel.querySelector('.pclose');
+  var foldBtn  = panel.querySelector('.pfold');
+
+  /* 点击 / 触摸面板任意处 → 置顶 */
+  panel.addEventListener('pointerdown', function () { bringToFront(panel); }, true);
+
+  /* ---- 拖动（标题栏） ---- */
+  head.addEventListener('pointerdown', function (e) {
+    if (e.target.closest('button')) return;
+    e.preventDefault();
+    bringToFront(panel);
+    var r = panel.getBoundingClientRect();
+    var ox = e.clientX - r.left;
+    var oy = e.clientY - r.top;
+
+    function mv(ev) {
+      var x = ev.clientX - ox;
+      var y = ev.clientY - oy;
+      panel.style.left = x + 'px';
+      panel.style.top  = y + 'px';
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+    }
+    function up() {
+      document.removeEventListener('pointermove', mv);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+    }
+    document.addEventListener('pointermove', mv);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+  });
+
+  /* ---- 缩放（右下角手柄，不设最小 / 最大限制） ---- */
+  handle.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    bringToFront(panel);
+    var r = panel.getBoundingClientRect();
+    var sx = e.clientX, sy = e.clientY;
+    var sw = r.width, sh = r.height;
+
+    function mv(ev) {
+      var w = sw + (ev.clientX - sx);
+      var h = sh + (ev.clientY - sy);
+      /* 不设最小/最大限制，允许拖到任意尺寸 */
+      panel.style.width  = Math.max(0, w) + 'px';
+      panel.style.height = Math.max(0, h) + 'px';
+      panel.style.right  = 'auto';
+      panel.style.bottom = 'auto';
+    }
+    function up() {
+      document.removeEventListener('pointermove', mv);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+      syncMini();
+    }
+    document.addEventListener('pointermove', mv);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+  });
+
+  /* ---- 关闭 ---- */
+  closeBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    panel.classList.add('hidden');
+  });
+
+  /* ---- 折叠 ---- */
+  foldBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (panel.classList.contains('collapsed')) {
+      panel.classList.remove('collapsed');
+      if (panel.dataset.savedH) panel.style.height = panel.dataset.savedH;
+      foldBtn.textContent = '—';
+    } else {
+      panel.dataset.savedH = panel.style.height || (panel.getBoundingClientRect().height + 'px');
+      panel.classList.add('collapsed');
+      panel.style.height = 'auto';
+      foldBtn.textContent = '＋';
+    }
+    syncMini();
+  });
+});
+
+/* ---- 重置布局：恢复默认位置与尺寸 ---- */
+function resetLayout() {
+  var W = window.innerWidth;
+  var H = window.innerHeight;
+  function place(id, l, t, w, h) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('hidden');
+    el.style.left   = Math.round(l * W) + 'px';
+    el.style.top    = Math.round(t * H) + 'px';
+    el.style.width  = Math.round(w * W) + 'px';
+    el.style.height = Math.round(h * H) + 'px';
+    el.style.right  = 'auto';
+    el.style.bottom = 'auto';
+    el.style.zIndex = 100;
+  }
+  place('p-top',     0.010, 0.014, 0.62, 0.135);
+  place('p-vars',    0.010, 0.168, 0.36, 0.62);
+  place('p-explain', 0.010, 0.800, 0.60, 0.185);
+  place('p-out',     0.635, 0.800, 0.255, 0.185);
+  place('p-mini',    0.905, 0.014, 0.085, 0.76);
+  zTop = 100;
+  panelEls.forEach(function (p) { p.classList.remove('active'); });
+  requestAnimationFrame(syncMini);
+}
+btnLayout.addEventListener('click', resetLayout);
+
+/* ---- 全屏 ---- */
+btnFull.addEventListener('click', function () {
+  if (!document.fullscreenElement) {
+    (document.documentElement.requestFullscreen || function () {}).call(document.documentElement);
+  } else {
+    (document.exitFullscreen || function () {}).call(document);
+  }
+});
+
+/* ---- 所有面板 显示 / 隐藏 ---- */
+btnPanels.addEventListener('click', function () {
+  var anyVisible = panelEls.some(function (p) { return !p.classList.contains('hidden'); });
+  panelEls.forEach(function (p) { p.classList.toggle('hidden', anyVisible); });
+  if (!anyVisible) requestAnimationFrame(syncMini);
+});
+
+/* ---- 缩略图 显示 / 隐藏 ---- */
+function toggleMini() {
+  var el = document.getElementById('p-mini');
+  el.classList.toggle('hidden');
+  if (!el.classList.contains('hidden')) {
+    bringToFront(el);
+    requestAnimationFrame(syncMini);
+  }
+}
+btnMini.addEventListener('click', toggleMini);
+
+/* =========================================================
+   7) 缩略图点击跳转 + 滚动同步
+   ========================================================= */
+miniBody.addEventListener('pointerdown', function (e) {
+  bringToFront(document.getElementById('p-mini'));
+  var r = miniBody.getBoundingClientRect();
+  var miniLineH = miniBody.clientHeight / 28;
+  if (miniLineH <= 0) return;
+  var idx = Math.floor((e.clientY - r.top) / miniLineH);
+  idx = Math.max(0, Math.min(27, idx));
+
+  var fullLineH = getFullLineHeight();
+  var maxScroll = codeScroll.scrollHeight - codeScroll.clientHeight;
+  var target = idx * fullLineH - (codeScroll.clientHeight - fullLineH) / 2;
+  target = Math.max(0, Math.min(maxScroll, target));
+  codeScroll.scrollTo({ top: target, behavior: 'smooth' });
+});
+
+var rafPending = false;
+function scheduleSync() {
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(function () {
+    rafPending = false;
+    syncMini();
+  });
+}
+codeScroll.addEventListener('scroll', scheduleSync, { passive: true });
+window.addEventListener('resize', function () { scheduleSync(); centerActiveLine(); });
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(function () { scheduleSync(); });
+}
+
+/* =========================================================
+   8) 全局快捷键（始终有效）
+   ========================================================= */
+document.addEventListener('keydown', function (e) {
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
+  if (e.code === 'Space')            { e.preventDefault(); playing ? pause() : play(); }
+  else if (e.code === 'ArrowRight')  { e.preventDefault(); nextStep(); }
+  else if (e.code === 'ArrowLeft')   { e.preventDefault(); prevStep(); }
+  else if (e.code === 'KeyR')        { resetAll(); }
+  else if (e.code === 'KeyF')        { btnFull.click(); }
+  else if (e.code === 'KeyM')        { toggleMini(); }
+  else if (e.code === 'KeyH')        { btnPanels.click(); }
+});
+
+/* =========================================================
+   9) 启动
+   ========================================================= */
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+resetLayout();
+render();
+setTimeout(scheduleSync, 120);
+setTimeout(scheduleSync, 500);
+
+})();
+</script>
+</body>
+</html>

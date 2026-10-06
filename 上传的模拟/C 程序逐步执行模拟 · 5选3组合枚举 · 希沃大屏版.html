@@ -1,0 +1,1325 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 5选3组合枚举 · 希沃大屏版</title>
+<style>
+  :root{
+    --code-font: clamp(80px, 5vw, 120px);
+    --out-font: clamp(72px, 4.5vw, 110px);
+    --var-font: clamp(40px, 2.4vw, 60px);
+    --explain-font: clamp(48px, 2.8vw, 72px);
+    --btn-font: clamp(40px, 2.2vw, 60px);
+    --title-font: clamp(56px, 3vw, 80px);
+    --hd-font: clamp(24px, 1.5vw, 36px);
+    --bg:#0d1117;
+    --border:rgba(56,189,248,.35);
+    --text:#e6edf3;
+    --muted:#8b98a9;
+    --accent:#38bdf8;
+    --green:#4ade80;
+    --amber:#fbbf24;
+    --pink:#f472b6;
+    --teal:#2dd4bf;
+    --red:#f87171;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    -webkit-tap-highlight-color:transparent;}
+
+  /* ================= 全屏代码区 ================= */
+  #codeScroll{position:fixed;inset:0;z-index:1;overflow:auto;background:var(--bg);
+    scrollbar-width:thin;scrollbar-color:#30363d transparent;}
+  #codeScroll::-webkit-scrollbar{width:16px;height:16px;}
+  #codeScroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:16px;}
+  #codeInner{display:block;min-width:max-content;}
+
+  .code-line{display:flex;align-items:flex-start;gap:.35em;padding:.12em 4rem .12em .35em;
+    border-left:.085em solid transparent;white-space:pre;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:var(--code-font);line-height:1.38;
+    transition:background .25s,border-color .25s,opacity .25s,box-shadow .25s;}
+  .code-line .ln{flex:0 0 auto;width:2.8ch;text-align:right;color:#4b5f7a;
+    user-select:none;font-variant-numeric:tabular-nums;font-size:.72em;line-height:1.92em;}
+  .code-line .src{flex:1 1 auto;}
+  .pp{color:#c586c0;font-weight:700;} .str{color:#ce9178;} .cmt{color:#6a9955;font-style:italic;}
+  .fn{color:#dcdcaa;font-weight:700;} .kw{color:#569cd6;font-weight:700;}
+  .num{color:#b5cea8;} .op{color:#ff9e64;font-weight:700;}
+
+  .code-line.active{background:linear-gradient(90deg,rgba(56,189,248,.28),rgba(56,189,248,.06) 70%,transparent);
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 2px rgba(56,189,248,.35),0 0 40px rgba(56,189,248,.18);}
+  .code-line.active .src{color:#fff;} .code-line.active .ln{color:var(--accent);font-weight:700;}
+
+  /* case 匹配行的高亮（粉色） */
+  .code-line.case-active{background:linear-gradient(90deg,rgba(244,114,182,.30),rgba(244,114,182,.06) 70%,transparent);
+    border-left-color:var(--pink);
+    box-shadow:inset 0 0 0 2px rgba(244,114,182,.4),0 0 36px rgba(244,114,182,.22);}
+  .code-line.case-active .src{color:#ffe4f0;} .code-line.case-active .ln{color:var(--pink);font-weight:700;}
+
+  .code-line.key-out{background:rgba(74,222,128,.10);border-left-color:rgba(74,222,128,.6);}
+  .code-line.key-in{background:rgba(45,212,191,.10);border-left-color:rgba(45,212,191,.6);}
+  .code-line.key-mv{background:rgba(244,114,182,.10);border-left-color:rgba(244,114,182,.6);}
+  .code-line.key-fill{background:rgba(251,191,36,.10);border-left-color:rgba(251,191,36,.6);}
+  .code-line.skip{opacity:.22;}
+
+  /* ================= 悬浮窗 ================= */
+  .win{position:fixed;z-index:100;background:rgba(13,17,23,.80);
+    backdrop-filter:blur(14px) saturate(150%);-webkit-backdrop-filter:blur(14px) saturate(150%);
+    border:2px solid var(--border);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.7);
+    display:flex;flex-direction:column;overflow:hidden;color:var(--text);
+    transition:opacity .18s,box-shadow .18s,border-color .18s;}
+  .win.active{border-color:var(--accent);box-shadow:0 0 0 4px rgba(56,189,248,.30),0 24px 70px rgba(0,0,0,.78);}
+  .win.hidden{display:none;}
+  .win.collapsed .win-bd{display:none;}
+
+  .win-hd{flex:0 0 auto;display:flex;align-items:center;gap:14px;padding:10px 14px;
+    cursor:move;touch-action:none;user-select:none;
+    background:linear-gradient(180deg,rgba(56,189,248,.20),rgba(56,189,248,.03));
+    border-bottom:1px solid rgba(56,189,248,.25);font-size:var(--hd-font);font-weight:700;
+    letter-spacing:.04em;color:#cfe8ff;white-space:nowrap;}
+  .win-hd .sp{flex:1 1 auto;}
+  .win-hd .tag{font-size:.72em;color:#7f9ec2;font-weight:500;}
+  .win-btn{flex:0 0 auto;width:52px;height:52px;border-radius:14px;
+    border:1px solid rgba(148,163,184,.4);background:rgba(30,41,59,.85);
+    color:#e6edf3;font-size:28px;line-height:1;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    transition:background .15s,border-color .15s,transform .1s;}
+  .win-btn:hover{background:#22334d;border-color:var(--accent);}
+  .win-btn:active{transform:translateY(2px);}
+  .win-btn.close:hover{background:#7f1d1d;border-color:#f87171;color:#fff;}
+
+  .win-bd{flex:1 1 auto;min-height:0;min-width:0;overflow:auto;padding:12px 14px;
+    scrollbar-width:thin;scrollbar-color:#334155 transparent;}
+  .win-bd::-webkit-scrollbar{width:12px;height:12px;}
+  .win-bd::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:12px;}
+
+  .win-rs{position:absolute;right:0;bottom:0;width:52px;height:52px;
+    cursor:nwse-resize;touch-action:none;z-index:5;
+    background:linear-gradient(135deg,transparent 46%,rgba(56,189,248,.85) 46%,rgba(56,189,248,.85) 54%,transparent 54%),
+      linear-gradient(135deg,transparent 66%,rgba(56,189,248,.5) 66%,rgba(56,189,248,.5) 73%,transparent 73%);}
+
+  /* ================= 顶部控制栏 ================= */
+  #winToolbar{background:rgba(13,17,23,.75);backdrop-filter:blur(18px);
+    -webkit-backdrop-filter:blur(18px);opacity:.88;transition:opacity .2s;}
+  #winToolbar:hover{opacity:1;}
+  #winToolbar .win-bd{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:12px 14px;}
+  .tbtn{font:inherit;font-size:var(--btn-font);font-weight:700;min-height:76px;
+    padding:10px 22px;border-radius:16px;border:1px solid rgba(148,163,184,.4);
+    background:linear-gradient(180deg,#1b2b45,#132033);color:#e6edf3;cursor:pointer;
+    white-space:nowrap;transition:background .15s,border-color .15s,transform .1s;}
+  .tbtn:hover:not(:disabled){background:linear-gradient(180deg,#254063,#1a2c46);border-color:var(--accent);}
+  .tbtn:active:not(:disabled){transform:translateY(2px);}
+  .tbtn:disabled{opacity:.32;cursor:not-allowed;}
+  .tbtn.primary{background:linear-gradient(180deg,#0ea5e9,#0284c7);border-color:#7dd3fc;color:#04121f;}
+  .tbtn.primary.playing{background:linear-gradient(180deg,#f59e0b,#d97706);border-color:#fbbf24;color:#1a1200;}
+  .speed-wrap{display:flex;align-items:center;gap:14px;font-size:var(--btn-font);color:#9fb4cf;white-space:nowrap;}
+  .speed-wrap input[type=range]{width:220px;height:44px;accent-color:var(--accent);cursor:pointer;}
+  .speed-wrap b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:3em;}
+
+  /* ================= 数组表格 ================= */
+  .arr-title{font-size:var(--var-font);color:#9fb4cf;margin-bottom:8px;line-height:1.4;}
+  .arr-title b{color:var(--accent);} .arr-title i{color:var(--pink);font-style:normal;font-weight:700;}
+  .arr-table{
+    display:grid;
+    grid-template-columns: 5em repeat(3,minmax(0,1fr));
+    gap:6px; max-height:24em; overflow:auto;
+    scrollbar-width:thin;scrollbar-color:#334155 transparent;
+    padding-right:4px;
+  }
+  .arr-table::-webkit-scrollbar{width:10px;}
+  .arr-table::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+  .arr-head{font-size:1em;color:#7f9ec2;text-align:center;padding:4px 0;font-weight:700;}
+  .arr-head.mcol{text-align:right;padding-right:10px;}
+  .arr-cell{
+    text-align:center;border-radius:10px;padding:8px 2px;
+    background:#0d1728;border:3px solid #1b293f;
+    font-family:ui-monospace,Consolas,monospace;font-weight:800;
+    font-size:1.2em;color:#8aa2c0;
+    font-variant-numeric:tabular-nums;
+    transition:background .3s,border-color .3s,box-shadow .3s,color .3s,transform .3s;
+  }
+  .arr-cell.mtag{
+    font-size:.9em;color:#7f9ec2;font-weight:700;
+    text-align:right;padding-right:12px;
+    background:transparent;border-color:transparent;
+  }
+  .arr-cell.empty{color:#334a68;}
+  .arr-cell.hl{
+    border-color:var(--accent);background:rgba(56,189,248,.18);
+    color:#fff;box-shadow:0 0 0 4px rgba(56,189,248,.35),0 0 20px rgba(56,189,248,.4);
+  }
+  .arr-cell.cur{
+    border-color:var(--green);background:rgba(74,222,128,.20);
+    color:#e3ffec;box-shadow:0 0 0 4px rgba(74,222,128,.45),0 0 24px rgba(74,222,128,.5);
+    transform:translateY(-3px);
+  }
+  .arr-cell.mtag.hl, .arr-cell.mtag.cur{ color:#fff; }
+  @keyframes cellPop{
+    0%{transform:scale(1);}
+    45%{transform:scale(1.3);color:#fff;}
+    100%{transform:scale(1);}
+  }
+  .arr-cell.pop{animation:cellPop .5s ease-out;}
+
+  /* ================= 变量表 ================= */
+  .var-table{display:flex;flex-direction:column;gap:5px;margin-top:14px;}
+  .var-row{display:flex;justify-content:space-between;align-items:center;gap:16px;
+    padding:6px 16px;border-radius:12px;background:#0d1728;border:2px solid #1b293f;
+    font-size:var(--var-font);transition:background .3s,border-color .3s;}
+  .var-row.k-ctx{background:#122844;border-color:#26456b;}
+  .var-row.k-main{border-left:8px solid rgba(34,211,238,.7);}
+  .var-row.k-val{border-left:8px solid rgba(244,114,182,.9);}
+  .var-row.k-sw{border-left:8px solid rgba(45,212,191,.9);}
+  .var-row.k-note{border-left:8px solid rgba(45,212,191,.75);}
+  .var-row.k-cnt{border-left:8px solid rgba(251,191,36,.9);}
+  .var-row.k-money{border-left:8px solid rgba(251,191,36,.9);}
+  .var-row.k-ret{border-left:8px solid rgba(251,191,36,.5);}
+  .var-row.changed{border-color:rgba(56,189,248,.9);background:rgba(56,189,248,.16);}
+  .var-name{color:#93a7bf;white-space:nowrap;font-size:.72em;}
+  .var-value{font-family:ui-monospace,Consolas,monospace;font-weight:800;color:var(--accent);
+    font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right;}
+  .var-value.dim{color:#5f7796;font-weight:500;}
+  .var-row.k-ctx .var-value{color:var(--green);}
+  .var-row.k-val .var-value{color:var(--pink);}
+  .var-row.k-sw .var-value{color:var(--teal);}
+  .var-row.k-note .var-value{color:var(--teal);font-weight:600;font-size:.68em;}
+  .var-row.k-cnt .var-value{color:var(--amber);}
+  .var-row.k-money .var-value{color:var(--amber);}
+  .var-row.k-ret .var-value{color:var(--amber);}
+  @keyframes flash{0%{transform:scale(1);}35%{transform:scale(1.28);color:#fff;text-shadow:0 0 18px var(--accent);}100%{transform:scale(1);}}
+  .var-value.flash{animation:flash .55s ease-out;}
+
+  /* ================= 输出面板 ================= */
+  #consoleBody{font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:var(--out-font);
+    line-height:1.6;color:#fcd34d;font-weight:800;white-space:pre-wrap;word-break:break-all;
+    min-height:1.4em;tab-size:4;-moz-tab-size:4;}
+  #consoleBody:empty::before{content:"（等待程序输出…）";color:#3d5474;font-weight:500;}
+  .out-no{color:#fbbf24;}
+  .out-c-red{color:#ef4444;}
+  .out-c-yellow{color:#eab308;}
+  .out-c-blue{color:#60a5fa;}
+  .out-c-white{color:#e2e8f0;}
+  .out-c-black{color:#94a3b8;}
+  .out-cursor{display:inline-block;color:#4ade80;font-weight:400;animation:blink 1s step-end infinite;}
+  @keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+  /* ================= 说明条 ================= */
+  #winExplain .win-bd{font-size:var(--explain-font);line-height:1.5;color:#c8d8ec;}
+  #winExplain .ex-line{display:inline-block;margin-right:.5em;padding:.06em .55em;
+    border-radius:.4em;background:rgba(56,189,248,.22);color:var(--accent);
+    font-weight:800;font-size:.82em;vertical-align:middle;}
+  #winExplain .ex-line.mv{background:rgba(244,114,182,.25);color:var(--pink);}
+  #winExplain .ex-line.casex{background:rgba(244,114,182,.30);color:#ffd9ea;}
+  #winExplain .ex-line.ans{background:rgba(251,191,36,.25);color:var(--amber);}
+  #winExplain .ex-line.skip{background:rgba(45,212,191,.25);color:var(--teal);}
+  #winExplain strong{color:#fff;}
+  #winExplain code{font-family:ui-monospace,Consolas,monospace;background:rgba(148,163,184,.18);
+    border-radius:.3em;padding:0 .3em;color:#e2e8f0;}
+  #winExplain .tip{display:block;margin-top:.5em;padding:.45em .7em;border-radius:.5em;
+    background:rgba(45,212,191,.12);border-left:8px solid var(--teal);color:#bff5ec;font-size:.88em;}
+  #winExplain .warn{display:block;margin-top:.5em;padding:.45em .7em;border-radius:.5em;
+    background:rgba(251,191,36,.14);border-left:8px solid var(--amber);color:#ffe6b0;font-size:.88em;}
+
+  /* ================= 缩略图 ================= */
+  #winMini .win-bd{padding:0;overflow:hidden;}
+  .mini-body{position:relative;width:100%;height:100%;overflow:hidden;}
+  .mini-lines{position:absolute;inset:0;display:flex;flex-direction:column;
+    font-family:ui-monospace,Consolas,"Courier New",monospace;font-size:10px;line-height:1.2;}
+  .mini-row{flex:1 1 0;overflow:hidden;display:flex;gap:.3em;white-space:pre;
+    padding-left:2px;opacity:.85;}
+  .mini-row .ln{flex:0 0 auto;width:2.8ch;text-align:right;color:#3f5a7d;}
+  .mini-row .src{flex:1 1 auto;overflow:hidden;}
+  .mini-row.cur{background:rgba(56,189,248,.32);}
+  .mini-row.ccase{background:rgba(244,114,182,.32);}
+  .mini-viewport{position:absolute;left:0;right:0;top:0;height:40px;
+    background:rgba(56,189,248,.14);border-top:2px solid rgba(56,189,248,.9);
+    border-bottom:2px solid rgba(56,189,248,.9);pointer-events:none;
+    box-shadow:0 0 20px rgba(56,189,248,.35) inset;}
+
+  @media (max-width:1100px){
+    :root{--code-font:clamp(40px,6vw,80px);--out-font:clamp(40px,5vw,72px);
+      --var-font:clamp(22px,3vw,40px);--explain-font:clamp(24px,3.2vw,48px);
+      --btn-font:clamp(22px,2.6vw,40px);--hd-font:clamp(18px,2vw,28px);}
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 全屏代码区（23 行） ================= -->
+<div id="codeScroll">
+  <div id="codeInner">
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span></span></div>
+    <div class="code-line key-out" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">int</span> i, j, k, m<span class="op">=</span><span class="num">0</span>, n, a[<span class="num">100</span>][<span class="num">3</span>];   <span class="cmt">// 定义循环变量和数组</span></span></div>
+    <div class="code-line key-out" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">for</span>(i<span class="op">=</span><span class="num">0</span>; i<span class="op">&lt;</span><span class="num">5</span>; i<span class="op">++</span>) {               <span class="cmt">// 第一层循环，第1个球</span></span></div>
+    <div class="code-line key-out" data-line="5"><span class="ln">5</span><span class="src">        <span class="kw">for</span>(j<span class="op">=</span>i<span class="op">+</span><span class="num">1</span>; j<span class="op">&lt;</span><span class="num">5</span>; j<span class="op">++</span>) {         <span class="cmt">// 第二层循环，第2个球</span></span></div>
+    <div class="code-line key-out" data-line="6"><span class="ln">6</span><span class="src">            <span class="kw">for</span>(k<span class="op">=</span>j<span class="op">+</span><span class="num">1</span>; k<span class="op">&lt;</span><span class="num">5</span>; k<span class="op">++</span>) {     <span class="cmt">// 第三层循环，第3个球</span></span></div>
+    <div class="code-line key-mv" data-line="7"><span class="ln">7</span><span class="src">                a[m][<span class="num">0</span>]<span class="op">=</span>i; a[m][<span class="num">1</span>]<span class="op">=</span>j; a[m][<span class="num">2</span>]<span class="op">=</span>k; <span class="cmt">// 存入组合</span></span></div>
+    <div class="code-line key-fill" data-line="8"><span class="ln">8</span><span class="src">                <span class="fn">printf</span>(<span class="str">"NO.%2d:"</span>, m<span class="op">+</span><span class="num">1</span>); <span class="cmt">// 输出序号</span></span></div>
+    <div class="code-line key-in" data-line="9"><span class="ln">9</span><span class="src">                <span class="kw">for</span>(n<span class="op">=</span><span class="num">0</span>; n<span class="op">&lt;</span><span class="num">3</span>; n<span class="op">++</span>) {   <span class="cmt">// 遍历三个球</span></span></div>
+    <div class="code-line key-in" data-line="10"><span class="ln">10</span><span class="src">                    <span class="kw">switch</span>(a[m][n]) {   <span class="cmt">// 根据数字输出颜色名</span></span></div>
+    <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">                        <span class="kw">case</span> <span class="num">0</span>: <span class="fn">printf</span>(<span class="str">"red "</span>); <span class="kw">break</span>;</span></div>
+    <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">                        <span class="kw">case</span> <span class="num">1</span>: <span class="fn">printf</span>(<span class="str">"yellow "</span>); <span class="kw">break</span>;</span></div>
+    <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">                        <span class="kw">case</span> <span class="num">2</span>: <span class="fn">printf</span>(<span class="str">"blue "</span>); <span class="kw">break</span>;</span></div>
+    <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">                        <span class="kw">case</span> <span class="num">3</span>: <span class="fn">printf</span>(<span class="str">"white "</span>); <span class="kw">break</span>;</span></div>
+    <div class="code-line" data-line="15"><span class="ln">15</span><span class="src">                        <span class="kw">case</span> <span class="num">4</span>: <span class="fn">printf</span>(<span class="str">"black "</span>); <span class="kw">break</span>;</span></div>
+    <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">                    }</span></div>
+    <div class="code-line" data-line="17"><span class="ln">17</span><span class="src">                }</span></div>
+    <div class="code-line key-fill" data-line="18"><span class="ln">18</span><span class="src">                m<span class="op">++</span>;                   <span class="cmt">// 行下标加1</span></span></div>
+    <div class="code-line" data-line="19"><span class="ln">19</span><span class="src">            }</span></div>
+    <div class="code-line" data-line="20"><span class="ln">20</span><span class="src">        }</span></div>
+    <div class="code-line" data-line="21"><span class="ln">21</span><span class="src">    }</span></div>
+    <div class="code-line" data-line="22"><span class="ln">22</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回0，程序结束</span></span></div>
+    <div class="code-line" data-line="23"><span class="ln">23</span><span class="src">}</span></div>
+  </div>
+</div>
+
+<!-- ================= 顶部控制栏 ================= -->
+<section class="win" id="winToolbar">
+  <header class="win-hd">
+    <span>控制台</span>
+    <span class="tag" id="stepCounter">步骤 — / —</span>
+    <span class="sp"></span>
+    <button class="win-btn" data-act="collapse" title="折叠">—</button>
+    <button class="win-btn close" data-act="close" title="关闭">×</button>
+  </header>
+  <div class="win-bd">
+    <button class="tbtn" id="btnReset">⟲ 重置</button>
+    <button class="tbtn" id="btnPrev">◀ 上一步</button>
+    <button class="tbtn primary" id="btnPlay">▶ 自动播放</button>
+    <button class="tbtn" id="btnNext">下一步 ▶</button>
+    <label class="speed-wrap">速度
+      <input type="range" id="speed" min="80" max="1200" step="20" value="360">
+      <b id="speedLabel">0.36s</b>
+    </label>
+    <button class="tbtn" id="btnFull">⛶ 全屏</button>
+    <button class="tbtn" id="btnPanels">▣ 面板</button>
+    <button class="tbtn" id="btnMini">▤ 缩略图</button>
+    <button class="tbtn" id="btnLayout">⤢ 重置布局</button>
+  </div>
+  <div class="win-rs"></div>
+</section>
+
+<!-- ================= 变量 / 数组 / 状态面板 ================= -->
+<section class="win" id="winVars">
+  <header class="win-hd">
+    <span>数组 a · 变量 · 循环条件 · 状态</span>
+    <span class="sp"></span>
+    <button class="win-btn" data-act="collapse">—</button>
+    <button class="win-btn close" data-act="close">×</button>
+  </header>
+  <div class="win-bd">
+    <div class="arr-title">
+      组合表 <b>a[m][0..2]</b>　每行存一组组合　刚写入 <b>蓝色</b>　当前处理 <i>绿色</i>
+    </div>
+    <div class="arr-table" id="arrTable"></div>
+    <div class="var-table" id="varTable"></div>
+  </div>
+  <div class="win-rs"></div>
+</section>
+
+<!-- ================= 程序输出面板 ================= -->
+<section class="win" id="winOut">
+  <header class="win-hd">
+    <span>程序运行结果（屏幕输出）</span>
+    <span class="sp"></span>
+    <button class="win-btn" data-act="collapse">—</button>
+    <button class="win-btn close" data-act="close">×</button>
+  </header>
+  <div class="win-bd">
+    <div id="consoleBody"></div>
+  </div>
+  <div class="win-rs"></div>
+</section>
+
+<!-- ================= 当前语句说明条 ================= -->
+<section class="win" id="winExplain">
+  <header class="win-hd">
+    <span>当前语句说明</span>
+    <span class="sp"></span>
+    <button class="win-btn" data-act="collapse">—</button>
+    <button class="win-btn close" data-act="close">×</button>
+  </header>
+  <div class="win-bd" id="explainBody"></div>
+  <div class="win-rs"></div>
+</section>
+
+<!-- ================= 代码缩略图 ================= -->
+<section class="win" id="winMini">
+  <header class="win-hd">
+    <span>缩略图</span>
+    <span class="sp"></span>
+    <button class="win-btn" data-act="collapse">—</button>
+    <button class="win-btn close" data-act="close">×</button>
+  </header>
+  <div class="win-bd">
+    <div class="mini-body">
+      <div class="mini-lines" id="miniLines"></div>
+      <div class="mini-viewport" id="miniViewport"></div>
+    </div>
+  </div>
+  <div class="win-rs"></div>
+</section>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+     5 选 3 组合枚举
+     组合数 C(5,3) = 10
+     颜色映射：0=red 1=yellow 2=blue 3=white 4=black
+     注意：源码没有 printf("\n")，10 组组合输出全部挤在同一行！
+     ========================================================= */
+  var COLOR_NAMES = ['red', 'yellow', 'blue', 'white', 'black'];
+  var COLOR_CLASS = ['out-c-red','out-c-yellow','out-c-blue','out-c-white','out-c-black'];
+
+  var A = [];                    /* A[m] = [i,j,k] */
+  var st = { i:'—', j:'—', k:'—', m:'—', n:'—' };
+  var outHTML = '';              /* 累积的输出 HTML */
+  var STEPS = [];
+  var counts = { printf: 0, scanf: 0, mInc: 0, combos: 0 };
+
+  function push(o) {
+    STEPS.push({
+      line:     o.line,
+      caseLine: o.caseLine || null,
+      ctx:      o.ctx || '—',
+      vars: {
+        i: st.i, j: st.j, k: st.k, m: st.m, n: st.n,
+        condI: o.condI || '—',
+        condJ: o.condJ || '—',
+        condK: o.condK || '—',
+        condN: o.condN || '—',
+        expr:  o.expr || '—',
+        exprVal: o.exprVal || '—',
+        note:  o.note || '—',
+        printfCount: String(counts.printf),
+        scanfCount:  String(counts.scanf),
+        mIncCount:   String(counts.mInc),
+        comboCount:  String(counts.combos),
+        ret:   o.ret || '—'
+      },
+      a:      A.map(function (r) { return r.slice(); }),
+      hlRow:  o.hlRow,
+      curRow: o.curRow,
+      out:    outHTML,
+      skip:   o.skip || [],
+      title:  o.title,
+      desc:   o.desc
+    });
+  }
+
+  /* ---------- 第 1 行 ---------- */
+  push({
+    line: 1, ctx: '预处理阶段',
+    note: '编译前处理完毕，不占运行时间',
+    title: '#include &lt;stdio.h&gt;',
+    desc: '预处理指令：把标准输入输出头文件引入源文件，让后面的 <code>printf</code> 拿到函数声明。<br>这一行<b>不是 C 语句</b>，编译之前就处理完了，不产生任何屏幕输出。<span class="tip"><b>本程序要做什么？</b><br>从 <b>5 个球</b>中任取 <b>3 个</b>，列出所有组合，并把编号翻译成颜色名。<br>颜色对照：<b>0=red　1=yellow　2=blue　3=white　4=black</b><br>组合数 C(5,3) = 5×4×3 ÷ (3×2×1) = <b>10</b> 种。</span>'
+  });
+
+  /* ---------- 第 2 行 ---------- */
+  push({
+    line: 2, ctx: 'main · 程序入口',
+    note: 'main 是程序入口，建立栈帧',
+    title: 'int main() {   程序从这里开始',
+    desc: '操作系统把控制权交给 <code>main</code>，程序正式开始，系统为 main 建立<b>栈帧</b>。<span class="tip"><b>组合 vs 排列：</b><br>· <b>排列</b> (1,2,3) 与 (3,2,1) 算两组；<br>· <b>组合</b> 只关心"选了哪几个"，顺序无关，所以 (1,2,3) 和 (3,2,1) 是同一组。<br>本程序用 <code>j = i+1</code>、<code>k = j+1</code> 保证 <b>i &lt; j &lt; k</b>，每个组合只会出现一次。</span>'
+  });
+
+  /* ---------- 第 3 行 ---------- */
+  st.m = '0';
+  push({
+    line: 3, ctx: 'main · 声明变量与数组 a[100][3]',
+    note: 'm 被显式清零；i、j、k、n 未初始化；a 未初始化',
+    title: 'int i, j, k, m=0, n, a[100][3];',
+    desc: '一句声明六个东西：<br>· <b>i、j、k</b>：三层循环变量，代表第 <b>1、2、3 个球</b>的编号，此刻<b>未初始化</b>；<br>· <b>m</b>：<b>被显式初始化为 0</b>，组合计数器，也是 a 的行下标；<br>· <b>n</b>：内层循环变量，遍历某个组合的 3 个球，未初始化；<br>· <b>a[100][3]</b>：100 行 3 列的二维数组，每行存一个组合。它是<b>局部自动变量</b>，分配在栈上，未初始化。<span class="warn"><b>为什么要 100 行？</b><br>C(5,3) 只有 10 个组合，但写 100 行是"留足空间"的保险写法。本例只用到前 10 行，后面 90 行不会被访问。<br>如果从 10 个球里选 3 个（C(10,3)=120），100 行就不够了 —— 这是定长数组的局限。</span>'
+  });
+
+  /* ---------- 循环生成所有组合 ---------- */
+  var m = 0;
+
+  for (var i = 0; i < 5; i++) {
+
+    /* ---- 第 4 行 ---- */
+    st.i = String(i);
+    push({
+      line: 4,
+      ctx: '外层 for：i = ' + i,
+      condI: 'i = ' + i + ' < 5 → 真',
+      expr: 'for(i=0; i<5; i++)',
+      exprVal: (i === 0)
+        ? '先执行 i=0，再判断 0 < 5 成立 → 进入循环体'
+        : 'i++ 后 i=' + i + '，' + i + ' < 5 成立 → 继续循环',
+      note: '第 1 个球取编号 ' + i,
+      title: 'for(i=0; i&lt;5; i++)   i = ' + i + '，条件为真',
+      desc: '第 1 层循环选定<b>第 1 个球</b>的编号 i：从 0 到 4。<br>· ' + (i === 0
+          ? '先执行 <code>i=0</code>，再判断 <b>0 &lt; 5</b> 成立 → 进入循环体；'
+          : '<code>i++</code> 后 i = <b>' + i + '</b>，判断 <b>' + i + ' &lt; 5</b> 成立 → 继续循环；') + '<br>· 一旦 i 固定，第 2 层循环就从 <code>j = i+1</code> 开始 —— 这样保证 <b>j 一定大于 i</b>，不会重复选到同一个球，也不会出现顺序颠倒的重复组合。' + (i === 0
+          ? '<span class="tip"><b>"不降"技巧：</b><br>三个循环的起点分别是 <code>0</code>、<code>i+1</code>、<code>j+1</code>，永远保持 <b>i &lt; j &lt; k</b>。<br>这就是"组合"与"排列"的分界：如果写成 <code>j=0</code>、<code>k=0</code>，就变成 5³=125 种排列了。</span>'
+          : '')
+    });
+
+    for (var j = i + 1; j < 5; j++) {
+
+      /* ---- 第 5 行 ---- */
+      st.j = String(j);
+      push({
+        line: 5,
+        ctx: '中层 for：j = ' + j + '（j 从 i+1 起）',
+        condI: 'i = ' + i + ' < 5 → 真',
+        condJ: 'j = ' + j + ' < 5 → 真',
+        expr: 'for(j=i+1; j<5; j++)',
+        exprVal: (j === i + 1)
+          ? '先执行 j = i+1 = ' + j + '，再判断 ' + j + ' < 5 成立 → 进入循环体'
+          : 'j++ 后 j=' + j + '，' + j + ' < 5 成立 → 继续循环',
+        note: '第 2 个球取编号 ' + j + '（比第 1 个球 ' + i + ' 大）',
+        title: 'for(j=i+1; j&lt;5; j++)   j = ' + j + '，条件为真',
+        desc: '第 2 层循环选定<b>第 2 个球</b>的编号 j：从 <b>i+1</b> 到 4。<br>· 当前 i = <b>' + i + '</b>，所以 j 从 <b>' + (i + 1) + '</b> 开始；<br>· 现在是 j = <b>' + j + '</b>，判断 <b>' + j + ' &lt; 5</b> 成立 → 进入循环体；<br>· 由于 j 从 i+1 起步，天然保证 <b>j &gt; i</b>，组合不会出现 (1,0) 这种颠倒顺序。'
+      });
+
+      for (var k = j + 1; k < 5; k++) {
+
+        /* ---- 第 6 行 ---- */
+        st.k = String(k);
+        push({
+          line: 6,
+          ctx: '内层 for：k = ' + k + '（k 从 j+1 起）',
+          condI: 'i = ' + i + ' < 5 → 真',
+          condJ: 'j = ' + j + ' < 5 → 真',
+          condK: 'k = ' + k + ' < 5 → 真',
+          expr: 'for(k=j+1; k<5; k++)',
+          exprVal: (k === j + 1)
+            ? '先执行 k = j+1 = ' + k + '，再判断 ' + k + ' < 5 成立 → 进入循环体'
+            : 'k++ 后 k=' + k + '，' + k + ' < 5 成立 → 继续循环',
+          note: '找到一组组合：(' + i + ', ' + j + ', ' + k + ')',
+          title: 'for(k=j+1; k&lt;5; k++)   k = ' + k + '，条件为真',
+          desc: '第 3 层循环选定<b>第 3 个球</b>的编号 k：从 <b>j+1</b> 到 4。<br>· 当前 j = <b>' + j + '</b>，所以 k 从 <b>' + (j + 1) + '</b> 开始；<br>· 现在是 k = <b>' + k + '</b>，判断 <b>' + k + ' &lt; 5</b> 成立 → 进入循环体；<br>· <b>此刻 (i, j, k) = (' + i + ', ' + j + ', ' + k + ')</b> 就是本次找到的一组组合。'
+        });
+
+        /* ---- 第 7 行：存数组 ---- */
+        A[m] = [i, j, k];
+        counts.combos++;
+        push({
+          line: 7,
+          ctx: '存入 a[' + m + '] = (' + i + ',' + j + ',' + k + ')',
+          condI: 'i = ' + i + ' < 5 → 真',
+          condJ: 'j = ' + j + ' < 5 → 真',
+          condK: 'k = ' + k + ' < 5 → 真',
+          expr: 'a[' + m + '][0]=' + i + ';  a[' + m + '][1]=' + j + ';  a[' + m + '][2]=' + k + ';',
+          exprVal: 'a[' + m + '] = {' + i + ', ' + j + ', ' + k + '}',
+          note: '第 ' + (m + 1) + ' 个组合存入 a[' + m + ']',
+          hlRow: m, curRow: m,
+          title: 'a[' + m + '][0]=' + i + '; a[' + m + '][1]=' + j + '; a[' + m + '][2]=' + k + ';',
+          desc: '把本次找到的 3 个球编号写进数组 a 的<b>第 ' + m + ' 行</b>：<br>· <b>a[' + m + '][0] = ' + i + '</b>（第 1 个球）；<br>· <b>a[' + m + '][1] = ' + j + '</b>（第 2 个球）；<br>· <b>a[' + m + '][2] = ' + k + '</b>（第 3 个球）；<br>· 这一行做了 <b>3 次赋值</b>，都在同一行，所以放在一步里。' + '<span class="tip"><b>为什么要存到数组？</b><br>当前也可以直接打印，但存起来的好处是：后面可以<b>按组合编号访问</b>，也方便做其他处理。<br>这里用数组只是"暂存"，真正输出还是靠后面的循环。</span>'
+        });
+
+        /* ---- 第 8 行：printf 序号 ---- */
+        var noNum = m + 1;
+        var noStr = noNum < 10 ? ' ' + noNum : String(noNum);
+        outHTML += '<span class="out-no">NO.' + noStr + ':</span>';
+        counts.printf++;
+        push({
+          line: 8,
+          ctx: 'printf 输出序号 NO.' + noStr + ':',
+          condI: 'i = ' + i + ' < 5 → 真',
+          condJ: 'j = ' + j + ' < 5 → 真',
+          condK: 'k = ' + k + ' < 5 → 真',
+          expr: 'printf("NO.%2d:", ' + noNum + ')',
+          exprVal: '输出 "NO.' + noStr + ':"',
+          note: '屏幕输出组合编号（累计 printf ' + counts.printf + ' 次）',
+          hlRow: m, curRow: m,
+          title: 'printf("NO.%2d:", m+1);   →   输出 "NO.' + noStr + ':"',
+          desc: '输出组合的编号前缀。<br>· <code>m+1</code>：因为 m 从 0 开始，显示给人看要从 1 开始；<br>· <code>%2d</code>：宽度为 2 的十进制整数，<b>不足 2 位用空格补齐</b>：<br>&nbsp;&nbsp;· 1 → <code> 1</code> → 输出 <code>NO. 1:</code><br>&nbsp;&nbsp;· 10 → <code>10</code> → 输出 <code>NO.10:</code><br>· 这样 10 组输出能<b>对齐</b>，看起来整齐；<br>· 格式串<b>没有 <code>\\n</code></b>，所以后面的颜色名会紧跟在冒号后面。'
+        });
+
+        /* ---- 第 9~17 行：n 循环 + switch ---- */
+        for (var n = 0; n < 3; n++) {
+          st.n = String(n);
+          var colorIdx  = A[m][n];
+          var colorName = COLOR_NAMES[colorIdx];
+
+          push({
+            line: 9,
+            ctx: '内层 for：n = ' + n,
+            condI: 'i = ' + i + ' < 5 → 真',
+            condJ: 'j = ' + j + ' < 5 → 真',
+            condK: 'k = ' + k + ' < 5 → 真',
+            condN: 'n = ' + n + ' < 3 → 真',
+            expr: 'for(n=0; n<3; n++)',
+            exprVal: (n === 0)
+              ? '先执行 n=0，再判断 0 < 3 成立 → 进入循环体'
+              : 'n++ 后 n=' + n + '，' + n + ' < 3 成立 → 继续循环',
+            note: '本轮处理组合中第 ' + (n + 1) + ' 个球 a[' + m + '][' + n + '] = ' + colorIdx,
+            hlRow: m, curRow: m,
+            title: 'for(n=0; n&lt;3; n++)   n = ' + n + '，条件为真',
+            desc: '内层 <code>for</code> 遍历当前组合的 <b>3 个球</b>：n 从 0 到 2。<br>· ' + (n === 0
+                ? '每一组组合开始时，内层 <code>for</code> 都会<b>重新执行 <code>n=0</code></b>，再判断 <b>0 &lt; 3</b> 成立 → 进入循环体；'
+                : '<code>n++</code> 后 n = <b>' + n + '</b>，判断 <b>' + n + ' &lt; 3</b> 成立 → 继续内层循环；') + '<br>· 当前要处理的球是 <b>a[' + m + '][' + n + '] = ' + colorIdx + '</b>，它对应的颜色是 <b>' + colorName + '</b>。'
+          });
+
+          var caseLine = 11 + colorIdx;
+          outHTML += '<span class="' + COLOR_CLASS[colorIdx] + '">' + colorName + ' </span>';
+          counts.printf++;
+          push({
+            line: 10,
+            caseLine: caseLine,
+            ctx: 'switch(a[' + m + '][' + n + '] = ' + colorIdx + ') → 匹配 case ' + colorIdx,
+            condI: 'i = ' + i + ' < 5 → 真',
+            condJ: 'j = ' + j + ' < 5 → 真',
+            condK: 'k = ' + k + ' < 5 → 真',
+            condN: 'n = ' + n + ' < 3 → 真',
+            expr: 'switch(a[' + m + '][' + n + ']) → case ' + colorIdx,
+            exprVal: '匹配 case ' + colorIdx + ' → printf("' + colorName + ' ")',
+            note: '球编号 ' + colorIdx + ' → 颜色名 "' + colorName + '" 输出到屏幕（累计 printf ' + counts.printf + ' 次）',
+            hlRow: m, curRow: m,
+            title: 'switch(a[' + m + '][' + n + '])   →   匹配 case ' + colorIdx + '，输出 "' + colorName + ' "',
+            desc: '把球编号 <b>' + colorIdx + '</b> 送进 <code>switch</code>，<b>从 case 0 依次往下比较</b>：<br>· case 0？' + (colorIdx === 0 ? '<b>匹配！</b>' : '不匹配') + '　case 1？' + (colorIdx === 1 ? '<b>匹配！</b>' : '不匹配') + '　case 2？' + (colorIdx === 2 ? '<b>匹配！</b>' : '不匹配') + '<br>· case 3？' + (colorIdx === 3 ? '<b>匹配！</b>' : '不匹配') + '　case 4？' + (colorIdx === 4 ? '<b>匹配！</b>' : '不匹配') + '<br>· 找到 case ' + colorIdx + ' 后执行 <code>printf("' + colorName + ' ");</code>，输出颜色名加一个空格；<br>· 然后遇到 <code>break;</code>，<b>跳出 switch</b>，不再往下执行其他 case。' + '<span class="warn"><b>为什么必须写 break？</b><br>如果漏掉 <code>break</code>，程序会继续执行后面的 case（这叫"<b>穿透</b>" fall-through），比如 case 0 匹配后会连 case 1、2、3、4 一起输出，结果就完全错了。</span>'
+          });
+
+          push({
+            line: 16,
+            ctx: 'switch 结束（break 跳出），n 循环体继续',
+            condI: 'i = ' + i + ' < 5 → 真',
+            condJ: 'j = ' + j + ' < 5 → 真',
+            condK: 'k = ' + k + ' < 5 → 真',
+            condN: 'n = ' + n + ' < 3 → 真（本轮）',
+            expr: '}  // switch 结束，然后回到第 9 行执行 n++',
+            exprVal: '回到第 9 行执行 n++，再判断新的 n',
+            note: '组合 (' + i + ',' + j + ',' + k + ') 已输出 ' + (n + 1) + ' / 3 个颜色',
+            hlRow: m, curRow: m,
+            title: '<code>}</code>   switch 结束 + n 循环回绕 → 回到第 9 行 n++',
+            desc: '第 16 行 <code>}</code> 结束 <code>switch</code>。<br>· 执行完后控制回到第 9 行：<code>n++</code> 让 n 加 1，再判断新的 n 是否仍小于 3；<br>· 组合 (' + i + ',' + j + ',' + k + ') 已经输出了 <b>' + (n + 1) + '</b> 个颜色，还剩 <b>' + (2 - n) + '</b> 个。'
+          });
+        }
+
+        /* ---- 第 9 行：n = 3 判断失败 ---- */
+        st.n = '3';
+        push({
+          line: 9,
+          ctx: '内层 for 判断失败：n = 3',
+          condI: 'i = ' + i + ' < 5 → 真',
+          condJ: 'j = ' + j + ' < 5 → 真',
+          condK: 'k = ' + k + ' < 5 → 真',
+          condN: 'n = 3 < 3 → 假',
+          expr: 'for(n=0; n<3; n++)',
+          exprVal: 'n++ 后 n = 3，3 < 3 不成立 → 退出内层循环',
+          note: '组合 (' + i + ',' + j + ',' + k + ') 的 3 个颜色全部输出完毕',
+          skip: [10, 11, 12, 13, 14, 15, 16, 17],
+          hlRow: m, curRow: m,
+          title: 'for(n=0; n&lt;3; n++)   n = 3，条件为假 → 退出内层循环',
+          desc: '第 3 个球（n = 2）处理完后，<code>n++</code> 使 n 变成 <b>3</b>；<br>· 判断 <b>3 &lt; 3</b> 为<b>假</b> → 内层循环结束；<br>· 组合 <b>(' + i + ',' + j + ',' + k + ')</b> 的 3 个颜色全部输出完毕；<br>· <b>注意：源码里没有 <code>printf("\\n")</code></b>，所以下一组组合会继续输出在<b>同一行</b>上！'
+        });
+
+        /* ---- 第 18 行：m++ ---- */
+        var oldM = m;
+        m++;
+        counts.mInc++;
+        st.m = String(m);
+        push({
+          line: 18,
+          ctx: 'm++：' + oldM + ' → ' + m,
+          condI: 'i = ' + i + ' < 5 → 真',
+          condJ: 'j = ' + j + ' < 5 → 真',
+          condK: 'k = ' + k + ' < 5 → 真',
+          expr: 'm++',
+          exprVal: 'm 由 ' + oldM + ' 变为 ' + m,
+          note: '组合计数器加 1（累计 m++ ' + counts.mInc + ' 次），准备接收下一组',
+          hlRow: oldM, curRow: null,
+          title: 'm++;   →   m = ' + m,
+          desc: '组合计数器 <code>m</code> 加 1：由 <b>' + oldM + '</b> 变为 <b>' + m + '</b>。<br>· 下一组组合就会写到 a[' + m + '] 这一行；<br>· 下一次 <code>printf("NO.%2d:", m+1)</code> 会输出 NO.' + (m + 1 < 10 ? ' ' + (m + 1) : (m + 1)) + ':' + (m === 10
+              ? '<br>· <b>注意：m 已经变成 10 了！</b>全部 10 组组合都找完了。'
+              : '') + '<span class="tip"><b>后置自增：</b><code>m++</code> 是"先用再加"吗？<br>这里 <code>m++;</code> 单独成句，先加后加效果一样，最终 m 都比原来大 1。<br>只有在 <code>a[m++] = x;</code> 这种"用返回值"的场景，后置先用的特性才重要（本程序第 7 行用的是 <code>a[m]</code>，不带 ++）。</span>'
+        });
+
+        /* ---- 第 19 行：k 循环体结束 ---- */
+        push({
+          line: 19,
+          ctx: 'k 循环体结束，准备 k++',
+          condI: 'i = ' + i + ' < 5 → 真',
+          condJ: 'j = ' + j + ' < 5 → 真',
+          condK: 'k = ' + k + ' < 5 → 真（本轮）',
+          expr: '}  // k 循环体结束',
+          exprVal: '回到第 6 行执行 k++，再判断新的 k',
+          note: '当前 j = ' + j + '，k 已取到 ' + k + '，k 将继续尝试 ' + (k + 1),
+          title: '<code>}</code>   k 循环体结束 → 回到第 6 行执行 k++',
+          desc: '这是 k 循环的右花括号。<br>· 执行完后控制回到第 6 行：<code>k++</code> 让 k 加 1，再判断新的 k 是否仍小于 5；<br>· 当 j = ' + j + ' 时，k 还能尝试 <b>' + (4 - k) + '</b> 个更大的编号。'
+        });
+      }
+
+      /* ---- 第 6 行：k = 5 判断失败 ---- */
+      st.k = '5';
+      push({
+        line: 6,
+        ctx: '内层 for 判断失败：k = 5',
+        condI: 'i = ' + i + ' < 5 → 真',
+        condJ: 'j = ' + j + ' < 5 → 真',
+        condK: 'k = 5 < 5 → 假',
+        expr: 'for(k=j+1; k<5; k++)',
+        exprVal: 'k++ 后 k = 5，5 < 5 不成立 → 退出内层循环',
+        note: 'j = ' + j + ' 时所有可能的第 3 个球都已枚举完',
+        skip: [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18],
+        title: 'for(k=j+1; k&lt;5; k++)   k = 5，条件为假 → 退出内层循环',
+        desc: '当第 1 个球是 <b>' + i + '</b>、第 2 个球是 <b>' + j + '</b> 时，k 从 ' + (j + 1) + ' 一路取到 4；<br>· 最后一个 k = 4 处理完后，<code>k++</code> 使 k 变成 <b>5</b>；<br>· 判断 <b>5 &lt; 5</b> 为<b>假</b> → k 循环结束；<br>· 现在第 2 个球 j = ' + j + ' 已经和所有可能的第 3 个球配过对了。' + (j === 4 ? '<br>· <b>注意 j = 4 时，k 从 5 开始，所以内层循环一次都没进</b> —— 判断 <b>5 &lt; 5</b> 直接为假。' : '')
+      });
+
+      /* ---- 第 20 行：j 循环体结束 ---- */
+      push({
+        line: 20,
+        ctx: 'j 循环体结束，准备 j++',
+        condI: 'i = ' + i + ' < 5 → 真',
+        condJ: 'j = ' + j + ' < 5 → 真（本轮）',
+        expr: '}  // j 循环体结束',
+        exprVal: '回到第 5 行执行 j++，再判断新的 j',
+        note: 'i = ' + i + ' 时 j 已取到 ' + j,
+        title: '<code>}</code>   j 循环体结束 → 回到第 5 行执行 j++',
+        desc: '这是 j 循环的右花括号。<br>· 执行完后控制回到第 5 行：<code>j++</code> 让 j 加 1，再判断新的 j 是否仍小于 5；<br>· 当 i = ' + i + ' 时，j 还能尝试 <b>' + (4 - j) + '</b> 个更大的编号。'
+      });
+    }
+
+    /* ---- 第 5 行：j = 5 判断失败 ---- */
+    st.j = '5';
+    push({
+      line: 5,
+      ctx: '中层 for 判断失败：j = 5',
+      condI: 'i = ' + i + ' < 5 → 真',
+      condJ: 'j = 5 < 5 → 假',
+      expr: 'for(j=i+1; j<5; j++)',
+      exprVal: 'j++ 后 j = 5，5 < 5 不成立 → 退出中层循环',
+      note: 'i = ' + i + ' 时所有第 2 个球都已枚举完',
+      skip: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19],
+      title: 'for(j=i+1; j&lt;5; j++)   j = 5，条件为假 → 退出中层循环',
+      desc: '当第 1 个球是 <b>' + i + '</b> 时，j 从 ' + (i + 1) + ' 一路取到 4；<br>· 最后一个 j = 4 处理完后，<code>j++</code> 使 j 变成 <b>5</b>；<br>· 判断 <b>5 &lt; 5</b> 为<b>假</b> → j 循环结束；<br>· 现在第 1 个球 i = ' + i + ' 已经和所有可能的第 2、3 个球配过对了。' + (i === 4 ? '<br>· <b>注意 i = 4 时，j 从 5 开始，中层循环一次都没进</b> —— 因为 4 已经是最后一个球，凑不出 3 个不同的编号了。' : '')
+    });
+
+    /* ---- 第 21 行：i 循环体结束 ---- */
+    push({
+      line: 21,
+      ctx: 'i 循环体结束，准备 i++',
+      condI: 'i = ' + i + ' < 5 → 真（本轮）',
+      expr: '}  // i 循环体结束',
+      exprVal: '回到第 4 行执行 i++，再判断新的 i',
+      note: '已选完第 1 个球为 ' + i + ' 的所有组合',
+      title: '<code>}</code>   i 循环体结束 → 回到第 4 行执行 i++',
+      desc: '这是 i 循环的右花括号。<br>· 执行完后控制回到第 4 行：<code>i++</code> 让 i 加 1，再判断新的 i 是否仍小于 5；<br>· 已经固定过 <b>' + (i + 1) + '</b> 个第 1 球编号，还剩 <b>' + (4 - i) + '</b> 个。'
+    });
+  }
+
+  /* ---- 第 4 行：i = 5 判断失败 ---- */
+  st.i = '5';
+  push({
+    line: 4,
+    ctx: '外层 for 判断失败：i = 5',
+    condI: 'i = 5 < 5 → 假',
+    expr: 'for(i=0; i<5; i++)',
+    exprVal: 'i++ 后 i = 5，5 < 5 不成立 → 退出外层循环',
+    note: '全部 C(5,3) = 10 种组合枚举完毕',
+    skip: [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20],
+    title: 'for(i=0; i&lt;5; i++)   i = 5，条件为假 → 退出外层循环',
+    desc: '最后一组（i = 4）处理完后，<code>i++</code> 使 i 变成 <b>5</b>；<br>· 判断 <b>5 &lt; 5</b> 为<b>假</b> → 外层循环结束；<br>· <b>10 种组合全部枚举并输出完毕！</b><span class="tip"><b>组合数验证：</b>为什么是 10 种？<br>· i=0 时：j 有 4 种（1,2,3,4），对应 k 的数量分别是 3+2+1+0 = <b>6</b> 种；<br>· i=1 时：j 有 3 种（2,3,4），对应 k 的数量分别是 2+1+0 = <b>3</b> 种；<br>· i=2 时：j 有 2 种（3,4），对应 k 的数量分别是 1+0 = <b>1</b> 种；<br>· i=3、4 时：凑不出 3 个球，<b>0</b> 种。<br>合计 6+3+1 = <b>10</b> 种，与公式 C(5,3)=10 完全吻合 ✓</span>'
+  });
+
+  /* ---- 第 22 行 ---- */
+  push({
+    line: 22, ret: '0', ctx: 'main · return 返回',
+    expr: 'return 0;',
+    exprVal: '返回 0，程序正常结束',
+    note: 'main 返回 0 表示程序正常结束',
+    title: 'return 0;   结束 main 函数',
+    desc: '<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。<br>约定返回 <b>0</b> 表示程序<b>正常结束</b>，返回非 0 通常表示出错。'
+  });
+
+  /* ---- 第 23 行 ---- */
+  push({
+    line: 23, ret: '0', ctx: '程序结束',
+    note: '栈帧销毁，程序退出',
+    title: 'main 函数体结束 }',
+    desc: '函数收尾，main 的栈帧被销毁，局部变量 <b>i、j、k、m、n、a</b> 全部释放。<br>程序共调用 <b>printf 40 次</b>（10 次序号 + 30 次颜色名），<b>没有 scanf</b>，返回 0。<span class="warn"><b>重要提醒：</b>源码里<b>没有 <code>printf("\\n")</code></b>，所以 10 组组合的输出会<b>全部挤在同一行</b>上！<br>很多同学以为会自动换行，其实 C 语言不会——必须要显式调用 <code>printf("\\n");</code> 或 <code>putchar(\'\\n\');</code> 才会换行。<br>这个程序是个很好的"踩坑"案例。<br>如果想要 10 行输出，在第 18 行 <code>m++;</code> 之前加一行 <code>printf("\\n");</code> 即可。</span><span class="tip"><b>本程序要点总结：</b><br>① <b>组合枚举骨架</b>：三层 for，起点 <code>0</code>、<code>i+1</code>、<code>j+1</code>，保证 i&lt;j&lt;k；<br>② <b>存数组</b>：<code>a[m][0]=i; a[m][1]=j; a[m][2]=k;</code>；<br>③ <b>输出序号</b>：<code>printf("NO.%2d:", m+1);</code> 用 %2d 对齐两位数；<br>④ <b>switch 翻译</b>：编号 0~4 → 颜色名，每个 case 后必须 <code>break;</code>；<br>⑤ <b>计数器</b>：<code>m++</code> 每组组合加 1，同时充当 a 的行下标。<br><b>常见错误：</b><br>① 把 <code>j=i+1</code> 写成 <code>j=0</code>，变成排列（125 种）而不是组合；<br>② 把 <code>k=j+1</code> 写成 <code>k=0</code>，同样变成排列；<br>③ <code>switch</code> 里漏写 <code>break;</code>，发生"穿透"，多输出后面的颜色；<br>④ 漏写 <code>m++</code>，所有组合都写到 a[0] 行；<br>⑤ 把 <code>a[m][0]=i</code> 写成 <code>a[0][m]=i</code>，行列颠倒（a 只有 3 列，m 到 9 会越界）；<br>⑥ 循环写成 <code>i&lt;5</code> 但内层 <code>j&lt;5</code>、<code>k&lt;5</code> 忘改，同样出错；<br>⑦ <code>printf("NO.%2d:", m+1)</code> 写成 <code>printf("NO.%d:", m)</code>，序号从 0 开始且不对齐；<br>⑧ <b>忘记换行</b> —— 本程序就是漏写 <code>printf("\\n")</code> 的典型例子。</span>'
+  });
+
+  /* =========================================================
+     DOM 与渲染
+     ========================================================= */
+  var codeScroll  = document.getElementById('codeScroll');
+  var codeLines   = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+  var varTable    = document.getElementById('varTable');
+  var arrTable    = document.getElementById('arrTable');
+  var consoleBody = document.getElementById('consoleBody');
+  var explainBody = document.getElementById('explainBody');
+  var stepCounter = document.getElementById('stepCounter');
+  var btnPlay     = document.getElementById('btnPlay');
+  var btnPrev     = document.getElementById('btnPrev');
+  var btnNext     = document.getElementById('btnNext');
+  var btnReset    = document.getElementById('btnReset');
+  var btnFull     = document.getElementById('btnFull');
+  var btnPanels   = document.getElementById('btnPanels');
+  var btnMini     = document.getElementById('btnMini');
+  var btnLayout   = document.getElementById('btnLayout');
+  var speedInput  = document.getElementById('speed');
+  var speedLabel  = document.getElementById('speedLabel');
+  var miniLines   = document.getElementById('miniLines');
+  var miniViewport= document.getElementById('miniViewport');
+
+  /* ---- 变量表定义 ---- */
+  var VAR_ROWS = [
+    { key: 'ctx',        name: '当前执行位置',                     kind: 'k-ctx'   },
+    { key: 'i',          name: 'i   (int)  第 1 个球编号',         kind: 'k-main'  },
+    { key: 'j',          name: 'j   (int)  第 2 个球编号',         kind: 'k-main'  },
+    { key: 'k',          name: 'k   (int)  第 3 个球编号',         kind: 'k-main'  },
+    { key: 'm',          name: 'm   (int)  组合计数器 · 行下标',    kind: 'k-money' },
+    { key: 'n',          name: 'n   (int)  遍历组合内 3 个球',      kind: 'k-val'   },
+    { key: 'condI',      name: 'i 条件   i < 5',                  kind: 'k-note'  },
+    { key: 'condJ',      name: 'j 条件   j < 5',                  kind: 'k-note'  },
+    { key: 'condK',      name: 'k 条件   k < 5',                  kind: 'k-note'  },
+    { key: 'condN',      name: 'n 条件   n < 3',                  kind: 'k-note'  },
+    { key: 'expr',       name: '正在求值的表达式',                  kind: 'k-val'   },
+    { key: 'exprVal',    name: '表达式结果',                       kind: 'k-val'   },
+    { key: 'note',       name: '关键状态提示',                      kind: 'k-sw'    },
+    { key: 'printfCount',name: 'printf 调用次数',                  kind: 'k-cnt'   },
+    { key: 'scanfCount', name: 'scanf 调用次数（无输入）',          kind: 'k-cnt'   },
+    { key: 'mIncCount',  name: 'm++ 执行次数',                     kind: 'k-cnt'   },
+    { key: 'comboCount', name: '已找到组合数',                      kind: 'k-cnt'   },
+    { key: 'ret',        name: 'main 返回值',                      kind: 'k-ret'   }
+  ];
+
+  var current     = -1;
+  var playing     = false;
+  var timer       = null;
+  var speed       = Number(speedInput.value);
+  var lastOutText = null;
+
+  function buildVarTable() {
+    varTable.innerHTML = VAR_ROWS.map(function (r) {
+      return '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+               '<span class="var-name">' + r.name + '</span>' +
+               '<span class="var-value dim" title="">—</span>' +
+             '</div>';
+    }).join('');
+  }
+
+  function valueOf(step, key) {
+    if (!step) return '—';
+    if (key === 'ctx') return step.ctx;
+    var v = step.vars[key];
+    return (v === undefined || v === null) ? '—' : v;
+  }
+
+  function updateVars(step, prevStep) {
+    VAR_ROWS.forEach(function (r) {
+      var row = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+      if (!row) return;
+      var valEl = row.querySelector('.var-value');
+      var val   = String(valueOf(step, r.key));
+      var old   = String(valueOf(prevStep, r.key));
+
+      if (valEl.textContent !== val) {
+        valEl.textContent = val;
+        valEl.title = val;
+        valEl.classList.toggle('dim', val === '—');
+        valEl.classList.remove('flash');
+        void valEl.offsetWidth;
+        valEl.classList.add('flash');
+        if (prevStep && old !== val) {
+          row.classList.add('changed');
+          window.setTimeout(function () { row.classList.remove('changed'); }, 700);
+        }
+      }
+    });
+  }
+
+  /* 渲染数组 a 表格 */
+  function updateArr(step) {
+    var aRows  = (step && step.a) || A;
+    var hlRow  = (step && step.hlRow != null) ? step.hlRow : -1;
+    var curRow = (step && step.curRow != null) ? step.curRow : -1;
+
+    var h = '<div class="arr-head mcol">m</div>' +
+            '<div class="arr-head">[0]</div>' +
+            '<div class="arr-head">[1]</div>' +
+            '<div class="arr-head">[2]</div>';
+
+    var total = 10;   /* 只展示前 10 行 */
+    for (var r = 0; r < total; r++) {
+      var row = aRows[r];
+      var tagCls = 'arr-cell mtag';
+      if (r === curRow) tagCls += ' cur';
+      else if (r === hlRow) tagCls += ' hl';
+      h += '<div class="' + tagCls + '">a[' + r + ']</div>';
+
+      for (var c = 0; c < 3; c++) {
+        var val = (row && row[c] != null) ? row[c] : '·';
+        var cls = 'arr-cell';
+        if (!row) cls += ' empty';
+        if (r === curRow) cls += ' cur';
+        else if (r === hlRow) cls += ' hl';
+        h += '<div class="' + cls + '">' + val + '</div>';
+      }
+    }
+    arrTable.innerHTML = h;
+  }
+
+  function updateCode(step) {
+    var activeLine = step ? step.line : null;
+    var caseLine   = step ? step.caseLine : null;
+    var skipLines  = (step && step.skip) || [];
+
+    codeLines.forEach(function (el) {
+      var n = Number(el.dataset.line);
+      el.classList.toggle('active',       activeLine !== null && n === activeLine);
+      el.classList.toggle('case-active',  caseLine !== null && n === caseLine);
+      el.classList.toggle('skip',         skipLines.indexOf(n) !== -1);
+    });
+    miniRowEls.forEach(function (el, idx) {
+      var n = idx + 1;
+      el.classList.toggle('cur',   activeLine !== null && n === activeLine);
+      el.classList.toggle('ccase', caseLine !== null && n === caseLine);
+    });
+    centerActiveLine();
+  }
+
+  function centerActiveLine() {
+    var el = codeScroll.querySelector('.code-line.active');
+    if (!el) { requestSync(); return; }
+    var er = el.getBoundingClientRect();
+    var cr = codeScroll.getBoundingClientRect();
+    var delta = (er.top + er.height / 2) - (cr.top + cr.height / 2);
+    if (Math.abs(delta) > 4) {
+      codeScroll.scrollTop = Math.max(0, codeScroll.scrollTop + delta);
+    }
+    requestSync();
+  }
+
+  function updateOutput(step) {
+    var html = step ? step.out : '';
+    if (html === lastOutText) return;
+    lastOutText = html;
+
+    consoleBody.innerHTML = html;
+    if (html) {
+      var cur = document.createElement('span');
+      cur.className = 'out-cursor';
+      cur.textContent = '▊';
+      consoleBody.appendChild(cur);
+    }
+    consoleBody.scrollTop = consoleBody.scrollHeight;
+  }
+
+  function updateExplain(step) {
+    if (!step) {
+      explainBody.innerHTML =
+        '<em>点击「自动播放」或「下一步」，开始逐条执行程序。<br>' +
+        '本程序从 <b>5 个球</b>中任取 <b>3 个</b>，枚举所有组合并输出颜色名：<br>' +
+        '· <code>for(i=0; i&lt;5; i++)</code> —— 第 1 个球编号 i；<br>' +
+        '· <code>for(j=i+1; j&lt;5; j++)</code> —— 第 2 个球编号 j，<b>从 i+1 起</b>；<br>' +
+        '· <code>for(k=j+1; k&lt;5; k++)</code> —— 第 3 个球编号 k，<b>从 j+1 起</b>；<br>' +
+        '· 三个起点保证 <b>i &lt; j &lt; k</b>，每个组合只出现一次；<br>' +
+        '· <code>a[m][0..2] = i, j, k;</code> —— 组合存入数组；<br>' +
+        '· <code>printf("NO.%2d:", m+1);</code> —— 输出序号；<br>' +
+        '· <code>for(n=0; n&lt;3; n++)</code> + <code>switch</code> —— 把编号翻成颜色名；<br>' +
+        '· <code>m++;</code> —— 组合计数器加 1。<br>' +
+        '<b>颜色对照：</b>0=red　1=yellow　2=blue　3=white　4=black<br>' +
+        '<b>注意：</b>源码里<b>没有 <code>printf("\\n")</code></b>，10 组组合会<b>全部挤在同一行</b>！</em>';
+      stepCounter.textContent = '步骤 — / ' + STEPS.length;
+      return;
+    }
+
+    var lineNo = step.line;
+    var isSkip = (step.skip && step.skip.length > 3);
+    var isMv   = (lineNo === 7 || lineNo === 8 || lineNo === 18);
+    var isAns  = (lineNo === 3 || lineNo === 22 || lineNo === 23);
+    var isCase = !!step.caseLine;
+    var cls = isCase ? ' casex' : (isSkip ? ' skip' : (isMv ? ' mv' : (isAns ? ' ans' : '')));
+
+    explainBody.innerHTML =
+      '<span class="ex-line' + cls + '">第 ' + lineNo + ' 行' + (isCase ? ' (case)' : '') + '</span>' +
+      '<strong>' + step.title + '</strong> —— ' + step.desc;
+    stepCounter.textContent = '步骤 ' + (current + 1) + ' / ' + STEPS.length;
+  }
+
+  function render() {
+    var step = current >= 0 ? STEPS[current] : null;
+    var prev = current > 0 ? STEPS[current - 1] : null;
+
+    updateCode(step);
+    updateVars(step, prev);
+    updateArr(step);
+    updateOutput(step);
+    updateExplain(step);
+
+    btnPrev.disabled = current < 0;
+    btnNext.disabled = current >= STEPS.length - 1;
+
+    centerActiveLine();
+  }
+
+  /* =====================================================================
+     缩略图与滚动同步
+     ===================================================================== */
+  var miniRowEls = [];
+  (function buildMini() {
+    codeLines.forEach(function (lineEl) {
+      var row = document.createElement('div');
+      row.className = 'mini-row';
+      row.innerHTML = lineEl.innerHTML;
+      miniLines.appendChild(row);
+      miniRowEls.push(row);
+    });
+  })();
+
+  var rafPending = false;
+  function requestSync() {
+    if (rafPending) return;
+    rafPending = true;
+    window.requestAnimationFrame(function () {
+      rafPending = false;
+      syncMinimap();
+    });
+  }
+
+  function fullLineH() {
+    var el = codeLines[0];
+    if (!el) return 1;
+    var h = el.getBoundingClientRect().height;
+    return h > 0 ? h : 1;
+  }
+
+  function syncMinimap() {
+    if (!miniLines || !miniViewport) return;
+    var miniH = miniLines.clientHeight;
+    if (miniH <= 0) return;
+
+    var lh = fullLineH();
+    var miniLineH = miniH / 23;
+
+    var scrollTop = codeScroll.scrollTop;
+    var viewH = codeScroll.clientHeight;
+
+    var top = (scrollTop / lh) * miniLineH;
+    var h = (viewH / lh) * miniLineH;
+
+    miniViewport.style.top = Math.max(0, Math.min(miniH, top)) + 'px';
+    miniViewport.style.height = Math.max(8, Math.min(miniH, h)) + 'px';
+  }
+
+  if (window.ResizeObserver) {
+    var ro = new ResizeObserver(function () {
+      var h = miniLines.clientHeight;
+      if (h > 0) {
+        miniLines.style.fontSize = Math.max(4, (h / 23) * 0.56) + 'px';
+      }
+      syncMinimap();
+    });
+    ro.observe(miniLines);
+  }
+
+  codeScroll.addEventListener('scroll', requestSync, { passive: true });
+  window.addEventListener('resize', function () {
+    syncMinimap();
+    clampAllWindows();
+  });
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(requestSync);
+  }
+
+  miniLines.addEventListener('pointerdown', function (e) {
+    var r = miniLines.getBoundingClientRect();
+    var ratio = (e.clientY - r.top) / r.height;
+    var lineIdx = ratio * 23;
+    var lh = fullLineH();
+    var target = lineIdx * lh - codeScroll.clientHeight / 2 + lh / 2;
+    codeScroll.scrollTop = Math.max(0, target);
+    requestSync();
+  });
+
+  /* =====================================================================
+     悬浮窗系统
+     ===================================================================== */
+  var zTop = 100;
+  var allWins = [];
+
+  function bringToFront(el) {
+    if (el.classList.contains('hidden')) return;
+    zTop += 1;
+    el.style.zIndex = zTop;
+    allWins.forEach(function (w) { w.classList.remove('active'); });
+    el.classList.add('active');
+  }
+
+  function initWindow(el) {
+    allWins.push(el);
+    var hd = el.querySelector('.win-hd');
+    var rs = el.querySelector('.win-rs');
+
+    el.addEventListener('pointerdown', function () { bringToFront(el); }, true);
+    el.addEventListener('touchstart', function () { bringToFront(el); }, { passive: true });
+
+    hd.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('button')) return;
+      bringToFront(el);
+      var r = el.getBoundingClientRect();
+      var ox = e.clientX - r.left;
+      var oy = e.clientY - r.top;
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+      hd.setPointerCapture(e.pointerId);
+
+      function mv(ev) {
+        el.style.left = (ev.clientX - ox) + 'px';
+        el.style.top  = (ev.clientY - oy) + 'px';
+        requestSync();
+      }
+      function up() {
+        hd.removeEventListener('pointermove', mv);
+        hd.removeEventListener('pointerup', up);
+        hd.removeEventListener('pointercancel', up);
+        requestSync();
+      }
+      hd.addEventListener('pointermove', mv);
+      hd.addEventListener('pointerup', up);
+      hd.addEventListener('pointercancel', up);
+      e.preventDefault();
+    });
+
+    rs.addEventListener('pointerdown', function (e) {
+      bringToFront(el);
+      var r = el.getBoundingClientRect();
+      var ox = e.clientX, oy = e.clientY, ow = r.width, oh = r.height;
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+      rs.setPointerCapture(e.pointerId);
+
+      function mv(ev) {
+        el.style.width  = Math.max(0, ow + (ev.clientX - ox)) + 'px';
+        el.style.height = Math.max(0, oh + (ev.clientY - oy)) + 'px';
+        requestSync();
+      }
+      function up() {
+        rs.removeEventListener('pointermove', mv);
+        rs.removeEventListener('pointerup', up);
+        rs.removeEventListener('pointercancel', up);
+        requestSync();
+      }
+      rs.addEventListener('pointermove', mv);
+      rs.addEventListener('pointerup', up);
+      rs.addEventListener('pointercancel', up);
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    el.querySelectorAll('.win-btn').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var act = btn.dataset.act;
+        if (act === 'collapse') {
+          el.classList.toggle('collapsed');
+          window.setTimeout(requestSync, 30);
+        } else if (act === 'close') {
+          el.classList.add('hidden');
+          window.setTimeout(requestSync, 30);
+        }
+      });
+    });
+  }
+
+  function clampAllWindows() {
+    allWins.forEach(function (el) {
+      if (el.classList.contains('hidden')) return;
+      var r = el.getBoundingClientRect();
+      if (r.left > window.innerWidth - 60) {
+        el.style.left = Math.max(0, window.innerWidth - 120) + 'px';
+      }
+      if (r.top > window.innerHeight - 60) {
+        el.style.top = Math.max(0, window.innerHeight - 120) + 'px';
+      }
+      if (r.left < -r.width + 80) el.style.left = (-r.width + 80) + 'px';
+      if (r.top < 0) el.style.top = '0px';
+    });
+  }
+
+  /* =====================================================================
+     默认布局
+     ===================================================================== */
+  function computeDefaults() {
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    return {
+      winToolbar: { left: 16, top: 12, width: 'auto', height: 'auto' },
+      winVars: {
+        left: 16, top: 128,
+        width: Math.min(1000, Math.max(560, vw * 0.5)),
+        height: Math.min(780, Math.max(420, vh * 0.68))
+      },
+      winOut: {
+        left: 16,
+        top: Math.min(vh - 300, Math.max(800, vh * 0.78)),
+        width: Math.min(1000, Math.max(560, vw * 0.5)),
+        height: Math.min(300, Math.max(190, vh * 0.22))
+      },
+      winExplain: {
+        left: Math.max(16, vw * 0.52),
+        top: Math.max(120, vh - 220),
+        width: Math.min(1000, Math.max(520, vw * 0.46)),
+        height: Math.min(220, Math.max(150, vh * 0.21))
+      },
+      winMini: {
+        left: Math.max(300, vw - 200),
+        top: 128,
+        width: 170,
+        height: Math.min(720, Math.max(400, vh * 0.66))
+      }
+    };
+  }
+
+  function applyLayout() {
+    var D = computeDefaults();
+    Object.keys(D).forEach(function (id) {
+      var el = document.getElementById(id);
+      var d = D[id];
+      if (!el || !d) return;
+      el.style.left = d.left + 'px';
+      el.style.top = d.top + 'px';
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+      el.style.width = (typeof d.width === 'number') ? (d.width + 'px') : d.width;
+      el.style.height = (typeof d.height === 'number') ? (d.height + 'px') : d.height;
+      el.classList.remove('hidden');
+      el.classList.remove('collapsed');
+    });
+    ['winMini', 'winExplain', 'winOut', 'winVars', 'winToolbar'].forEach(function (id, idx) {
+      var el = document.getElementById(id);
+      if (el) el.style.zIndex = 100 + idx;
+    });
+    zTop = 105;
+    window.setTimeout(function () {
+      syncMinimap();
+      centerActiveLine();
+    }, 40);
+  }
+
+  /* =====================================================================
+     播放控制
+     ===================================================================== */
+  function updatePlayBtn() {
+    btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+    btnPlay.classList.toggle('playing', playing);
+  }
+
+  function tick() {
+    if (current >= STEPS.length - 1) { pause(); return; }
+    current += 1;
+    render();
+    if (current >= STEPS.length - 1) pause();
+  }
+
+  function play() {
+    if (playing) return;
+    if (current >= STEPS.length - 1) { current = -1; render(); }
+    playing = true;
+    updatePlayBtn();
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+    tick();
+  }
+
+  function pause() {
+    playing = false;
+    window.clearInterval(timer);
+    timer = null;
+    updatePlayBtn();
+  }
+
+  function nextStep() {
+    pause();
+    if (current < STEPS.length - 1) { current += 1; render(); }
+  }
+
+  function prevStep() {
+    pause();
+    if (current > -1) { current -= 1; render(); }
+  }
+
+  function resetAll() {
+    pause();
+    current = -1;
+    lastOutText = null;
+    consoleBody.innerHTML = '';
+    codeScroll.scrollTop = 0;
+    render();
+  }
+
+  /* =====================================================================
+     事件绑定
+     ===================================================================== */
+  btnPlay.addEventListener('click', function () { playing ? pause() : play(); });
+  btnNext.addEventListener('click', nextStep);
+  btnPrev.addEventListener('click', prevStep);
+  btnReset.addEventListener('click', resetAll);
+  btnLayout.addEventListener('click', applyLayout);
+
+  btnFull.addEventListener('click', function () {
+    if (!document.fullscreenElement) {
+      (document.documentElement.requestFullscreen || function () {}).call(document.documentElement);
+    } else {
+      (document.exitFullscreen || function () {}).call(document);
+    }
+  });
+
+  btnPanels.addEventListener('click', function () {
+    var anyVisible = allWins.some(function (w) { return !w.classList.contains('hidden'); });
+    allWins.forEach(function (w) {
+      if (anyVisible) w.classList.add('hidden');
+      else w.classList.remove('hidden');
+    });
+    window.setTimeout(requestSync, 40);
+  });
+
+  btnMini.addEventListener('click', function () {
+    var mini = document.getElementById('winMini');
+    mini.classList.toggle('hidden');
+    window.setTimeout(requestSync, 40);
+  });
+
+  speedInput.addEventListener('input', function () {
+    speed = Number(speedInput.value);
+    speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+    if (playing) {
+      window.clearInterval(timer);
+      timer = window.setInterval(tick, speed);
+    }
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      playing ? pause() : play();
+    } else if (e.code === 'ArrowRight') {
+      e.preventDefault(); nextStep();
+    } else if (e.code === 'ArrowLeft') {
+      e.preventDefault(); prevStep();
+    } else if (e.code === 'KeyR') {
+      e.preventDefault(); resetAll();
+    } else if (e.code === 'KeyF') {
+      e.preventDefault(); btnFull.click();
+    } else if (e.code === 'KeyM') {
+      e.preventDefault(); btnMini.click();
+    } else if (e.code === 'KeyH') {
+      e.preventDefault(); btnPanels.click();
+    }
+  });
+
+  /* =====================================================================
+     初始化
+     ===================================================================== */
+  buildVarTable();
+  allWins = Array.prototype.slice.call(document.querySelectorAll('.win'));
+  allWins.forEach(initWindow);
+  applyLayout();
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  render();
+})();
+</script>
+</body>
+</html>

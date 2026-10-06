@@ -1,0 +1,1259 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 数学函数 · hypot · fabs · abs · sqrt（希沃大屏版）</title>
+<style>
+/* ================= 全局变量（大屏字号硬指标） ================= */
+:root{
+  --code-font: clamp(80px, 4.16vw, 150px);
+  --ln-font:   clamp(56px, 2.9vw, 110px);
+  --out-font:  clamp(72px, 3.9vw, 140px);
+  --var-font:  clamp(40px, 2.1vw, 80px);
+  --explain-font: clamp(48px, 2.5vw, 90px);
+  --btn-font:  clamp(40px, 2.05vw, 70px);
+  --panel-title: clamp(28px, 1.6vw, 52px);
+  --mini-font: clamp(11px, 0.72vw, 22px);
+
+  --bg:#0d1117;
+  --panel-bg:rgba(13,20,33,.86);
+  --border:rgba(56,189,248,.28);
+  --accent:#38bdf8;
+  --text:#e6edf3;
+}
+*{box-sizing:border-box;}
+html,body{
+  margin:0;padding:0;height:100%;width:100%;
+  overflow:hidden;background:var(--bg);color:var(--text);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-user-select:none;user-select:none;
+}
+
+/* ================= 全屏代码区 ================= */
+#codeArea{
+  position:fixed;inset:0;z-index:1;
+  overflow:auto;background:#0d1117;
+  scroll-behavior:smooth;
+  scrollbar-width:thin;scrollbar-color:#2c3f5e transparent;
+}
+#codeArea::-webkit-scrollbar{width:16px;height:16px;}
+#codeArea::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+#codeArea::-webkit-scrollbar-track{background:#0d1117;}
+
+#codeInner{
+  position:relative;
+  width:max-content;min-width:100%;
+  padding:28px 60px 45vh 0;
+}
+
+.code-line{
+  --lh: calc(var(--code-font) * 1.42);
+  display:flex;align-items:flex-start;
+  padding:4px 48px 4px 0;
+  border-left:14px solid transparent;
+  white-space:pre;
+  line-height:var(--lh);
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  transition:background .25s,border-color .25s,opacity .25s;
+}
+.code-line .ln{
+  flex:0 0 auto;
+  position:sticky;left:0;z-index:2;
+  width:2.8ch;text-align:right;
+  padding:0 18px 0 10px;
+  color:#3d5a80;font-size:var(--ln-font);line-height:var(--lh);
+  user-select:none;font-variant-numeric:tabular-nums;
+  background:#0d1117;
+  transition:background .25s,color .25s;
+}
+.code-line .src{flex:0 0 auto;line-height:var(--lh);padding-right:24px;}
+
+.code-line.done{opacity:.34;}
+.code-line.active{
+  background:#0e2a44;
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 2px rgba(56,189,248,.28);
+}
+.code-line.active .ln{color:var(--accent);font-weight:900;background:#0e2a44;}
+.code-line.active .src{color:#ffffff;}
+/* 数学函数求值行：淡紫底 */
+.code-line.math-hit .src{
+  background:linear-gradient(90deg,rgba(192,132,252,.20),transparent);
+  border-radius:10px;
+}
+
+/* 语法着色 */
+.pp{color:#c084fc;font-weight:700;}
+.str{color:#7ee787;}
+.cmt{color:#6b7f9e;font-style:italic;}
+.fn{color:#79c0ff;}
+.kw{color:#ff7b72;font-weight:700;}
+.num{color:#ffa657;}
+.op{color:#ffa657;font-weight:700;}
+.math{color:#fbbf24;font-weight:900;}    /* 数学函数：琥珀色高亮 */
+.fmt{color:#f472b6;font-weight:900;}     /* 格式串里的 % 部分高亮 */
+
+/* ================= 悬浮面板通用 ================= */
+.panel{
+  position:fixed;z-index:100;
+  display:flex;flex-direction:column;
+  background:var(--panel-bg);
+  backdrop-filter:blur(16px) saturate(140%);
+  -webkit-backdrop-filter:blur(16px) saturate(140%);
+  border:3px solid var(--border);
+  border-radius:22px;
+  box-shadow:0 20px 60px rgba(0,0,0,.68);
+  overflow:hidden;
+  transition:border-color .18s, box-shadow .18s, background .18s;
+}
+.panel.active{
+  border-color:#38bdf8;
+  box-shadow:0 0 0 5px rgba(56,189,248,.30), 0 26px 80px rgba(0,0,0,.8);
+}
+.panel-head{
+  flex:0 0 auto;display:flex;align-items:center;gap:14px;
+  padding:10px 14px;
+  background:linear-gradient(180deg,rgba(40,66,100,.85),rgba(22,38,62,.85));
+  border-bottom:1px solid rgba(56,189,248,.18);
+  cursor:grab;
+  touch-action:none;
+}
+.panel-head:active{cursor:grabbing;}
+.panel-title{
+  font-size:var(--panel-title);font-weight:800;color:#9fd8ff;
+  white-space:nowrap;letter-spacing:.02em;
+}
+.panel-close{
+  margin-left:auto;flex:0 0 auto;
+  width:56px;height:56px;border-radius:14px;
+  border:2px solid rgba(248,113,113,.5);
+  background:rgba(248,113,113,.16);color:#fca5a5;
+  font-size:36px;line-height:1;font-weight:700;
+  cursor:pointer;display:grid;place-items:center;
+  transition:background .15s,transform .1s;
+}
+.panel-close:hover{background:rgba(248,113,113,.35);}
+.panel-close:active{transform:scale(.94);}
+.panel-body{
+  flex:1 1 auto;min-height:0;min-width:0;
+  overflow:auto;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+}
+.panel-body::-webkit-scrollbar{width:12px;height:12px;}
+.panel-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+
+/* 右下角缩放把手（无限制） */
+.panel-resizer{
+  position:absolute;right:0;bottom:0;width:56px;height:56px;
+  cursor:nwse-resize;touch-action:none;z-index:9;
+}
+.panel-resizer::after{
+  content:"";position:absolute;right:8px;bottom:8px;
+  width:26px;height:26px;
+  border-right:5px solid rgba(56,189,248,.85);
+  border-bottom:5px solid rgba(56,189,248,.85);
+  border-radius:0 0 8px 0;
+}
+
+/* ================= 顶部控制栏 ================= */
+#panelTop{width:min(1800px,calc(100vw - 32px));}
+.top-controls{
+  display:flex;flex-wrap:wrap;align-items:center;gap:14px;
+  padding:14px 16px;
+}
+.btn{
+  font-family:inherit;font-size:var(--btn-font);font-weight:700;
+  min-height:76px;padding:10px 24px;
+  border-radius:16px;
+  border:2px solid rgba(56,189,248,.35);
+  background:rgba(30,48,74,.9);color:#dbeafe;
+  cursor:pointer;white-space:nowrap;
+  transition:background .15s,border-color .15s,transform .1s;
+}
+.btn:hover:not(:disabled){background:rgba(46,72,110,.95);border-color:#38bdf8;}
+.btn:active:not(:disabled){transform:translateY(2px);}
+.btn:disabled{opacity:.32;cursor:not-allowed;}
+.btn.primary{
+  background:linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#38bdf8;color:#04121f;
+}
+.btn.primary.playing{
+  background:linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24;color:#1a1200;
+}
+.speed-wrap{
+  display:flex;align-items:center;gap:14px;
+  font-size:var(--btn-font);color:#9fb6d4;
+  padding:0 10px;
+}
+#speed{
+  width:280px;height:44px;accent-color:var(--accent);cursor:pointer;
+}
+#speedLabel{
+  color:var(--accent);font-weight:900;min-width:4.5ch;
+  font-variant-numeric:tabular-nums;
+}
+
+/* ================= 变量 / 数学函数状态面板 ================= */
+#panelVars{width:860px;}
+#varBody{display:flex;flex-direction:column;gap:10px;padding:16px;}
+.var-row{
+  display:flex;justify-content:space-between;align-items:center;gap:18px;
+  padding:9px 16px;border-radius:12px;
+  background:rgba(22,34,54,.72);
+  border:2px solid rgba(30,52,80,.9);
+  border-left:8px solid rgba(56,189,248,.45);
+  font-size:var(--var-font);
+  transition:background .3s,border-color .3s;
+}
+.var-row.k-ctx  {background:rgba(20,46,80,.8);border-left-color:#22d3ee;}
+.var-row.k-main {border-left-color:#22d3ee;}
+.var-row.k-math {border-left-color:#fbbf24;}
+.var-row.k-val  {border-left-color:#f472b6;}
+.var-row.k-note {border-left-color:#2dd4bf;}
+.var-row.k-ret  {border-left-color:rgba(251,191,36,.5);}
+.var-row.changed{background:rgba(56,189,248,.22);border-color:#38bdf8;}
+.var-name{color:#8fa8c8;white-space:nowrap;}
+.var-value{
+  font-family:ui-monospace,Consolas,monospace;font-weight:900;
+  color:var(--accent);text-align:right;
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.var-value.dim{color:#5f7796;font-weight:500;}
+.var-row.k-math .var-value{color:#fbbf24;}
+.var-row.k-val  .var-value{color:#f472b6;}
+.var-row.k-note .var-value{color:#2dd4bf;font-size:.88em;}
+@keyframes flashVal{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.22);color:#fff;text-shadow:0 0 18px var(--accent);}
+  100%{transform:scale(1);}
+}
+.var-value.flash{animation:flashVal .55s ease-out;}
+
+/* ================= 程序输出面板 ================= */
+#panelOut{width:900px;}
+#outBody{padding:20px 26px;font-family:ui-monospace,Consolas,"Courier New",monospace;}
+.out-line{
+  font-size:var(--out-font);line-height:1.45;white-space:pre;
+  animation:slideIn .35s ease-out;
+}
+.seg-out{color:#e8f2ff;}
+.seg-in{color:#2dd4bf;font-weight:900;}
+.seg-num{color:#ffa657;font-weight:900;}
+.seg-fn{color:#f472b6;font-weight:900;}
+@keyframes slideIn{
+  from{opacity:0;transform:translateX(-24px);}
+  to{opacity:1;transform:none;}
+}
+#outBody:empty::before{
+  content:"（等待程序输出…）";color:#3d5474;font-size:var(--out-font);
+}
+
+/* ================= 当前语句说明条 ================= */
+#panelExplain{width:1360px;}
+#explainBody{
+  padding:18px 26px;font-size:var(--explain-font);line-height:1.55;
+  color:#c3d4ea;
+}
+#explainBody strong{color:#fff;}
+#explainBody code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(148,163,184,.18);border-radius:8px;
+  padding:0 8px;color:#e2e8f0;
+}
+#explainBody .ex-line{
+  display:inline-block;margin-right:14px;padding:2px 14px;
+  border-radius:10px;background:rgba(56,189,248,.2);
+  color:var(--accent);font-weight:900;font-size:.82em;
+}
+#explainBody .tip{
+  display:block;margin-top:12px;padding:10px 16px;border-radius:12px;
+  background:rgba(45,212,191,.12);border-left:8px solid #2dd4bf;color:#bff5ec;
+}
+#explainBody .warn{
+  display:block;margin-top:12px;padding:10px 16px;border-radius:12px;
+  background:rgba(251,191,36,.14);border-left:8px solid #fbbf24;color:#ffe9b8;
+}
+
+/* ================= 代码缩略图（VSCode minimap） ================= */
+#panelMini{width:440px;}
+#miniBody{
+  padding:12px 8px;
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:var(--mini-font);
+  line-height:1.6;
+}
+.mini-line{
+  display:flex;align-items:flex-start;gap:6px;
+  padding:2px 6px;border-radius:5px;
+  cursor:pointer;
+  white-space:pre;
+  overflow:hidden;
+  transition:background .15s;
+}
+.mini-line:hover{background:rgba(56,189,248,.14);}
+.mini-line .mini-ln{
+  flex:0 0 auto;min-width:2.4ch;text-align:right;
+  color:#3d5a80;
+}
+.mini-line .mini-src{
+  flex:1 1 auto;white-space:pre;overflow:hidden;
+  text-overflow:clip;
+}
+.mini-line.done{opacity:.42;}
+.mini-line.cur{
+  background:rgba(56,189,248,.32);
+  box-shadow:inset 0 0 0 1px rgba(56,189,248,.7);
+}
+.mini-line.cur .mini-ln{color:#38bdf8;font-weight:700;}
+.mini-line.cur .mini-src{color:#fff;}
+.mini-line.mhit{
+  background:rgba(192,132,252,.22);
+}
+.mini-line.mhit .mini-ln{color:#c084fc;font-weight:700;}
+
+/* 小屏兜底 */
+@media (max-width:900px){
+  :root{
+    --code-font:clamp(26px,6.4vw,54px);
+    --ln-font:clamp(18px,4.6vw,36px);
+    --out-font:clamp(26px,6.4vw,50px);
+    --var-font:clamp(16px,3.8vw,30px);
+    --explain-font:clamp(18px,4.2vw,34px);
+    --btn-font:clamp(16px,3.6vw,28px);
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ==================== 全屏代码区 ==================== -->
+<div id="codeArea">
+  <div id="codeInner">
+
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>  <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;math.h&gt;</span>  <span class="cmt">// 包含数学函数头文件</span></span></div>
+
+    <div class="code-line" data-line="3"><span class="ln">3</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {  <span class="cmt">// 定义主函数</span></span></div>
+
+    <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">float</span> x, y, z;  <span class="cmt">// 定义浮点型变量 x、y、z</span></span></div>
+
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    <span class="fn">printf</span>(<span class="str">"Input 2 sides: \n"</span>);  <span class="cmt">// 提示输入两条直角边</span></span></div>
+
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    <span class="fn">scanf</span>(<span class="str">"%f,%f"</span>, <span class="op">&amp;</span>x, <span class="op">&amp;</span>y);  <span class="cmt">// 输入两个浮点数（逗号分隔）</span></span></div>
+
+    <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">    z <span class="op">=</span> <span class="math">hypot</span>(<span class="math">fabs</span>(x), <span class="math">fabs</span>(y));  <span class="cmt">// 取绝对值后求斜边</span></span></div>
+
+    <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">    <span class="fn">printf</span>(<span class="str">"The NO.3 side is:</span><span class="fmt">%.2f</span><span class="str"> \n"</span>, z);  <span class="cmt">// 保留 2 位小数</span></span></div>
+
+    <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">    <span class="fn">printf</span>(<span class="str">"The NO.3 integer is:</span><span class="fmt">%f</span><span class="str"> \n"</span>, <span class="math">sqrt</span>(<span class="math">abs</span>(z)));  <span class="cmt">// 整数部分开平方</span></span></div>
+
+    <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;  <span class="cmt">// 返回 0，程序结束</span></span></div>
+
+    <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">}</span></div>
+
+  </div>
+</div>
+
+<!-- ==================== 顶部控制栏 ==================== -->
+<div class="panel" id="panelTop">
+  <div class="panel-head">
+    <span class="panel-title">🎛 控制台</span>
+    <button class="panel-close" data-close="panelTop" title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="top-controls">
+      <button class="btn" id="btnReset">⟲ 重置</button>
+      <button class="btn" id="btnPrev">◀ 上一步</button>
+      <button class="btn primary" id="btnPlay">▶ 自动播放</button>
+      <button class="btn" id="btnNext">下一步 ▶</button>
+      <label class="speed-wrap">速度
+        <input type="range" id="speed" min="400" max="2400" step="100" value="1200">
+        <b id="speedLabel">1.2s</b>
+      </label>
+      <button class="btn" id="btnFull">⛶ 全屏</button>
+      <button class="btn" id="btnTogglePanels">👁 面板</button>
+      <button class="btn" id="btnToggleMini">🗺 缩略图</button>
+      <button class="btn" id="btnResetLayout">↺ 重置布局</button>
+    </div>
+  </div>
+  <div class="panel-resizer"></div>
+</div>
+
+<!-- ==================== 变量 / 数学函数状态面板 ==================== -->
+<div class="panel" id="panelVars">
+  <div class="panel-head">
+    <span class="panel-title">📊 变量 · 数学函数求值 · 状态表</span>
+    <button class="panel-close" data-close="panelVars" title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div id="varBody"></div>
+  </div>
+  <div class="panel-resizer"></div>
+</div>
+
+<!-- ==================== 程序输出面板 ==================== -->
+<div class="panel" id="panelOut">
+  <div class="panel-head">
+    <span class="panel-title">🖥 屏幕输出</span>
+    <button class="panel-close" data-close="panelOut" title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div id="outBody"></div>
+  </div>
+  <div class="panel-resizer"></div>
+</div>
+
+<!-- ==================== 当前语句说明条 ==================== -->
+<div class="panel" id="panelExplain">
+  <div class="panel-head">
+    <span class="panel-title">💡 当前语句说明</span>
+    <button class="panel-close" data-close="panelExplain" title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div id="explainBody"></div>
+  </div>
+  <div class="panel-resizer"></div>
+</div>
+
+<!-- ==================== 代码缩略图 ==================== -->
+<div class="panel" id="panelMini">
+  <div class="panel-head">
+    <span class="panel-title">🗺 缩略图</span>
+    <button class="panel-close" data-close="panelMini" title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div id="miniBody"></div>
+  </div>
+  <div class="panel-resizer"></div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+     1. 模拟输入与状态构造函数
+        —— 本次演示输入：3,4（两条直角边）
+        z = hypot(fabs(3), fabs(4)) = 5.0
+     ========================================================= */
+  var IN_X   = 3.0;
+  var IN_Y   = 4.0;
+  var Z_VAL  = 5.0;
+
+  function V(o) {
+    var v = {
+      x:        '—',
+      y:        '—',
+      z:        '—',
+      subExpr:  '—',
+      subVal:   '—',
+      note:     '—',
+      prints:   0,
+      ret:      '—'
+    };
+    for (var k in o) { if (Object.prototype.hasOwnProperty.call(o, k)) v[k] = o[k]; }
+    return v;
+  }
+
+  /* =========================================================
+     2. 逐步执行轨迹（19 步，覆盖 11 行代码）
+        真实执行：scanf 读入 3,4 → x=3.0, y=4.0
+        z = hypot(fabs(3.0), fabs(4.0)) = hypot(3.0, 4.0) = 5.0
+        输出四行：Input 2 sides:  /  3,4  /
+                  The NO.3 side is:5.00  /
+                  The NO.3 integer is:2.236068
+        printf 3 次，scanf 1 次，返回值 0
+     ========================================================= */
+  var STEPS = [
+    {   /* 0 */
+      line: 1, ctx: '预处理阶段',
+      vars: V({}),
+      out: null,
+      title: '预处理指令 #include &lt;stdio.h&gt;',
+      desc: '预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容引入源文件，使 printf、scanf 都获得正确的函数声明。这一行不产生任何屏幕输出。'
+    },
+    {   /* 1 */
+      line: 2, ctx: '预处理阶段',
+      vars: V({}),
+      out: null,
+      title: '预处理指令 #include &lt;math.h&gt;',
+      desc: '引入<b>数学函数头文件</b> <code>math.h</code>，它声明了本程序要用的三个数学函数：<br>· <code>fabs(x)</code> —— 求 <b>double</b> 的绝对值（浮点版）；<br>· <code>hypot(a, b)</code> —— 求 <b>√(a² + b²)</b>，即直角三角形的斜边；<br>· <code>sqrt(x)</code> —— 求平方根。<br>如果漏写这一行，编译时会提示这些函数未声明。另外注意：<code>abs()</code> 是整数绝对值，声明在 <code>stdlib.h</code> 里，本程序隐式使用它——在后面第 9 行会详细说明这里的类型隐患。'
+    },
+    {   /* 2 */
+      line: 3, ctx: 'main',
+      vars: V({}),
+      out: null,
+      title: '程序入口 int main() {',
+      desc: '操作系统把控制权交给 main，程序正式开始执行。系统为 main 建立栈帧，接下来声明的三个 float 变量就存放在这个栈帧里。'
+    },
+    {   /* 3 */
+      line: 4, ctx: 'main · 声明浮点变量',
+      vars: V({
+        x: '未初始化（不定值）',
+        y: '未初始化（不定值）',
+        z: '未初始化（不定值）'
+      }),
+      out: null,
+      title: 'float x, y, z;  三个浮点变量，均未初始化',
+      desc: '一条语句声明三个 <b>float</b> 变量，各占 <b>4 个字节</b>（单精度浮点，有效数字约 6~7 位十进制），但<b>都没给初值</b>。x、y 稍后由 scanf 写入两条直角边长，z 由第 7 行的 hypot 结果赋值。'
+    },
+    {   /* 4 */
+      line: 5, ctx: 'main · printf 提示',
+      vars: V({
+        x: '未初始化（不定值）',
+        y: '未初始化（不定值）',
+        z: '未初始化（不定值）',
+        prints: 1
+      }),
+      out: [[{ t: 'Input 2 sides: ', c: 'out' }]],
+      title: 'printf("Input 2 sides: \\n");  输出提示并换行',
+      desc: '向屏幕打印提示文字 <b>Input 2 sides: </b>。注意字符串末尾<b>有</b> <code>\\n</code>，所以输出后光标会换到<b>下一行</b>等待输入——这与“无 \\n”的提示方式不同（那种情况下光标停在冒号后面）。接下来 scanf 在下一行等用户输入。'
+    },
+    {   /* 5 */
+      line: 6, ctx: 'main · scanf 等待输入',
+      vars: V({
+        x: '未初始化（不定值）',
+        y: '未初始化（不定值）',
+        z: '未初始化（不定值）',
+        subExpr: 'scanf("%f,%f", &x, &y)',
+        subVal:  '（等待输入…）',
+        note:    '%f 读浮点数，格式串中的逗号必须原样输入',
+        prints: 1
+      }),
+      out: null,
+      title: 'scanf("%f,%f", &amp;x, &amp;y);  先取地址，再阻塞等待',
+      desc: '<code>scanf</code> 需要知道“把读到的数写到哪里去”，所以两个参数都是<b>地址</b>：<code>&amp;x</code>、<code>&amp;y</code>。<br>格式串 <code>"%f,%f"</code> 里有一个<b>逗号</b>——这不是分隔符，而是“<b>字面量匹配</b>”：scanf 要求用户输入两个浮点数，且中间<b>必须严格出现一个逗号</b>。正确输入是 <code>3,4</code>，如果输入 <code>3 4</code>（空格分隔）scanf 会在读完 3 之后发现下一字符不是逗号而停止，导致 y 未被正确赋值。此刻程序<b>阻塞</b>，等待用户输入。'
+    },
+    {   /* 6 */
+      line: 6, ctx: 'main · scanf 返回',
+      vars: V({
+        x: '3.0',
+        y: '4.0',
+        z: '未初始化（不定值）',
+        subExpr: '（输入完成）',
+        subVal:  '—',
+        note:    'x、y 已通过地址写入值',
+        prints: 1
+      }),
+      out: [[{ t: 'Input 2 sides: ', c: 'out' }],
+            [{ t: '3,4', c: 'in' }]],
+      title: '用户输入 3,4：x = 3.0，y = 4.0',
+      desc: '用户键入 <code>3,4</code> 并回车。scanf 先用 <code>%f</code> 读入 <b>3.0</b> 写入 x，再用字面逗号匹配输入里的逗号，最后用第二个 <code>%f</code> 读入 <b>4.0</b> 写入 y。屏幕上这一行显示用户输入的内容。<br>用 <code>%f</code> 读整数也可以：输入 3 会被解析为浮点数 3.0。'
+    },
+    {   /* 7 */
+      line: 7, ctx: 'main · 分析 z = hypot(fabs(x), fabs(y))',
+      vars: V({
+        x: '3.0', y: '4.0', z: '未初始化（不定值）',
+        subExpr: 'hypot(fabs(x), fabs(y))',
+        subVal:  '（分析中…）',
+        note:    '函数的求值顺序：由内向外'
+      }),
+      out: null,
+      title: 'z = hypot(fabs(x), fabs(y));  先看表达式的嵌套结构',
+      desc: '赋值号右侧是<b>两层嵌套的函数调用</b>：<code>hypot(fabs(x), fabs(y))</code>。<br>· 最内层：<code>fabs(x)</code> 和 <code>fabs(y)</code> 分别求 x、y 的绝对值；<br>· 最外层：<code>hypot(a, b)</code> 接收这两个绝对值，计算 <b>√(a² + b²)</b>，也就是直角三角形的斜边长度。<br>函数的求值顺序是<b>由内向外</b>：先把两个 fabs 的结果算出来，再传给 hypot。'
+    },
+    {   /* 8 */
+      line: 7, ctx: 'main · 求值 fabs(x)',
+      vars: V({
+        x: '3.0', y: '4.0', z: '未初始化（不定值）',
+        subExpr: 'fabs(x)',
+        subVal:  'fabs(3.0) = 3.0',
+        note:    'fabs 返回 double，正数取绝对值还是自己'
+      }),
+      out: null,
+      title: 'fabs(x) = fabs(3.0) = 3.0',
+      desc: '<code>fabs</code> 是 <b>double</b> 类型的绝对值函数（“f” 表示 float/double 版本，对应整数版的 <code>abs</code>）。x 是 <b>3.0</b>，本身是正数，取绝对值后还是 <b>3.0</b>。注意 <code>fabs</code> 返回 <b>double</b>，但传进来的实参是 <b>float</b>，编译时会自动做一次 float → double 的提升，对结果没有影响。'
+    },
+    {   /* 9 */
+      line: 7, ctx: 'main · 求值 fabs(y)',
+      vars: V({
+        x: '3.0', y: '4.0', z: '未初始化（不定值）',
+        subExpr: 'fabs(y)',
+        subVal:  'fabs(4.0) = 4.0',
+        note:    '两个绝对值都为正数'
+      }),
+      out: null,
+      title: 'fabs(y) = fabs(4.0) = 4.0',
+      desc: '<code>fabs(4.0) = 4.0</code>。y 也是正数。这里取绝对值的作用是<b>容错</b>：即使用户输入负数（比如 <code>-3,-4</code>），勾股定理依然成立——边长的概念本身是正数，而平方运算 <code>a²</code> 会把负号自动消掉，所以 hypot 其实并不强依赖 fabs，但显式取绝对值让代码意图更清晰。'
+    },
+    {   /* 10 */
+      line: 7, ctx: 'main · 求值 hypot',
+      vars: V({
+        x: '3.0', y: '4.0', z: '未初始化（不定值）',
+        subExpr: 'hypot(3.0, 4.0)',
+        subVal:  '√(3² + 4²) = √25 = 5.0',
+        note:    'hypot 内部实现：sqrt(a*a + b*b)，且避免平方上溢'
+      }),
+      out: null,
+      title: 'hypot(3.0, 4.0) = √(3² + 4²) = √25 = 5.0',
+      desc: '<code>hypot(a, b)</code> 的功能就是返回 <b>√(a² + b²)</b>。它接收两个参数 <b>3.0</b> 和 <b>4.0</b>，先算平方和：<code>3² + 4² = 9 + 16 = 25</code>，再开平方：<code>√25 = 5.0</code>。<br><b>为什么不用手写 sqrt(a*a + b*b)？</b> <code>hypot</code> 的实现更智能——它会先检测哪个参数绝对值更大，再做缩放，避免 <code>a*a</code> 或 <code>b*b</code> 超出 double 表示范围时发生<b>上溢</b>。对本题这样的普通数值，两者结果完全相同。'
+    },
+    {   /* 11 */
+      line: 7, ctx: 'main · 赋值给 z',
+      vars: V({
+        x: '3.0', y: '4.0', z: '5.0',
+        subExpr: '（求值完成）',
+        subVal:  '5.0',
+        note:    'z 被写入 5.0'
+      }),
+      out: null,
+      title: 'z = 5.0，赋值完成',
+      desc: '把 hypot 的结果 <b>5.0</b> 写入变量 z。z 从“不定值”变成 <b>5.0</b>。hypot 返回类型是 <b>double</b>，但写入 float 变量时会自动做一次 double → float 的窄化转换。对于 5.0 这样能精确表示的值，转换不会丢精度。'
+    },
+    {   /* 12 */
+      line: 8, ctx: 'main · printf 输出第 3 行结果',
+      vars: V({
+        x: '3.0', y: '4.0', z: '5.0',
+        subExpr: 'printf 的格式化输出',
+        subVal:  '%.2f → 5.00',
+        note:    '%.2f 表示保留 2 位小数',
+        prints: 2
+      }),
+      out: [[{ t: 'Input 2 sides: ', c: 'out' }],
+            [{ t: '3,4', c: 'in' }],
+            [{ t: 'The NO.3 side is:', c: 'out' },
+             { t: '5.00', c: 'num' },
+             { t: ' ', c: 'out' }]],
+      title: 'printf("The NO.3 side is:%.2f \\n", z);  输出 5.00',
+      desc: '格式串里的 <code>%.2f</code> 是“<b>按浮点输出并保留 2 位小数</b>”：<br>· <code>%f</code> 默认保留 <b>6</b> 位小数；<br>· <code>%.2f</code> 里的 <code>.2</code> 表示“小数点后 2 位”，会做<b>四舍五入</b>；<br>· 本例 z = 5.0，按 %.2f 输出为 <b>5.00</b>（小数位补零到 2 位）。<br>屏幕上出现 <b>The NO.3 side is:5.00 </b>，末尾还有 <code>\\n</code> 换行。'
+    },
+    {   /* 13 */
+      line: 9, ctx: 'main · 分析 sqrt(abs(z))',
+      vars: V({
+        x: '3.0', y: '4.0', z: '5.0',
+        subExpr: 'sqrt(abs(z))',
+        subVal:  '（分析中…）',
+        note:    '先算最内层的 abs，再算 sqrt',
+        prints: 2
+      }),
+      out: null,
+      title: 'printf("The NO.3 integer is:%f \\n", sqrt(abs(z)));  先看表达式',
+      desc: '第二行输出的表达式是 <code>sqrt(abs(z))</code>，也是<b>两层嵌套函数调用</b>，由内向外求值：<br>· 最内层 <code>abs(z)</code> 先执行；<br>· 最外层 <code>sqrt(...)</code> 接收 abs 的结果，求平方根。<br>这里的 <code>%f</code> 没有 <code>.2</code>，会按默认<b>6 位小数</b>输出。'
+    },
+    {   /* 14 */
+      line: 9, ctx: 'main · 求值 abs(z) —— 类型陷阱',
+      vars: V({
+        x: '3.0', y: '4.0', z: '5.0',
+        subExpr: 'abs(z)',
+        subVal:  'abs(5.0) → 隐式转 int 5 → abs(5) = 5',
+        note:    'abs 是 int 版本；float 会被截断为 int',
+        prints: 2
+      }),
+      out: null,
+      title: 'abs(z) = abs(5.0) → 5（整型函数 + 隐式转换）',
+      desc: '<b>这里是本题最容易踩坑的地方！</b> <code>abs()</code> 的原型是 <code>int abs(int)</code>，它<b>只接受 int 参数、返回 int</b>；而 z 是 <b>float</b>。<br>当把 float 5.0 传给它时，C 语言会做一次<b>隐式类型转换</b>：先把 5.0 截断为整数 <b>5</b>（丢弃小数部分），再调用 <code>abs(5)</code>，结果是 <b>5</b>。<br><b>正确做法</b>是改用浮点版的 <code>fabs()</code>——它接受 double 并返回 double，<code>fabs(5.0) = 5.0</code>。本题因为 5.0 本来就是整数，两种写法结果相同；但如果 z = 5.7，<code>abs(z)</code> 会先把 5.7 截断为 5，再求绝对值得到 5（丢掉 0.7），而 <code>fabs(z)</code> 会得到 5.7。<span class="warn"><b>结论：</b>对浮点求绝对值请用 <code>fabs()</code>；对整数才用 <code>abs()</code>。混用虽能编译通过（可能有警告），但会因截断丢失精度。</span>'
+    },
+    {   /* 15 */
+      line: 9, ctx: 'main · 求值 sqrt',
+      vars: V({
+        x: '3.0', y: '4.0', z: '5.0',
+        subExpr: 'sqrt(5)',
+        subVal:  '≈ 2.2360679… → %f 显示 2.236068',
+        note:    'sqrt 返回 double；无理数按 6 位小数显示',
+        prints: 2
+      }),
+      out: null,
+      title: 'sqrt(5) ≈ 2.236068（无理数，保留 6 位小数）',
+      desc: '<code>sqrt(5)</code> 是 5 的算术平方根，它是一个<b>无理数</b>：2.2360679...，小数位无限不循环。<br>double 只能存约 15~17 位有效数字，所以实际保存的是一个近似值。<code>%f</code> 默认<b>保留 6 位小数</b>，显示为 <b>2.236068</b>——第 7 位小数是 7，向前进位，把第 6 位的 7 变成 8。'
+    },
+    {   /* 16 */
+      line: 9, ctx: 'main · printf 输出第 4 行结果',
+      vars: V({
+        x: '3.0', y: '4.0', z: '5.0',
+        subExpr: 'printf 的格式化输出',
+        subVal:  '%f → 2.236068',
+        note:    '%f 默认保留 6 位小数',
+        prints: 3
+      }),
+      out: [[{ t: 'Input 2 sides: ', c: 'out' }],
+            [{ t: '3,4', c: 'in' }],
+            [{ t: 'The NO.3 side is:', c: 'out' },
+             { t: '5.00', c: 'num' },
+             { t: ' ', c: 'out' }],
+            [{ t: 'The NO.3 integer is:', c: 'out' },
+             { t: '2.236068', c: 'fn' },
+             { t: ' ', c: 'out' }]],
+      title: 'printf("The NO.3 integer is:%f \\n", sqrt(abs(z)));  输出 2.236068',
+      desc: '用 <code>%f</code> 打印 sqrt 的结果，屏幕上出现 <b>The NO.3 integer is:2.236068 </b>，末尾 <code>\\n</code> 换行。<br><b>顺带说一句命名：</b>这一行文字里的 “integer”（整数）与实际输出并不一致——程序是在对整数部分开平方，输出的却是带小数的结果，所以这条提示文字起名不够准确，属于题目原样照抄的痕迹。'
+    },
+    {   /* 17 */
+      line: 10, ctx: 'main',
+      vars: V({
+        x: '3.0', y: '4.0', z: '5.0',
+        subExpr: '—', subVal: '—', note: '—',
+        prints: 3, ret: '0'
+      }),
+      out: null,
+      title: 'return 0;',
+      desc: '结束 main 函数并把整数 0 交还操作系统。约定返回 0 表示程序正常结束，非 0 通常表示出错。这条语句不产生屏幕输出。'
+    },
+    {   /* 18 */
+      line: 11, ctx: '程序结束',
+      vars: V({
+        x: '3.0', y: '4.0', z: '5.0',
+        subExpr: '—', subVal: '—', note: '—',
+        prints: 3, ret: '0'
+      }),
+      out: null,
+      title: 'main 函数体结束 }',
+      desc: '函数体收尾，main 的栈帧被销毁，三个变量随栈帧释放，控制权交还操作系统。程序共调用 3 次 printf、1 次 scanf，输出 4 行，返回值 0。<span class="tip"><b>总结：</b>本题演示了 math.h 的三个数学函数——<code>fabs</code>（浮点绝对值）、<code>hypot</code>（斜边）、<code>sqrt</code>（平方根），以及 printf 的两种浮点格式 <code>%.2f</code> 与 <code>%f</code>。同时暴露了一个易错点：<code>abs</code> 是整型函数，对浮点数使用会发生截断，应改用 <code>fabs</code>。</span>'
+    }
+  ];
+
+  /* =========================================================
+     3. DOM 引用
+     ========================================================= */
+  var codeArea    = document.getElementById('codeArea');
+  var codeInner   = document.getElementById('codeInner');
+  var codeLines   = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+  var varBody     = document.getElementById('varBody');
+  var outBody     = document.getElementById('outBody');
+  var explainBody = document.getElementById('explainBody');
+  var miniBody    = document.getElementById('miniBody');
+
+  var btnPlay     = document.getElementById('btnPlay');
+  var btnPrev     = document.getElementById('btnPrev');
+  var btnNext     = document.getElementById('btnNext');
+  var btnReset    = document.getElementById('btnReset');
+  var btnFull     = document.getElementById('btnFull');
+  var btnTogglePanels = document.getElementById('btnTogglePanels');
+  var btnToggleMini   = document.getElementById('btnToggleMini');
+  var btnResetLayout  = document.getElementById('btnResetLayout');
+  var speedInput  = document.getElementById('speed');
+  var speedLabel  = document.getElementById('speedLabel');
+
+  /* =========================================================
+     4. 变量表行定义
+     ========================================================= */
+  var VAR_ROWS = [
+    { key:'ctx',     name:'当前执行位置',              kind:'k-ctx'  },
+    { key:'x',       name:'x  (float) 直角边 1',       kind:'k-main' },
+    { key:'y',       name:'y  (float) 直角边 2',       kind:'k-main' },
+    { key:'z',       name:'z  (float) 斜边',           kind:'k-main' },
+    { key:'subExpr', name:'正在求值的子表达式',        kind:'k-math' },
+    { key:'subVal',  name:'子表达式结果',              kind:'k-val'  },
+    { key:'note',    name:'关键规则提示',              kind:'k-note' },
+    { key:'prints',  name:'printf 调用次数',           kind:'k-ctx'  },
+    { key:'ret',     name:'main 返回值',               kind:'k-ret'  }
+  ];
+
+  /* 数学函数求值步骤：第 7、8、9、10、14、15 步 —— 给对应行加淡紫底 */
+  var MATH_STEPS = [7, 8, 9, 10, 14, 15];
+
+  /* =========================================================
+     5. 运行状态
+     ========================================================= */
+  var current    = -1;
+  var playing    = false;
+  var timer      = null;
+  var speed      = Number(speedInput.value);
+  var lastOutSig = '';
+
+  /* =========================================================
+     6. 构建变量表骨架
+     ========================================================= */
+  function buildVarTable() {
+    varBody.innerHTML = VAR_ROWS.map(function (r) {
+      return '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+               '<span class="var-name">' + r.name + '</span>' +
+               '<span class="var-value dim">—</span>' +
+             '</div>';
+    }).join('');
+  }
+
+  function valueOf(step, key) {
+    if (!step) return '—';
+    if (key === 'ctx') return step.ctx;
+    return step.vars[key];
+  }
+
+  function updateVars(step, prevStep) {
+    VAR_ROWS.forEach(function (r) {
+      var row   = varBody.querySelector('.var-row[data-key="' + r.key + '"]');
+      if (!row) return;
+      var valEl = row.querySelector('.var-value');
+      var val   = String(valueOf(step, r.key));
+      var old   = String(valueOf(prevStep, r.key));
+
+      if (valEl.textContent !== val) {
+        valEl.textContent = val;
+        valEl.classList.toggle('dim', val === '—');
+        valEl.title = val;
+        valEl.classList.remove('flash');
+        void valEl.offsetWidth;
+        valEl.classList.add('flash');
+        if (prevStep && old !== val) {
+          row.classList.add('changed');
+          window.setTimeout(function () { row.classList.remove('changed'); }, 750);
+        }
+      }
+    });
+  }
+
+  /* =========================================================
+     7. 代码高亮 + 自动居中
+     ========================================================= */
+  function centerActiveLine() {
+    var el = codeInner.querySelector('.code-line.active');
+    if (!el) return;
+    window.requestAnimationFrame(function () {
+      var targetTop = el.offsetTop - (codeArea.clientHeight - el.offsetHeight) / 2;
+      if (Math.abs(codeArea.scrollTop - targetTop) > 8) {
+        codeArea.scrollTo({ top: Math.max(0, targetTop), behavior: 'smooth' });
+      }
+    });
+  }
+
+  function updateCode(step) {
+    var activeLine = step ? step.line : null;
+    var mathOn = current >= 0 && MATH_STEPS.indexOf(current) !== -1;
+    codeLines.forEach(function (el) {
+      var n = Number(el.dataset.line);
+      el.classList.toggle('active', activeLine !== null && n === activeLine);
+      el.classList.toggle('done',   activeLine !== null && n <  activeLine);
+      /* 正在求值数学函数时，第 7 行/第 9 行加淡紫底 */
+      el.classList.toggle('math-hit',
+        mathOn && n === 7 && (current === 7 || current === 8 || current === 9 || current === 10) ||
+        mathOn && n === 9 && (current === 14 || current === 15));
+    });
+    centerActiveLine();
+    updateMini(step);
+  }
+
+  /* =========================================================
+     8. 缩略图：真正渲染 11 行代码 —— 有缩进、有颜色、美观
+     ========================================================= */
+  function buildMini() {
+    miniBody.innerHTML = codeLines.map(function (el) {
+      var n = el.dataset.line;
+      var lnText = el.querySelector('.ln').textContent;
+      var srcHTML = el.querySelector('.src').innerHTML;   /* 保留缩进和语法着色 */
+      return '<div class="mini-line" data-line="' + n + '">' +
+               '<span class="mini-ln">' + lnText + '</span>' +
+               '<span class="mini-src">' + srcHTML + '</span>' +
+             '</div>';
+    }).join('');
+
+    miniBody.addEventListener('click', function (e) {
+      var row = e.target.closest ? e.target.closest('.mini-line') : null;
+      if (!row) return;
+      var n = Number(row.dataset.line);
+      var target = codeInner.querySelector('.code-line[data-line="' + n + '"]');
+      if (target) {
+        codeArea.scrollTo({
+          top: Math.max(0, target.offsetTop - 60),
+          behavior: 'smooth'
+        });
+      }
+    });
+  }
+
+  function updateMini(step) {
+    var activeLine = step ? step.line : null;
+    var mathOn = current >= 0 && MATH_STEPS.indexOf(current) !== -1;
+    Array.prototype.forEach.call(miniBody.querySelectorAll('.mini-line'), function (d) {
+      var n = Number(d.dataset.line);
+      d.classList.toggle('cur', activeLine !== null && n === activeLine);
+      d.classList.toggle('done', activeLine !== null && n < activeLine);
+      d.classList.toggle('mhit',
+        mathOn && n === 7 && (current === 7 || current === 8 || current === 9 || current === 10) ||
+        mathOn && n === 9 && (current === 14 || current === 15));
+    });
+  }
+
+  /* =========================================================
+     9. 输出区
+     ========================================================= */
+  function resolveOut(upto) {
+    for (var i = upto; i >= 0; i--) {
+      if (STEPS[i] && STEPS[i].out) return STEPS[i].out;
+    }
+    return null;
+  }
+
+  function updateOutput(upto) {
+    var lines = resolveOut(upto);
+    var sig   = lines ? JSON.stringify(lines) : '';
+
+    if (sig === lastOutSig) return;
+    lastOutSig = sig;
+
+    outBody.innerHTML = '';
+    if (!lines) return;
+
+    lines.forEach(function (segs) {
+      var div = document.createElement('div');
+      div.className = 'out-line';
+      segs.forEach(function (seg) {
+        var span = document.createElement('span');
+        span.className = 'seg-' + (seg.c || 'out');
+        span.textContent = seg.t;
+        div.appendChild(span);
+      });
+      outBody.appendChild(div);
+    });
+  }
+
+  /* =========================================================
+     10. 总渲染
+     ========================================================= */
+  function render() {
+    var step = current >= 0 ? STEPS[current] : null;
+    var prev = current > 0 ? STEPS[current - 1] : null;
+
+    updateCode(step);
+    updateVars(step, prev);
+    updateOutput(current);
+
+    if (step) {
+      explainBody.innerHTML =
+        '<span class="ex-line">第 ' + step.line + ' 行</span>' +
+        '<strong>' + step.title + '</strong> —— ' + step.desc;
+    } else {
+      explainBody.innerHTML =
+        '<em>点击「自动播放」或「下一步」，开始逐条执行程序。' +
+        '（空格 = 播放/暂停，← → = 上一步/下一步，R = 重置，F = 全屏，M = 缩略图，H = 面板显示/隐藏）</em>';
+    }
+
+    btnPrev.disabled = current < 0;
+    btnNext.disabled = current >= STEPS.length - 1;
+  }
+
+  /* =========================================================
+     11. 播放控制
+     ========================================================= */
+  function updatePlayBtn() {
+    btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+    btnPlay.classList.toggle('playing', playing);
+  }
+
+  function tick() {
+    if (current >= STEPS.length - 1) { pause(); return; }
+    current += 1;
+    render();
+    if (current >= STEPS.length - 1) pause();
+  }
+
+  function play() {
+    if (playing) return;
+    if (current >= STEPS.length - 1) { current = -1; render(); }
+    playing = true;
+    updatePlayBtn();
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+    tick();
+  }
+
+  function pause() {
+    playing = false;
+    window.clearInterval(timer);
+    timer = null;
+    updatePlayBtn();
+  }
+
+  function nextStep() {
+    pause();
+    if (current < STEPS.length - 1) { current += 1; render(); }
+  }
+
+  function prevStep() {
+    pause();
+    if (current > -1) { current -= 1; render(); }
+  }
+
+  function resetAll() {
+    pause();
+    current = -1;
+    lastOutSig = '';
+    outBody.innerHTML = '';
+    render();
+    codeArea.scrollTo({ top: 0, left: 0, behavior: 'smooth' });
+  }
+
+  /* =========================================================
+     12. 面板系统：拖动 / 缩放（无限制） / 关闭 / 点击置顶
+     ========================================================= */
+  var PANEL_IDS = ['panelTop', 'panelVars', 'panelOut', 'panelExplain', 'panelMini'];
+  var zTop = 100;
+
+  function bringToFront(el) {
+    zTop += 1;
+    el.style.zIndex = String(zTop);
+    PANEL_IDS.forEach(function (id) {
+      var p = document.getElementById(id);
+      if (p) p.classList.toggle('active', p === el);
+    });
+  }
+
+  function makeDraggable(el, handle) {
+    handle.addEventListener('pointerdown', function (e) {
+      if (e.target.closest && e.target.closest('.panel-close')) return;
+      if (e.target.closest && e.target.closest('.panel-resizer')) return;
+      e.preventDefault();
+      bringToFront(el);
+      var rect = el.getBoundingClientRect();
+      var offX = e.clientX - rect.left;
+      var offY = e.clientY - rect.top;
+
+      function onMove(ev) {
+        el.style.left   = (ev.clientX - offX) + 'px';
+        el.style.top    = (ev.clientY - offY) + 'px';
+        el.style.right  = 'auto';
+        el.style.bottom = 'auto';
+      }
+      function onUp() {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+      }
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+    });
+  }
+
+  /* 任意大小：不设最小/最大限制（仅保留 8px 防止完全消失） */
+  function makeResizable(el, handle) {
+    handle.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      bringToFront(el);
+      var rect = el.getBoundingClientRect();
+      var startX = e.clientX, startY = e.clientY;
+      var startW = rect.width,  startH = rect.height;
+
+      function onMove(ev) {
+        var w = startW + (ev.clientX - startX);
+        var h = startH + (ev.clientY - startY);
+        el.style.width  = Math.max(8, w) + 'px';
+        el.style.height = Math.max(8, h) + 'px';
+      }
+      function onUp() {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        window.removeEventListener('pointercancel', onUp);
+      }
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+      window.addEventListener('pointercancel', onUp);
+    });
+  }
+
+  function initPanels() {
+    PANEL_IDS.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+
+      /* 任意位置按下 → 立即置顶（捕获阶段） */
+      el.addEventListener('pointerdown', function () { bringToFront(el); }, true);
+      el.addEventListener('focusin',   function () { bringToFront(el); }, true);
+
+      var head = el.querySelector('.panel-head');
+      if (head) makeDraggable(el, head);
+
+      var resizer = el.querySelector('.panel-resizer');
+      if (resizer) makeResizable(el, resizer);
+
+      var closeBtn = el.querySelector('.panel-close');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          el.style.display = 'none';
+        });
+      }
+    });
+  }
+
+  /* =========================================================
+     13. 重置布局
+     ========================================================= */
+  function resetLayout() {
+    var W = window.innerWidth, H = window.innerHeight;
+
+    /* 全部显示并清除内联尺寸 / 位置 / 层级 */
+    PANEL_IDS.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = '';
+      el.style.left = el.style.top = el.style.right = el.style.bottom = '';
+      el.style.width = el.style.height = '';
+      el.style.zIndex = '';
+      el.classList.remove('active');
+    });
+
+    void document.body.offsetHeight;   /* 强制重排后再测量 */
+
+    var top   = document.getElementById('panelTop');
+    var vars  = document.getElementById('panelVars');
+    var out   = document.getElementById('panelOut');
+    var exp   = document.getElementById('panelExplain');
+    var mini  = document.getElementById('panelMini');
+
+    /* 默认层级：控制栏 > 变量 > 输出 > 说明 > 缩略图 */
+    if (top)  top.style.zIndex  = '500';
+    if (vars) vars.style.zIndex = '490';
+    if (out)  out.style.zIndex  = '480';
+    if (exp)  exp.style.zIndex  = '470';
+    if (mini) mini.style.zIndex = '460';
+    zTop = 500;
+
+    /* 顶部控制栏：水平居中 */
+    if (top && top.offsetWidth) {
+      top.style.left = Math.max(16, (W - top.offsetWidth) / 2) + 'px';
+      top.style.top  = '16px';
+    }
+
+    var belowTop = (top && top.offsetHeight) ? (top.offsetHeight + 32) : 140;
+
+    /* 变量面板：左上 */
+    if (vars && vars.offsetWidth) {
+      vars.style.left = '20px';
+      vars.style.top  = belowTop + 'px';
+    }
+    /* 输出面板：右上 */
+    if (out && out.offsetWidth) {
+      out.style.left = Math.max(20, W - out.offsetWidth - 20) + 'px';
+      out.style.top  = belowTop + 'px';
+    }
+    /* 缩略图：右侧、输出面板下方 */
+    if (mini && mini.offsetWidth) {
+      var miniTop = belowTop + 20;
+      if (out && out.offsetHeight) miniTop = belowTop + out.offsetHeight + 30;
+      mini.style.left = Math.max(20, W - mini.offsetWidth - 20) + 'px';
+      mini.style.top  = Math.round(miniTop) + 'px';
+    }
+    /* 说明条：底部居中 */
+    if (exp && exp.offsetWidth) {
+      exp.style.left = Math.max(20, (W - exp.offsetWidth) / 2) + 'px';
+      exp.style.top  = Math.max(180, H - exp.offsetHeight - 20) + 'px';
+    }
+  }
+
+  /* =========================================================
+     14. 面板显示 / 隐藏 / 全屏
+     ========================================================= */
+  function anyPanelVisible() {
+    return PANEL_IDS.some(function (id) {
+      var el = document.getElementById(id);
+      return el && el.style.display !== 'none';
+    });
+  }
+
+  function showAllPanels() {
+    PANEL_IDS.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.style.display = '';
+      bringToFront(el);       /* 重新显示时置顶 */
+    });
+  }
+
+  function hideAllPanels() {
+    PANEL_IDS.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+  }
+
+  function toggleAllPanels() {
+    if (anyPanelVisible()) hideAllPanels();
+    else showAllPanels();
+  }
+
+  function toggleMini() {
+    var el = document.getElementById('panelMini');
+    if (!el) return;
+    if (el.style.display === 'none') {
+      el.style.display = '';
+      bringToFront(el);
+    } else {
+      el.style.display = 'none';
+    }
+  }
+
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      (document.documentElement.requestFullscreen ||
+       document.documentElement.webkitRequestFullscreen ||
+       function () {}).call(document.documentElement);
+    } else {
+      (document.exitFullscreen ||
+       document.webkitExitFullscreen ||
+       function () {}).call(document);
+    }
+  }
+
+  /* =========================================================
+     15. 事件绑定
+     ========================================================= */
+  btnPlay.addEventListener('click', function () { playing ? pause() : play(); });
+  btnNext.addEventListener('click', nextStep);
+  btnPrev.addEventListener('click', prevStep);
+  btnReset.addEventListener('click', resetAll);
+  btnFull.addEventListener('click', toggleFullscreen);
+  btnTogglePanels.addEventListener('click', toggleAllPanels);
+  btnToggleMini.addEventListener('click', toggleMini);
+  btnResetLayout.addEventListener('click', resetLayout);
+
+  speedInput.addEventListener('input', function () {
+    speed = Number(speedInput.value);
+    speedLabel.textContent = (speed / 1000).toFixed(1) + 's';
+    if (playing) {
+      window.clearInterval(timer);
+      timer = window.setInterval(tick, speed);
+    }
+  });
+
+  /* 全局快捷键：与面板可见性无关 */
+  document.addEventListener('keydown', function (e) {
+    var tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' && e.target.type !== 'range') return;
+
+    switch (e.code) {
+      case 'Space':
+        e.preventDefault();
+        playing ? pause() : play();
+        break;
+      case 'ArrowRight': e.preventDefault(); nextStep(); break;
+      case 'ArrowLeft':  e.preventDefault(); prevStep(); break;
+      case 'KeyR':       e.preventDefault(); resetAll(); break;
+      case 'KeyF':       e.preventDefault(); toggleFullscreen(); break;
+      case 'KeyM':       e.preventDefault(); toggleMini(); break;
+      case 'KeyH':       e.preventDefault(); toggleAllPanels(); break;
+    }
+  });
+
+  window.addEventListener('resize', function () {
+    PANEL_IDS.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el || el.style.display === 'none') return;
+      var l = parseFloat(el.style.left);
+      var t = parseFloat(el.style.top);
+      if (!isNaN(l) && l > window.innerWidth - 60)  el.style.left = (window.innerWidth - 60) + 'px';
+      if (!isNaN(t) && t > window.innerHeight - 40) el.style.top  = (window.innerHeight - 40) + 'px';
+    });
+  });
+
+  /* =========================================================
+     16. 初始化
+     ========================================================= */
+  buildVarTable();
+  buildMini();
+  initPanels();
+  speedLabel.textContent = (speed / 1000).toFixed(1) + 's';
+  render();
+
+  /* 布局在字体 / 尺寸测量完成后进行 */
+  window.requestAnimationFrame(function () {
+    resetLayout();
+    window.setTimeout(resetLayout, 140);
+  });
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 斐波那契前 20 项 · 数组递推 + 格式化输出</title>
+<style>
+/* ============ 全局变量：极端大字号，后排 10 米可见 ============ */
+:root{
+  --code-font:    clamp(80px, 5vw, 120px);     /* 代码正文 ≥80px */
+  --ln-font:      clamp(56px, 3.2vw, 88px);    /* 行号 ≥56px */
+  --out-font:     clamp(72px, 4.5vw, 110px);   /* 输出 ≥72px */
+  --var-font:     clamp(40px, 2.4vw, 60px);    /* 变量表 ≥40px */
+  --explain-font: clamp(48px, 2.8vw, 72px);    /* 说明 ≥48px */
+  --btn-font:     clamp(40px, 2.2vw, 60px);    /* 按钮 ≥40px */
+  --title-font:   clamp(40px, 2.4vw, 58px);    /* 面板标题 */
+  --panel-bg:     rgba(13,17,23,.80);
+  --panel-border: rgba(56,189,248,.35);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;background:#0d1117;}
+body{
+  font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+  color:#e6edf3;
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* ============ 全屏代码区（不透明，永不永久遮挡） ============ */
+#stage{position:fixed;inset:0;background:#0d1117;z-index:0;}
+#codeScroll{
+  position:absolute;inset:0;
+  overflow:auto;
+  padding:0 0 42vh 0;              /* 底部留白，使最后一行也能居中 */
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+}
+#codeScroll::-webkit-scrollbar{width:16px;height:16px;}
+#codeScroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+#codeScroll::-webkit-scrollbar-track{background:#0d1117;}
+
+.code-line{
+  display:flex;
+  align-items:flex-start;
+  white-space:pre;                 /* 关键：不折行，超出横向滚动 */
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  line-height:1.5;
+  border-left:14px solid transparent;
+  transition:background-color .25s,border-color .25s,opacity .25s;
+}
+.code-line .ln{
+  flex:0 0 auto;
+  width:3.6ch;
+  text-align:right;
+  margin-right:1.6rem;
+  font-size:var(--ln-font);
+  color:#3d4f66;
+  user-select:none;
+  font-variant-numeric:tabular-nums;
+}
+.code-line .src{flex:0 0 auto;padding-right:10rem;}
+
+/* 语法高亮 */
+.pp  {color:#c084fc;font-weight:600;}
+.str {color:#4ade80;}
+.cmt {color:#5b6f8c;font-style:italic;}
+.fn  {color:#38bdf8;}
+.kw  {color:#f472b6;font-weight:600;}
+.num {color:#fbbf24;}
+.op  {color:#fb923c;font-weight:700;}
+
+/* 当前执行行 */
+.code-line.active{
+  background:linear-gradient(90deg,rgba(56,189,248,.28),rgba(56,189,248,.03));
+  border-left-color:#38bdf8;
+  box-shadow:inset 0 0 0 4px rgba(56,189,248,.22);
+}
+.code-line.active .ln{color:#38bdf8;font-weight:700;}
+.code-line.active .src{color:#ffffff;}
+/* 已执行行 */
+.code-line.hit{background:linear-gradient(90deg,rgba(74,222,128,.15),rgba(74,222,128,0));}
+.code-line.hit .ln{color:#4ade80;}
+/* 被跳过行 */
+.code-line.skip{opacity:.22;}
+.code-line.skip .ln{color:#4d5f78;}
+
+/* ============ 悬浮面板通用 ============ */
+.panel{
+  position:fixed;
+  background:var(--panel-bg);
+  -webkit-backdrop-filter:blur(14px);
+  backdrop-filter:blur(14px);
+  border:3px solid var(--panel-border);
+  border-radius:20px;
+  box-shadow:0 16px 48px rgba(0,0,0,.7);
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  z-index:100;
+  min-width:0;min-height:0;
+  transition:border-color .18s,box-shadow .18s,opacity .18s;
+}
+.panel:hover{background:rgba(13,17,23,.92);}
+.panel.active{
+  border-color:#38bdf8;
+  box-shadow:0 0 0 5px rgba(56,189,248,.45),0 16px 48px rgba(0,0,0,.8);
+}
+.panel.hidden{display:none !important;}
+
+.phead{
+  flex:0 0 auto;
+  display:flex;align-items:center;gap:1rem;
+  padding:.3rem .7rem;
+  background:rgba(30,41,59,.95);
+  border-bottom:3px solid rgba(56,189,248,.25);
+  cursor:move;
+  user-select:none;
+  touch-action:none;
+}
+.ptitle{
+  font-size:var(--title-font);
+  font-weight:700;
+  color:#7dd3fc;
+  white-space:nowrap;
+  letter-spacing:.04em;
+}
+.pspacer{flex:1 1 auto;}
+.pbtn{
+  flex:0 0 auto;
+  font:inherit;
+  font-size:var(--btn-font);
+  line-height:1;
+  min-width:72px;min-height:72px;
+  border-radius:16px;
+  border:3px solid rgba(148,163,184,.30);
+  background:rgba(30,41,59,.8);
+  color:#cbd5e1;
+  cursor:pointer;
+  transition:background .15s,border-color .15s,transform .1s;
+}
+.pbtn:hover{background:rgba(56,189,248,.25);border-color:#38bdf8;color:#fff;}
+.pbtn:active{transform:translateY(2px);}
+.pclose{color:#fca5a5;border-color:rgba(248,113,113,.4);}
+.pclose:hover{background:rgba(248,113,113,.3);border-color:#f87171;color:#fff;}
+
+.pbody{
+  flex:1 1 auto;min-height:0;min-width:0;
+  overflow:auto;
+  padding:.5rem .7rem;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+}
+.pbody::-webkit-scrollbar{width:14px;height:14px;}
+.pbody::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+
+/* 右下角缩放手柄（不设最小/最大限制） */
+.presize{
+  position:absolute;right:0;bottom:0;
+  width:64px;height:64px;
+  cursor:nwse-resize;
+  touch-action:none;
+  background:
+    linear-gradient(135deg,transparent 38%,rgba(56,189,248,.9) 39%,rgba(56,189,248,.9) 52%,transparent 53%,
+                    transparent 60%,rgba(56,189,248,.9) 61%,rgba(56,189,248,.9) 74%,transparent 75%,
+                    transparent 80%,rgba(56,189,248,.9) 81%,rgba(56,189,248,.9) 94%,transparent 95%);
+}
+.presize:hover{background-color:rgba(56,189,248,.22);}
+.panel.collapsed .pbody{display:none;}
+
+/* ============ 顶部控制栏 ============ */
+#p-top{left:20px;top:16px;}
+#p-top .pbody{display:flex;flex-wrap:wrap;align-items:center;gap:18px;}
+.ctl{
+  font:inherit;font-size:var(--btn-font);
+  min-height:84px;
+  padding:.3rem 1.2rem;
+  border-radius:18px;
+  border:3px solid rgba(148,163,184,.30);
+  background:rgba(30,41,59,.8);
+  color:#dbeafe;cursor:pointer;
+  white-space:nowrap;
+  transition:background .15s,border-color .15s,transform .1s;
+  touch-action:manipulation;
+}
+.ctl:hover{background:rgba(56,189,248,.25);border-color:#38bdf8;color:#fff;}
+.ctl:active{transform:translateY(2px);}
+.ctl:disabled{opacity:.30;cursor:not-allowed;}
+.ctl.primary{
+  background:linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#38bdf8;color:#04121f;font-weight:800;
+}
+.ctl.primary.playing{
+  background:linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24;color:#1a1200;
+}
+.speedbox{
+  display:flex;align-items:center;gap:.7rem;
+  font-size:var(--btn-font);color:#94a3b8;white-space:nowrap;
+}
+.speedbox input[type=range]{
+  width:clamp(180px,13vw,320px);
+  height:52px;
+  accent-color:#38bdf8;cursor:pointer;
+}
+.speedbox b{color:#38bdf8;min-width:5ch;font-variant-numeric:tabular-nums;}
+
+/* ============ 变量 / 数组面板 ============ */
+#p-vars{left:20px;top:210px;}
+.arr-title{
+  font-size:var(--var-font);
+  color:#7d93b3;
+  margin-bottom:.4rem;
+  white-space:normal;
+}
+.arr-title b{color:#38bdf8;}
+.arr-title i{color:#4ade80;font-style:normal;}
+.arr-grid{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:.32rem;margin-bottom:.6rem;}
+.acell{
+  text-align:center;border-radius:10px;padding:.2rem .02rem .24rem;
+  background:#0d1728;border:2px solid #1b293f;
+  transition:background .3s,border-color .3s,box-shadow .3s,transform .3s;
+  overflow:hidden;
+}
+.acell .aidx{
+  display:block;font-size:calc(var(--var-font) * .72);color:#5f7796;
+  line-height:1.25;font-variant-numeric:tabular-nums;
+}
+.acell .aval{
+  display:block;font-family:ui-monospace,Consolas,monospace;
+  font-weight:800;font-size:calc(var(--var-font) * 1.05);color:#38bdf8;
+  font-variant-numeric:tabular-nums;line-height:1.3;white-space:nowrap;
+}
+.acell.empty .aval{color:#3c5170;font-weight:500;}
+.acell.is-src{
+  border-color:rgba(74,222,128,.8);background:rgba(74,222,128,.14);
+}
+.acell.is-src .aval{color:#4ade80;}
+.acell.is-src .aidx{color:#4ade80;}
+.acell.is-hl{
+  border-color:#38bdf8;background:rgba(56,189,248,.18);
+  box-shadow:0 0 0 3px rgba(56,189,248,.4),0 0 20px rgba(56,189,248,.35);
+  transform:translateY(-3px);
+}
+.acell.is-hl .aval{color:#ffffff;}
+.acell.is-hl .aidx{color:#38bdf8;}
+@keyframes cellFlash{0%{transform:scale(1);}40%{transform:scale(1.35);color:#fff;}100%{transform:scale(1);}}
+.acell .aval.flash{animation:cellFlash .55s ease-out;}
+
+.vtable{display:flex;flex-direction:column;gap:.22rem;}
+.vrow{
+  display:flex;justify-content:space-between;align-items:flex-start;gap:.7rem;
+  padding:.22rem .6rem;border-radius:12px;
+  background:#0d1728;border:2px solid #1b293f;
+  font-size:var(--var-font);
+  transition:background .3s,border-color .3s;
+}
+.vrow.changed{border-color:rgba(56,189,248,.9);background:rgba(56,189,248,.15);}
+.vk{color:#8ba3c4;white-space:normal;flex:1 1 auto;min-width:0;}
+.vv{
+  font-family:ui-monospace,Consolas,monospace;
+  font-weight:800;color:#38bdf8;text-align:right;
+  white-space:normal;flex:0 0 auto;max-width:64%;
+  word-break:break-all;
+  font-variant-numeric:tabular-nums;
+}
+.vv.dim{color:#5f7796;font-weight:500;}
+.r-ctx   .vv{color:#4ade80;}
+.r-i     .vv{color:#38bdf8;}
+.r-cond  .vv{color:#2dd4bf;}
+.r-ifc   .vv{color:#f472b6;}
+.r-expr  .vv{color:#a5b4fc;}
+.r-eval  .vv{color:#a5b4fc;}
+.r-note  .vv{color:#2dd4bf;font-size:calc(var(--var-font) * .92);}
+.r-pf    .vv{color:#fb923c;}
+.r-pc    .vv{color:#facc15;}
+.r-ret   .vv{color:#fbbf24;}
+@keyframes vflash{0%{transform:scale(1);}35%{transform:scale(1.24);color:#fff;}100%{transform:scale(1);}}
+.vv.flash{animation:vflash .5s ease-out;}
+
+/* ============ 输出面板 ============ */
+#p-out{right:20px;bottom:16px;}
+.console{
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);
+  line-height:1.55;
+  color:#fbbf24;
+  white-space:pre;
+  min-height:1.2em;
+}
+.console:empty::before{content:"（等待程序输出…）";color:#3d5474;font-size:calc(var(--out-font) * .5);}
+@keyframes slideIn{from{opacity:0;transform:translateX(-1.2rem);}to{opacity:1;transform:none;}}
+.outline{animation:slideIn .35s ease-out;min-height:1.2em;}
+
+/* ============ 说明条 ============ */
+#p-explain{left:20px;bottom:16px;}
+.exhead{
+  display:inline-block;margin-right:.7rem;
+  padding:.1rem .65rem;border-radius:.4em;
+  background:rgba(56,189,248,.22);color:#38bdf8;
+  font-weight:800;font-size:calc(var(--explain-font) * .78);
+  vertical-align:middle;
+}
+.exhead.ans{background:rgba(251,191,36,.28);color:#fbbf24;}
+.exhead.hit{background:rgba(74,222,128,.25);color:#4ade80;}
+#explainBody{
+  font-size:var(--explain-font);
+  line-height:1.5;
+  color:#c3d3e8;
+}
+#explainBody strong{color:#fff;}
+#explainBody code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(148,163,184,.18);border-radius:.3rem;
+  padding:0 .3rem;color:#e2e8f0;
+}
+#explainBody .tip{
+  display:block;margin-top:.5rem;padding:.4rem .75rem;
+  border-radius:.5rem;background:rgba(45,212,191,.12);
+  border-left:8px solid #2dd4bf;color:#bff5ec;
+  font-size:calc(var(--explain-font) * .88);
+}
+#explainBody .warn{
+  display:block;margin-top:.5rem;padding:.4rem .75rem;
+  border-radius:.5rem;background:rgba(251,191,36,.14);
+  border-left:8px solid #fbbf24;color:#ffe6b0;
+  font-size:calc(var(--explain-font) * .88);
+}
+
+/* ============ 缩略图（VSCode minimap 风格） ============ */
+#p-mini{right:20px;top:16px;}
+#miniBody{
+  position:relative;
+  flex:1 1 auto;min-height:0;min-width:0;
+  overflow:hidden;
+  padding:0 !important;
+  background:rgba(5,10,18,.6);
+}
+#miniContent{position:absolute;inset:0;}
+.mini-line{
+  overflow:hidden;white-space:pre;
+  font-family:ui-monospace,Consolas,monospace;
+  color:#8ba3c4;
+  padding-left:6px;
+  border-left:4px solid transparent;
+  opacity:.85;
+  transition:background .2s,border-color .2s,opacity .2s;
+}
+.mini-line.hit{opacity:.62;}
+.mini-line.skip{opacity:.26;}
+.mini-line.cur{
+  background:rgba(56,189,248,.38);
+  border-left-color:#38bdf8;
+  opacity:1;
+}
+#miniView{
+  position:absolute;left:0;right:0;
+  border:4px solid #38bdf8;
+  background:rgba(56,189,248,.15);
+  box-shadow:0 0 18px rgba(56,189,248,.6);
+  pointer-events:none;
+  border-radius:6px;
+}
+
+/* ============ 小屏兜底 ============ */
+@media (max-width:900px){
+  :root{
+    --code-font:clamp(40px,7vw,64px);
+    --ln-font:clamp(28px,4vw,40px);
+    --out-font:clamp(48px,8vw,80px);
+    --var-font:clamp(24px,4vw,36px);
+    --explain-font:clamp(26px,4.5vw,40px);
+    --btn-font:clamp(24px,4vw,34px);
+    --title-font:clamp(22px,3.5vw,30px);
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ================= 全屏代码区 ================= -->
+<div id="stage">
+  <div id="codeScroll"></div>
+</div>
+
+<!-- ================= 顶部控制栏 ================= -->
+<div class="panel" id="p-top" data-panel>
+  <div class="phead">
+    <span class="ptitle">控制台</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody">
+    <button class="ctl" id="btnReset">⟲ 重置</button>
+    <button class="ctl" id="btnPrev">◀ 上一步</button>
+    <button class="ctl primary" id="btnPlay">▶ 自动播放</button>
+    <button class="ctl" id="btnNext">下一步 ▶</button>
+    <span class="speedbox">
+      速度
+      <input type="range" id="speed" min="200" max="2000" step="50" value="800">
+      <b id="speedLabel">0.80s</b>
+    </span>
+    <button class="ctl" id="btnFull">⛶ 全屏</button>
+    <button class="ctl" id="btnPanels">▤ 面板</button>
+    <button class="ctl" id="btnMini">▥ 缩略图</button>
+    <button class="ctl" id="btnLayout">⤢ 重置布局</button>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<!-- ================= 变量 / 数组 / 状态面板 ================= -->
+<div class="panel" id="p-vars" data-panel>
+  <div class="phead">
+    <span class="ptitle">数组 a[20] · 变量 · 状态</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody">
+    <div class="arr-title">
+      数组 a[20]（下标 0~19）　正在计算/写入 <b>蓝色</b>　被读取的前两项 <i>绿色</i>
+    </div>
+    <div class="arr-grid" id="arrGrid"></div>
+    <div class="vtable" id="varTable"></div>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<!-- ================= 缩略图 ================= -->
+<div class="panel" id="p-mini" data-panel>
+  <div class="phead">
+    <span class="ptitle">缩略图</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody" id="miniBody">
+    <div id="miniContent"></div>
+    <div id="miniView"></div>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<!-- ================= 程序输出 ================= -->
+<div class="panel" id="p-out" data-panel>
+  <div class="phead">
+    <span class="ptitle">程序运行结果</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody">
+    <div class="console" id="consoleBody"></div>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<!-- ================= 当前语句说明条 ================= -->
+<div class="panel" id="p-explain" data-panel>
+  <div class="phead">
+    <span class="ptitle">当前语句说明</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody">
+    <div id="explainBody"></div>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+/* =========================================================
+   1) 源代码（13 行，行号 / 缩进 / 行尾注释 与真实 C 程序一致）
+   ========================================================= */
+var CODE = [
+  {n:1,  html:'<span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span>'},
+  {n:2,  html:'<span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span>'},
+  {n:3,  html:'    <span class="kw">int</span> i, a[<span class="num">20</span>] <span class="op">=</span> {<span class="num">1</span>, <span class="num">2</span>};             <span class="cmt">// 定义数组并初始化前两项</span>'},
+  {n:4,  html:'    <span class="fn">printf</span>(<span class="str">"%-8d%-8d"</span>, a[<span class="num">0</span>], a[<span class="num">1</span>]);   <span class="cmt">// 输出第 1、2 项</span>'},
+  {n:5,  html:'    <span class="kw">for</span>(i<span class="op">=</span><span class="num">2</span>; i<span class="op">&lt;</span><span class="num">20</span>; i<span class="op">++</span>) {               <span class="cmt">// 从第 3 项开始循环</span>'},
+  {n:6,  html:'        a[i] <span class="op">=</span> a[i<span class="op">-</span><span class="num">1</span>] <span class="op">+</span> a[i<span class="op">-</span><span class="num">2</span>];        <span class="cmt">// 当前项等于前两项之和</span>'},
+  {n:7,  html:'        <span class="fn">printf</span>(<span class="str">"%-8d"</span>, a[i]);          <span class="cmt">// 输出当前项</span>'},
+  {n:8,  html:'        <span class="kw">if</span>((i<span class="op">+</span><span class="num">1</span>) <span class="op">%</span> <span class="num">5</span> <span class="op">==</span> <span class="num">0</span>) {            <span class="cmt">// 每输出 5 项换行</span>'},
+  {n:9,  html:'            <span class="fn">putchar</span>(<span class="str">\'\\n\'</span>);              <span class="cmt">// 输出一个换行符</span>'},
+  {n:10, html:'        }'},
+  {n:11, html:'    }'},
+  {n:12, html:'    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回 0，程序结束</span>'},
+  {n:13, html:'}'}
+];
+
+/* =========================================================
+   2) 逐步执行数据（严格按真实 C 执行顺序）
+   输出：4 行 × 5 项，每项 8 格左对齐
+   printf 共 19 次（第4行1次 + 循环内18次）
+   putchar 共 4 次（i=4、9、14、19）
+   最终 i=20，数组 20 个元素全部填满，返回值 0
+   ========================================================= */
+var ARR = [];
+var k;
+for (k = 0; k < 20; k++) ARR.push(null);   /* null = 尚未赋值 → '?' */
+
+var STEPS = [];
+var outText = '';
+var printfN = 0;
+var putcharN = 0;
+
+function f8(v) {
+  var s = String(v);
+  while (s.length < 8) s += ' ';
+  return s;
+}
+
+function snap() {
+  return ARR.map(function (v) { return (v === null || v === undefined) ? '?' : String(v); });
+}
+
+function push(o) {
+  STEPS.push({
+    line:    o.line,
+    ctx:     o.ctx || '—',
+    i:       o.i === undefined ? '—' : o.i,
+    cond:    o.cond || '—',
+    ifc:     o.ifc || '—',
+    expr:    o.expr || '—',
+    exprVal: o.exprVal || '—',
+    note:    o.note || '—',
+    printfN: o.printfN === undefined ? String(printfN) : o.printfN,
+    putcharN:o.putcharN === undefined ? String(putcharN) : o.putcharN,
+    ret:     o.ret || '—',
+    arr:     snap(),
+    hl:      o.hl  || [],
+    src:     o.src || [],
+    out:     outText,
+    hit:     o.hit  || [],
+    skip:    o.skip || [],
+    title:   o.title,
+    desc:    o.desc
+  });
+}
+
+/* ---------------- 第 1 行 ---------------- */
+push({
+  line:1, ctx:'预处理阶段 · 编译前已完成',
+  note:'预处理指令，不占运行时间',
+  title:'#include &lt;stdio.h&gt;　引入标准输入输出头文件',
+  desc:'预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容引入源文件，让 <code>printf</code> 和 <code>putchar</code> 获得函数声明。这一行<b>不是 C 语句</b>，编译前就处理完了，不产生任何屏幕输出。'
+});
+
+/* ---------------- 第 2 行 ---------------- */
+push({
+  line:2, ctx:'main 函数入口',
+  note:'程序从 main 开始执行',
+  title:'int main() {　程序从这里开始',
+  desc:'操作系统把控制权交给 <code>main</code>，程序正式开始。系统为 main 建立<b>栈帧</b>，变量 <code>i</code> 和数组 <code>a[20]</code> 都存放在这个栈帧里。<br>本程序<b>没有 scanf</b>，不需要任何键盘输入，运行后直接打印结果。'
+});
+
+/* ---------------- 第 3 行 ---------------- */
+ARR[0] = 1; ARR[1] = 2;
+for (k = 2; k < 20; k++) ARR[k] = 0;      /* 部分初始化 → 其余自动补 0 */
+push({
+  line:3, i:'未初始化（不定值）',
+  note:'a[0]=1、a[1]=2，a[2]~a[19] 自动补 0',
+  hl:[0,1], hit:[3],
+  title:'int i, a[20] = {1, 2};　只初始化前两项',
+  desc:'一次声明两样东西：<br>· <b>i</b>：int 循环变量，<b>未初始化</b>；<br>· <b>a[20]</b>：int 数组，一次申请 <b>20 个连续的 int 空间</b>，合法下标 <b>0 ~ 19</b>；<br>· 花括号里只写了 <b>2 个值</b> → <b>a[0] = 1</b>、<b>a[1] = 2</b>。' +
+       '<span class="tip"><b>关键规则：部分初始化 = 其余补 0</b><br>C 语言规定：花括号里的初值个数<b>少于</b>数组长度时，剩下的元素会被<b>自动初始化为 0</b>。<br>所以此刻 <b>a[2] ~ a[19] 全是 0</b>，并不是"不定值"。这和"只声明不初始化"完全不同（例如 <code>int b[20];</code> 里就全是不定值）。</span>'
+});
+
+/* ---------------- 第 4 行 ---------------- */
+outText += f8(1) + f8(2);
+printfN = 1;
+push({
+  line:4, i:'未初始化（不定值）',
+  expr:'printf("%-8d%-8d", a[0], a[1])',
+  exprVal:'输出 1 和 2，各占 8 格左对齐',
+  note:'第 1 个 %-8d ← a[0]，第 2 个 %-8d ← a[1]',
+  hl:[0,1], hit:[4],
+  title:'printf("%-8d%-8d", a[0], a[1]);　→　输出 1 和 2（各占 8 格）',
+  desc:'<code>%-8d</code> 的含义是：按十进制整数输出，<b>宽度 8、左对齐</b>（<code>-</code> 号就是左对齐）。<br>· 第 1 个格式符被 <b>a[0] = 1</b> 替换：数字占 1 格，后面补 <b>7 个空格</b>；<br>· 第 2 个格式符被 <b>a[1] = 2</b> 替换：同样补 7 个空格；<br>· 格式串里<b>没有 <code>\\n</code></b>，所以输出后<b>不换行</b>，光标还停在同一行。' +
+       '<span class="tip"><b>为什么要用 %-8d？</b>为了让每一列<b>宽度固定</b>，数列看起来整整齐齐。如果用 <code>%d</code>，数字 1 和 10946 占的格子不一样宽，输出就会歪歪扭扭。</span>'
+});
+
+/* ---------------- 循环 i = 2 ~ 19（共 18 轮） ---------------- */
+var i;
+for (i = 2; i < 20; i++) {
+
+  /* 第 5 行：for 判断 */
+  push({
+    line:5, i:String(i),
+    cond:'i=' + i + ' < 20 → 真',
+    expr:'for(i=2; i<20; i++)',
+    exprVal:(i === 2)
+      ? '先执行 i=2，再判断 2<20 成立 → 进入循环体'
+      : 'i++ 后 i=' + i + '，' + i + '<20 成立 → 继续循环',
+    note:'i 从 2 走到 19，共 18 轮',
+    hl:[i], hit:[5],
+    title:'for(i=2; i&lt;20; i++)　第 ' + (i - 1) + ' 轮：i = ' + i + '，条件为真',
+    desc:'<code>for</code> 的执行顺序：<b>① 初始化 <code>i=2</code>；② 判断 <code>i&lt;20</code>；③ 执行循环体；④ 回到头部执行 <code>i++</code>，再判断……</b><br>· 当前 i = <b>' + i + '</b>，' + i + ' &lt; 20 成立 → 进入循环体；<br>· 循环总共执行 <b>18 轮</b>（i = 2, 3, …, 19），正好把 a[2] ~ a[19] 这 18 个位置填满。' +
+         '<span class="tip"><b>为什么从 2 开始？</b>因为 a[0]、a[1] 已经在声明时给好了，递推公式 <code>a[i]=a[i-1]+a[i-2]</code> 需要至少两个已知项，所以从第 3 个元素（下标 2）开始往后算。</span>'
+  });
+
+  /* 第 6 行：递推赋值 */
+  ARR[i] = ARR[i - 1] + ARR[i - 2];
+  push({
+    line:6, i:String(i),
+    cond:'i=' + i + ' < 20 → 真',
+    expr:'a[' + i + '] = a[' + (i - 1) + '] + a[' + (i - 2) + ']',
+    exprVal:ARR[i - 1] + ' + ' + ARR[i - 2] + ' = ' + ARR[i],
+    note:'当前项 = 前一项 + 再前一项',
+    hl:[i], src:[i - 1, i - 2], hit:[6],
+    title:'a[' + i + '] = a[' + (i - 1) + '] + a[' + (i - 2) + '];　→　' + ARR[i - 1] + ' + ' + ARR[i - 2] + ' = ' + ARR[i],
+    desc:'把前两项相加，结果写进当前格：<br>· <b>a[' + (i - 1) + '] = ' + ARR[i - 1] + '</b>（前一项）；<br>· <b>a[' + (i - 2) + '] = ' + ARR[i - 2] + '</b>（再前一项）；<br>· 两者相加 = <b>' + ARR[i - 1] + ' + ' + ARR[i - 2] + ' = ' + ARR[i] + '</b>，写入 <b>a[' + i + ']</b>。<br>这就是斐波那契数列的递推关系：<b>每一项等于前两项之和</b>。'
+  });
+
+  /* 第 7 行：printf 输出当前项 */
+  outText += f8(ARR[i]);
+  printfN++;
+  var digitLen = String(ARR[i]).length;
+  push({
+    line:7, i:String(i),
+    cond:'i=' + i + ' < 20 → 真',
+    expr:'printf("%-8d", a[' + i + '])',
+    exprVal:'输出 ' + ARR[i] + '，占 8 格左对齐（补 ' + (8 - digitLen) + ' 个空格）',
+    note:'与之前的输出连在同一行，暂不换行',
+    hl:[i], hit:[7],
+    title:'printf("%-8d", a[' + i + ']);　→　输出 ' + ARR[i] + '（占 8 格）',
+    desc:'<code>%-8d</code> 把 <b>a[' + i + '] = ' + ARR[i] + '</b> 按"宽度 8、左对齐"输出：<br>· 数字本身占 <b>' + digitLen + '</b> 格，后面补 <b>' + (8 - digitLen) + '</b> 个空格凑满 8 格；<br>· 这一句的格式串里<b>也没有换行符</b>，所以输出会<b>紧接着</b>前面的内容继续往右排。'
+  });
+
+  /* 第 8 行：判断是否换行 */
+  var modVal = (i + 1) % 5;
+  var cond = (modVal === 0);
+  push({
+    line:8, i:String(i),
+    cond:'i=' + i + ' < 20 → 真',
+    ifc:'(' + (i + 1) + ') % 5 = ' + modVal + ' → ' + (cond ? '真' : '假'),
+    expr:'if((i+1) % 5 == 0)',
+    exprVal:'(' + (i + 1) + ') % 5 = ' + modVal + ' → ' + (cond ? '真' : '假'),
+    note: cond
+      ? '已输出 ' + (i + 1) + ' 项，是 5 的倍数 → 换行'
+      : '已输出 ' + (i + 1) + ' 项，不是 5 的倍数 → 不换行',
+    hit:[8], skip: cond ? [] : [9,10],
+    title:'if((i+1) % 5 == 0)　→　(' + (i + 1) + ') % 5 = ' + modVal + '　→　' + (cond ? '真' : '假'),
+    desc:'这个 <code>if</code> 用来控制<b>每输出 5 项就换一次行</b>。<br>· <code>i+1</code> 表示"<b>当前已经输出的项数</b>"（因为下标从 0 开始，i=0 时是第 1 项）；<br>· 当前 i = <b>' + i + '</b>，所以 i+1 = <b>' + (i + 1) + '</b>；<br>· <code>' + (i + 1) + ' % 5 = ' + modVal + '</code>，' +
+         (cond
+           ? '<b>等于 0 → 条件为真</b>，进入 if 体执行换行。'
+           : '<b>不等于 0 → 条件为假</b>，跳过第 9、10 行，继续下一轮。') +
+         '<span class="warn"><b>为什么是 i+1 而不是 i？</b>因为第 1、2 项是在循环<b>之前</b>用第 4 行 printf 输出的，已经占了 2 个位置。当 i=4 时，屏幕上正好有 a[0]~a[4] 共 <b>5 项</b>，这时才该换行 —— 用 <code>i+1</code> 正好对上这个计数。</span>'
+  });
+
+  /* 第 9 行：putchar 换行（只有 4 次） */
+  if (cond) {
+    outText += '\n';
+    putcharN++;
+    push({
+      line:9, i:String(i),
+      cond:'i=' + i + ' < 20 → 真',
+      ifc:'(' + (i + 1) + ') % 5 = 0 → 真',
+      expr:"putchar('\\n')",
+      exprVal:'向屏幕输出一个换行符，光标移到下一行开头',
+      note:'已输出 ' + (i + 1) + ' 项，屏幕换行（第 ' + putcharN + ' 次换行）',
+      hit:[9],
+      title:"putchar('\\n');　→　输出一个换行符（屏幕换行）",
+      desc:'<code>putchar</code> 是"输出单个字符"的函数。<br>· <code>\'\\n\'</code> 是<b>换行符</b>，它的作用是把光标移到<b>下一行的开头</b>；<br>· 执行完这一句，前面累积的 5 项就被"封"成了一整行；<br>· 本次是第 <b>' + (i + 1) + '</b> 项，正好是 5 的倍数，所以换行生效。' +
+           '<span class="tip"><b>putchar 与 printf 的分工：</b><code>printf("%-8d", a[i])</code> 负责把数字排整齐，<code>putchar(\'\\n\')</code> 只负责"敲回车"。用专门的字符输出函数比再写一次 printf 更轻量，也更贴合语义。</span>'
+    });
+  }
+
+  /* 第 10 行：if 体结束 */
+  push({
+    line:10, i:String(i),
+    cond:'i=' + i + ' < 20 → 真',
+    ifc:'(' + (i + 1) + ') % 5 = ' + modVal + ' → ' + (cond ? '真' : '假'),
+    expr:'}', exprVal:'if 体结束',
+    note: cond ? '换行已输出，if 体结束' : '条件为假，if 体未进入（空语句块结束）',
+    hit:[10],
+    title:'}　if 体结束',
+    desc: cond
+      ? '这个 <code>}</code> 结束了 <code>if((i+1) % 5 == 0)</code> 的<b>复合语句块</b>。本次条件为真，换行已经输出。'
+      : '这个 <code>}</code> 结束了 <code>if((i+1) % 5 == 0)</code> 的<b>复合语句块</b>。本次条件为假，if 体被跳过，直接到这里。'
+  });
+
+  /* 第 11 行：for 循环体结束 */
+  push({
+    line:11, i:String(i),
+    cond:'i=' + i + ' < 20 → 真',
+    expr:'}', exprVal:'第 5 行 for 的循环体结束，回到第 5 行执行 i++',
+    note:'每轮循环体执行完后回到 for 头部做 i++',
+    hit:[11],
+    title:'}　for 循环体结束，回到第 5 行',
+    desc:'这个 <code>}</code> 结束了第 5 行 for 的<b>循环体</b>。执行到这里后，控制流回到第 5 行 for 头部：<br>· 先执行 <b>i++</b>；<br>· 再判断 <code>i&lt;20</code>；<br>· 成立就进入下一轮，不成立就退出循环。'
+  });
+}
+
+/* ---------------- 第 5 行：条件不成立，退出循环 ---------------- */
+push({
+  line:5, i:'20',
+  cond:'i=20 < 20 → 假',
+  expr:'for(i=2; i<20; i++)',
+  exprVal:'i++ 后 i=20，20<20 不成立 → 退出循环',
+  note:'循环体共执行 18 轮，数组 20 个格子全部填满',
+  hit:[], skip:[6,7,8,9,10,11],
+  title:'for(i=2; i&lt;20; i++)　i = 20，20 &lt; 20 为假 → 退出循环',
+  desc:'第 19 轮结束后回到 for 头部：<br>· 执行 <b>i++</b>，i 由 19 变成 <b>20</b>；<br>· 判断 <b>20 &lt; 20</b> 为<b>假</b> → 循环结束，跳到第 11 行 <code>}</code> 之后。<br>循环体共执行 <b>18 轮</b>，数组 a[2] ~ a[19] 全部算好，<b>20 个格子全满</b>。'
+});
+
+/* ---------------- 第 12 行：return 0 ---------------- */
+push({
+  line:12, i:'20', ret:'0',
+  expr:'return 0;',
+  exprVal:'返回 0，程序正常结束',
+  note:'main 返回值 = 0',
+  hit:[12],
+  title:'return 0;　结束 main 函数',
+  desc:'<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。约定返回 0 表示程序<b>正常结束</b>。'
+});
+
+/* ---------------- 第 13 行：} ---------------- */
+push({
+  line:13, i:'20', ret:'0',
+  expr:'}',
+  exprVal:'main 函数体结束，栈帧销毁',
+  note:'栈帧销毁，i 与 a[20] 全部释放',
+  hit:[13],
+  title:'main 函数体结束 }',
+  desc:'函数收尾，main 的栈帧被销毁，变量 <code>i</code> 和数组 <code>a[20]</code> 随栈帧一起释放。<br>程序共调用 <b>1 + 18 = 19 次 printf</b>、<b>4 次 putchar</b>，返回值 0。' +
+       '<span class="tip"><b>本程序要点总结：</b><br>' +
+       '① <b>部分初始化补 0</b>：<code>int a[20] = {1, 2};</code> 只给出前两项，<b>a[2]~a[19] 自动为 0</b>，不是不定值；<br>' +
+       '② <b>递推公式</b>：<code>a[i] = a[i-1] + a[i-2];</code> 每一项等于前两项之和，这正是斐波那契数列；<br>' +
+       '③ <b>循环起点</b>：i 从 <b>2</b> 开始，因为 a[0]、a[1] 是已知的"种子"，递推需要它们；<br>' +
+       '④ <b>格式化输出</b>：<code>%-8d</code> 中 <code>-</code> 是左对齐、<code>8</code> 是字段宽度，让每列对齐；<br>' +
+       '⑤ <b>换行控制</b>：<code>if((i+1) % 5 == 0) putchar(\'\\n\');</code> —— 用 <code>i+1</code> 统计"已输出项数"，每满 5 项换一行；<br>' +
+       '⑥ <b>数组不越界</b>：下标最大到 19，循环条件写 <code>i&lt;20</code>，不能写成 <code>i&lt;=20</code>。<br>' +
+       '<b>程序输出（4 行，每行 5 项，每项占 8 格）：</b><br>' +
+       '· 第 1 行：<code>1&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;2&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;3&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;5&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;8&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code><br>' +
+       '· 第 2 行：<code>13&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;21&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;34&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;55&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;89&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code><br>' +
+       '· 第 3 行：<code>144&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;233&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;377&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;610&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;987&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</code><br>' +
+       '· 第 4 行：<code>1597&nbsp;&nbsp;&nbsp;&nbsp;2584&nbsp;&nbsp;&nbsp;&nbsp;4181&nbsp;&nbsp;&nbsp;&nbsp;6765&nbsp;&nbsp;&nbsp;&nbsp;10946&nbsp;&nbsp;&nbsp;</code><br>' +
+       '<b>数列校验：</b>1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233, 377, 610, 987, 1597, 2584, 4181, 6765, 10946 ✓<br>' +
+       '<b>常见错误：</b>① 把循环写成 <code>i&lt;=20</code>，访问 a[20] 造成<b>数组越界</b>；② 递推写成 <code>a[i]=a[i+1]+a[i+2]</code>，方向反了；③ 忘记 <code>a[0]</code>、<code>a[1]</code> 的初始化，整个数列全乱；④ 换行判断写成 <code>i % 5 == 0</code>，会导致换行位置整体偏移；⑤ 用 <code>%d</code> 代替 <code>%-8d</code>，输出无法对齐成整齐的表格。</span>'
+});
+
+/* =========================================================
+   3) DOM 构建
+   ========================================================= */
+var codeScroll = document.getElementById('codeScroll');
+var arrGrid    = document.getElementById('arrGrid');
+var varTable   = document.getElementById('varTable');
+var consoleBox = document.getElementById('consoleBody');
+var explainBox = document.getElementById('explainBody');
+var miniBody   = document.getElementById('miniBody');
+var miniContent= document.getElementById('miniContent');
+var miniView   = document.getElementById('miniView');
+var btnPlay    = document.getElementById('btnPlay');
+var btnPrev    = document.getElementById('btnPrev');
+var btnNext    = document.getElementById('btnNext');
+var btnReset   = document.getElementById('btnReset');
+var btnFull    = document.getElementById('btnFull');
+var btnPanels  = document.getElementById('btnPanels');
+var btnMini    = document.getElementById('btnMini');
+var btnLayout  = document.getElementById('btnLayout');
+var speedInput = document.getElementById('speed');
+var speedLabel = document.getElementById('speedLabel');
+
+/* 全屏代码（13 行） */
+codeScroll.innerHTML = CODE.map(function (c) {
+  return '<div class="code-line" data-line="' + c.n + '">' +
+           '<span class="ln">' + c.n + '</span>' +
+           '<span class="src">' + c.html + '</span>' +
+         '</div>';
+}).join('');
+var codeLines = Array.prototype.slice.call(codeScroll.querySelectorAll('.code-line'));
+
+/* 缩略图：完整渲染 13 行缩小版代码（保留缩进与颜色） */
+miniContent.innerHTML = CODE.map(function (c) {
+  return '<div class="mini-line" data-line="' + c.n + '">' + c.html + '</div>';
+}).join('');
+var miniLines = Array.prototype.slice.call(miniContent.querySelectorAll('.mini-line'));
+
+/* 数组 20 个格子 */
+(function buildArr() {
+  var html = '';
+  for (var n = 0; n < 20; n++) {
+    html += '<div class="acell empty" data-idx="' + n + '">' +
+              '<span class="aidx">' + n + '</span>' +
+              '<span class="aval">?</span>' +
+            '</div>';
+  }
+  arrGrid.innerHTML = html;
+})();
+var arrCells = Array.prototype.slice.call(arrGrid.querySelectorAll('.acell'));
+
+/* 变量表 */
+var VAR_ROWS = [
+  {k:'ctx',      label:'当前执行位置',                 cls:'r-ctx'},
+  {k:'i',        label:'i  (int)  循环变量 / 下标',     cls:'r-i'},
+  {k:'cond',     label:'循环条件  i < 20',             cls:'r-cond'},
+  {k:'ifc',      label:'if 条件  (i+1) % 5 == 0',      cls:'r-ifc'},
+  {k:'expr',     label:'正在求值的表达式',              cls:'r-expr'},
+  {k:'exprVal',  label:'表达式结果',                    cls:'r-eval'},
+  {k:'note',     label:'关键规则提示',                  cls:'r-note'},
+  {k:'printfN',  label:'printf 调用次数',               cls:'r-pf'},
+  {k:'putcharN', label:'putchar 调用次数',              cls:'r-pc'},
+  {k:'ret',      label:'main 返回值',                   cls:'r-ret'}
+];
+varTable.innerHTML = VAR_ROWS.map(function (r) {
+  return '<div class="vrow ' + r.cls + '" data-key="' + r.k + '">' +
+           '<span class="vk">' + r.label + '</span>' +
+           '<span class="vv dim">—</span>' +
+         '</div>';
+}).join('');
+
+/* =========================================================
+   4) 状态与渲染
+   ========================================================= */
+var current = -1;
+var playing = false;
+var timer   = null;
+var speed   = Number(speedInput.value);
+var lastOut = null;
+
+function getFullLineHeight() {
+  if (codeLines.length > 1) {
+    var d = codeLines[1].offsetTop - codeLines[0].offsetTop;
+    if (d > 0) return d;
+  }
+  return (codeLines[0] && codeLines[0].offsetHeight) || 1;
+}
+
+function renderCode(step) {
+  var activeLine = step ? step.line : -1;
+  var hitLines   = step ? step.hit  : [];
+  var skipLines  = step ? step.skip : [];
+  codeLines.forEach(function (el) {
+    var n = Number(el.dataset.line);
+    el.classList.toggle('active', n === activeLine);
+    el.classList.toggle('hit',    hitLines.indexOf(n)  !== -1);
+    el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+  });
+}
+
+function centerActiveLine() {
+  var el = codeScroll.querySelector('.code-line.active');
+  if (!el) return;
+  var lh = getFullLineHeight();
+  var maxScroll = codeScroll.scrollHeight - codeScroll.clientHeight;
+  if (maxScroll <= 0) return;
+  var target = el.offsetTop - (codeScroll.clientHeight - lh) / 2;
+  target = Math.max(0, Math.min(maxScroll, target));
+  if (Math.abs(target - codeScroll.scrollTop) < 4) return;
+  codeScroll.scrollTo({ top: target, behavior: 'smooth' });
+}
+
+function renderVars(step) {
+  VAR_ROWS.forEach(function (r) {
+    var row = varTable.querySelector('.vrow[data-key="' + r.k + '"]');
+    if (!row) return;
+    var el = row.querySelector('.vv');
+    var val = step ? String(step[r.k] === undefined ? '—' : step[r.k]) : '—';
+    if (el.textContent !== val) {
+      el.textContent = val;
+      el.classList.toggle('dim', val === '—');
+      el.classList.remove('flash');
+      void el.offsetWidth;
+      el.classList.add('flash');
+    }
+  });
+}
+
+function renderArr(step, prev) {
+  var vals = step ? step.arr : null;
+  var hl   = (step && step.hl)  || [];
+  var src  = (step && step.src) || [];
+  var prevVals = prev ? prev.arr : null;
+
+  arrCells.forEach(function (cell, idx) {
+    var valEl = cell.querySelector('.aval');
+    var v = vals ? vals[idx] : '?';
+    var isEmpty = (v === '?');
+    if (valEl.textContent !== v) {
+      valEl.textContent = v;
+      valEl.classList.remove('flash');
+      void valEl.offsetWidth;
+      if (!isEmpty && prevVals && prevVals[idx] !== v) valEl.classList.add('flash');
+    }
+    cell.classList.toggle('empty', isEmpty);
+    cell.classList.toggle('is-src', src.indexOf(idx) !== -1 && hl.indexOf(idx) === -1);
+    cell.classList.toggle('is-hl',  hl.indexOf(idx) !== -1);
+  });
+}
+
+/* 输出：按行增量更新，避免整屏重绘 */
+function renderOut(text) {
+  if (text === lastOut) return;
+  lastOut = text;
+
+  var lines = text ? text.split('\n') : [];
+  if (lines.length && lines[lines.length - 1] === '') lines.pop();
+
+  while (consoleBox.children.length > lines.length) {
+    consoleBox.removeChild(consoleBox.lastChild);
+  }
+  for (var n = 0; n < lines.length; n++) {
+    var div = consoleBox.children[n];
+    if (!div) {
+      div = document.createElement('div');
+      div.className = 'outline';
+      consoleBox.appendChild(div);
+    }
+    if (div.textContent !== lines[n]) div.textContent = lines[n];
+  }
+  consoleBox.scrollTop = consoleBox.scrollHeight;
+}
+
+function renderExplain(step) {
+  if (!step) {
+    explainBox.innerHTML =
+      '<span class="exhead">准备就绪</span>' +
+      '<strong>点击「自动播放」或「下一步」，开始逐条执行程序。</strong><br>' +
+      '本程序用<b>数组 + 单层 for 循环</b>生成斐波那契数列的前 20 项：<br>' +
+      '· <code>int a[20] = {1, 2};</code> 只给前两项，<b>其余自动补 0</b>；<br>' +
+      '· <code>printf("%-8d%-8d", a[0], a[1]);</code> 先打印前两项；<br>' +
+      '· <code>for(i=2; i&lt;20; i++)</code> 从第 3 项开始，用 <code>a[i] = a[i-1] + a[i-2];</code> 递推；<br>' +
+      '· 每算出一项就用 <code>printf("%-8d", a[i]);</code> 打出；<br>' +
+      '· <code>if((i+1) % 5 == 0) putchar(\'\\n\');</code> 每 5 项换一行。<br>' +
+      '<b>程序输出：4 行 × 5 项</b>：1 2 3 5 8 / 13 21 34 55 89 / 144 233 377 610 987 / 1597 2584 4181 6765 10946';
+    return;
+  }
+  var isHit = step.hit && step.hit.length > 0;
+  var isAns = (step.line === 4 || step.line === 7 || step.line === 9);
+  var cls = isAns ? ' ans' : (isHit ? ' hit' : '');
+  explainBox.innerHTML =
+    '<span class="exhead' + cls + '">第 ' + step.line + ' 行</span>' +
+    '<strong>' + step.title + '</strong><br>' + step.desc;
+}
+
+/* 缩略图：13 行等分高度 + 荧光框 = 全屏可见区域（完全对齐） */
+function syncMini() {
+  var H = miniBody.clientHeight;
+  if (H <= 0) return;
+
+  var miniLineH = H / 13;
+  for (var n = 0; n < miniLines.length; n++) {
+    var l = miniLines[n];
+    l.style.height = miniLineH + 'px';
+    l.style.lineHeight = miniLineH + 'px';
+    l.style.fontSize = Math.max(4, Math.round(miniLineH * 0.62)) + 'px';
+  }
+
+  var fullLineH = getFullLineHeight();
+  if (fullLineH <= 0) return;
+
+  var visRows = codeScroll.clientHeight / fullLineH;
+  var boxH = Math.min(H, visRows * miniLineH);
+  var boxTop = (codeScroll.scrollTop / fullLineH) * miniLineH;
+  boxTop = Math.max(0, Math.min(H - boxH, boxTop));
+
+  miniView.style.top = boxTop + 'px';
+  miniView.style.height = boxH + 'px';
+}
+
+function markMiniCurrent(step) {
+  var line = step ? step.line : -1;
+  var hitLines  = step ? step.hit  : [];
+  var skipLines = step ? step.skip : [];
+  miniLines.forEach(function (l) {
+    var n = Number(l.dataset.line);
+    l.classList.toggle('cur',  n === line);
+    l.classList.toggle('hit',  hitLines.indexOf(n)  !== -1);
+    l.classList.toggle('skip', skipLines.indexOf(n) !== -1);
+  });
+}
+
+function render() {
+  var step = current >= 0 ? STEPS[current] : null;
+  var prev = current > 0 ? STEPS[current - 1] : null;
+
+  renderCode(step);
+  renderVars(step);
+  renderArr(step, prev);
+  renderOut(step ? step.out : '');
+  renderExplain(step);
+  markMiniCurrent(step);
+  syncMini();
+  centerActiveLine();
+
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+}
+
+/* =========================================================
+   5) 播放控制
+   ========================================================= */
+function updatePlayBtn() {
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+function tick() {
+  if (current >= STEPS.length - 1) { pause(); return; }
+  current += 1;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+function play() {
+  if (playing) return;
+  if (current >= STEPS.length - 1) { current = -1; lastOut = null; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+function pause() {
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+function nextStep() {
+  pause();
+  if (current < STEPS.length - 1) { current += 1; render(); }
+}
+function prevStep() {
+  pause();
+  if (current > -1) { current -= 1; render(); }
+}
+function resetAll() {
+  pause();
+  current = -1;
+  lastOut = null;
+  consoleBox.innerHTML = '';
+  codeScroll.scrollTop = 0;
+  render();
+}
+
+btnPlay.addEventListener('click', function () { playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function () {
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if (playing) {
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+/* =========================================================
+   6) 面板：拖动 / 缩放 / 置顶 / 关闭 / 折叠
+   ========================================================= */
+var zTop = 100;
+var panelEls = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+
+function bringToFront(el) {
+  zTop += 1;
+  el.style.zIndex = zTop;
+  panelEls.forEach(function (p) { p.classList.remove('active'); });
+  el.classList.add('active');
+}
+
+panelEls.forEach(function (panel) {
+  var head     = panel.querySelector('.phead');
+  var handle   = panel.querySelector('.presize');
+  var closeBtn = panel.querySelector('.pclose');
+  var foldBtn  = panel.querySelector('.pfold');
+
+  /* 点击 / 触摸面板任意处 → 置顶 */
+  panel.addEventListener('pointerdown', function () { bringToFront(panel); }, true);
+
+  /* ---- 拖动（标题栏） ---- */
+  head.addEventListener('pointerdown', function (e) {
+    if (e.target.closest('button')) return;
+    e.preventDefault();
+    bringToFront(panel);
+    var r = panel.getBoundingClientRect();
+    var ox = e.clientX - r.left;
+    var oy = e.clientY - r.top;
+
+    function mv(ev) {
+      var x = ev.clientX - ox;
+      var y = ev.clientY - oy;
+      panel.style.left = x + 'px';
+      panel.style.top  = y + 'px';
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+    }
+    function up() {
+      document.removeEventListener('pointermove', mv);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+    }
+    document.addEventListener('pointermove', mv);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+  });
+
+  /* ---- 缩放（右下角手柄，不设最小 / 最大限制） ---- */
+  handle.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    bringToFront(panel);
+    var r = panel.getBoundingClientRect();
+    var sx = e.clientX, sy = e.clientY;
+    var sw = r.width, sh = r.height;
+
+    function mv(ev) {
+      var w = sw + (ev.clientX - sx);
+      var h = sh + (ev.clientY - sy);
+      panel.style.width  = Math.max(0, w) + 'px';
+      panel.style.height = Math.max(0, h) + 'px';
+      panel.style.right  = 'auto';
+      panel.style.bottom = 'auto';
+    }
+    function up() {
+      document.removeEventListener('pointermove', mv);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+      syncMini();
+    }
+    document.addEventListener('pointermove', mv);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+  });
+
+  /* ---- 关闭 ---- */
+  closeBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    panel.classList.add('hidden');
+  });
+
+  /* ---- 折叠 ---- */
+  foldBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (panel.classList.contains('collapsed')) {
+      panel.classList.remove('collapsed');
+      if (panel.dataset.savedH) panel.style.height = panel.dataset.savedH;
+      foldBtn.textContent = '—';
+    } else {
+      panel.dataset.savedH = panel.style.height || (panel.getBoundingClientRect().height + 'px');
+      panel.classList.add('collapsed');
+      panel.style.height = 'auto';
+      foldBtn.textContent = '＋';
+    }
+    syncMini();
+  });
+});
+
+/* ---- 重置布局 ---- */
+function resetLayout() {
+  var W = window.innerWidth;
+  var H = window.innerHeight;
+  function place(id, l, t, w, h) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('hidden');
+    el.style.left   = Math.round(l * W) + 'px';
+    el.style.top    = Math.round(t * H) + 'px';
+    el.style.width  = Math.round(w * W) + 'px';
+    el.style.height = Math.round(h * H) + 'px';
+    el.style.right  = 'auto';
+    el.style.bottom = 'auto';
+    el.style.zIndex = 100;
+  }
+  place('p-top',     0.010, 0.014, 0.62, 0.135);
+  place('p-vars',    0.010, 0.168, 0.36, 0.62);
+  place('p-explain', 0.010, 0.800, 0.60, 0.185);
+  place('p-out',     0.635, 0.800, 0.255, 0.185);
+  place('p-mini',    0.905, 0.014, 0.085, 0.76);
+  zTop = 100;
+  panelEls.forEach(function (p) { p.classList.remove('active'); });
+  requestAnimationFrame(syncMini);
+}
+btnLayout.addEventListener('click', resetLayout);
+
+/* ---- 全屏 ---- */
+btnFull.addEventListener('click', function () {
+  if (!document.fullscreenElement) {
+    (document.documentElement.requestFullscreen || function () {}).call(document.documentElement);
+  } else {
+    (document.exitFullscreen || function () {}).call(document);
+  }
+});
+
+/* ---- 所有面板 显示 / 隐藏 ---- */
+btnPanels.addEventListener('click', function () {
+  var anyVisible = panelEls.some(function (p) { return !p.classList.contains('hidden'); });
+  panelEls.forEach(function (p) { p.classList.toggle('hidden', anyVisible); });
+  if (anyVisible === false) requestAnimationFrame(syncMini);
+});
+
+/* ---- 缩略图 显示 / 隐藏 ---- */
+function toggleMini() {
+  var el = document.getElementById('p-mini');
+  el.classList.toggle('hidden');
+  if (!el.classList.contains('hidden')) {
+    bringToFront(el);
+    requestAnimationFrame(syncMini);
+  }
+}
+btnMini.addEventListener('click', toggleMini);
+
+/* =========================================================
+   7) 缩略图点击跳转 + 滚动同步
+   ========================================================= */
+miniBody.addEventListener('pointerdown', function (e) {
+  bringToFront(document.getElementById('p-mini'));
+  var r = miniBody.getBoundingClientRect();
+  var miniLineH = miniBody.clientHeight / 13;
+  if (miniLineH <= 0) return;
+  var idx = Math.floor((e.clientY - r.top) / miniLineH);
+  idx = Math.max(0, Math.min(12, idx));
+
+  var fullLineH = getFullLineHeight();
+  var maxScroll = codeScroll.scrollHeight - codeScroll.clientHeight;
+  var target = idx * fullLineH - (codeScroll.clientHeight - fullLineH) / 2;
+  target = Math.max(0, Math.min(maxScroll, target));
+  codeScroll.scrollTo({ top: target, behavior: 'smooth' });
+});
+
+var rafPending = false;
+function scheduleSync() {
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(function () {
+    rafPending = false;
+    syncMini();
+  });
+}
+codeScroll.addEventListener('scroll', scheduleSync, { passive: true });
+window.addEventListener('resize', function () { scheduleSync(); centerActiveLine(); });
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(function () { scheduleSync(); });
+}
+
+/* =========================================================
+   8) 全局快捷键（始终有效）
+   ========================================================= */
+document.addEventListener('keydown', function (e) {
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
+  if (e.code === 'Space')            { e.preventDefault(); playing ? pause() : play(); }
+  else if (e.code === 'ArrowRight')  { e.preventDefault(); nextStep(); }
+  else if (e.code === 'ArrowLeft')   { e.preventDefault(); prevStep(); }
+  else if (e.code === 'KeyR')        { resetAll(); }
+  else if (e.code === 'KeyF')        { btnFull.click(); }
+  else if (e.code === 'KeyM')        { toggleMini(); }
+  else if (e.code === 'KeyH')        { btnPanels.click(); }
+});
+
+/* =========================================================
+   9) 启动
+   ========================================================= */
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+resetLayout();
+render();
+setTimeout(scheduleSync, 120);
+setTimeout(scheduleSync, 500);
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,1771 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 分数序列求和 a/b 递推 + 符号交替 · 输入 n=5（希沃大屏版）</title>
+<style>
+  /* ============ 字体与全局变量（大屏硬指标） ============ */
+  :root{
+    --code-font: clamp(44px, 4.2vw, 118px);        /* 1920 下 ≈ 80.6px */
+    --line-h: calc(var(--code-font) * 1.62);
+    --out-font: clamp(40px, 4vw, 100px);           /* 1920 下 ≈ 76.8px */
+    --var-font: clamp(22px, 2.0vw, 42px);
+    --explain-font: clamp(26px, 2.5vw, 56px);
+    --btn-font: clamp(22px, 2.0vw, 42px);
+    --title-font: clamp(26px, 2.8vw, 58px);
+    --mini-font: clamp(5px, 0.42vw, 11px);
+    --bg:#0d1117;
+    --accent:#38bdf8;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;}
+  body{
+    background:var(--bg);
+    color:#dce8f8;
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  }
+
+  /* ============ 全屏代码区 ============ */
+  .code-viewport{
+    position:fixed; inset:0;
+    overflow:auto;
+    background:var(--bg);
+    z-index:1;
+    scrollbar-width:thin;
+    scrollbar-color:#2c3f5e transparent;
+  }
+  .code-viewport::-webkit-scrollbar{width:16px;height:16px;}
+  .code-viewport::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+  .code-viewport::-webkit-scrollbar-track{background:transparent;}
+
+  .code-content{width:max-content;min-width:100%;}
+
+  .code-line{
+    display:flex;
+    align-items:center;
+    height:var(--line-h);
+    white-space:pre;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:var(--code-font);
+    line-height:1;
+    padding:0 1em 0 .35em;
+    border-left:8px solid transparent;
+    transition:background .22s,border-color .22s,opacity .22s;
+  }
+  .code-line .ln{
+    flex:0 0 auto;
+    width:3.6ch;
+    text-align:right;
+    margin-right:.9ch;
+    color:#3f5a7d;
+    font-size:.7em;
+    font-variant-numeric:tabular-nums;
+    user-select:none;
+  }
+  .code-line .src{flex:1 1 auto;}
+
+  .code-line.active{
+    background:linear-gradient(90deg,rgba(56,189,248,.30),rgba(56,189,248,.03));
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 3px rgba(56,189,248,.40);
+  }
+  .code-line.active .src{color:#ffffff;}
+  .code-line.active .ln{color:var(--accent);font-weight:800;}
+
+  .code-line.hit{
+    background:linear-gradient(90deg,rgba(74,222,128,.18),rgba(74,222,128,0));
+    border-left-color:#4ade80;
+  }
+  .code-line.hit .ln{color:#4ade80;}
+
+  .code-line.skip{opacity:.22;}
+
+  /* 语法高亮 */
+  .pp{color:#c084fc;font-weight:700;}
+  .str{color:#4ade80;}
+  .cmt{color:#6b7f99;font-style:italic;}
+  .fn{color:#38bdf8;}
+  .kw{color:#f472b6;font-weight:700;}
+  .num{color:#fbbf24;}
+  .op{color:#fb923c;font-weight:700;}
+
+  /* ============ 悬浮面板通用 ============ */
+  .panel{
+    position:fixed;
+    z-index:100;
+    background:rgba(13,17,23,.82);
+    -webkit-backdrop-filter:blur(14px);
+    backdrop-filter:blur(14px);
+    border:2px solid rgba(56,189,248,.25);
+    border-radius:14px;
+    display:flex;flex-direction:column;
+    overflow:hidden;
+    box-shadow:0 12px 44px rgba(0,0,0,.66);
+    transition:border-color .18s,box-shadow .18s,background .18s;
+  }
+  .panel.active{
+    border-color:var(--accent);
+    box-shadow:0 0 0 4px rgba(56,189,248,.28),0 18px 60px rgba(0,0,0,.82);
+    background:rgba(13,17,23,.96);
+  }
+  .panel.hidden{display:none;}
+
+  .panel-head{
+    flex:0 0 auto;
+    display:flex;align-items:center;gap:.6rem;
+    padding:.32em .7em;
+    background:rgba(30,47,73,.72);
+    cursor:move;
+    user-select:none;
+    touch-action:none;
+    border-bottom:1px solid rgba(56,189,248,.18);
+  }
+  .panel-title{
+    font-size:var(--title-font);
+    font-weight:700;
+    color:#dce8f8;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .panel-close{
+    margin-left:auto;flex:0 0 auto;
+    min-width:48px;min-height:48px;
+    display:flex;align-items:center;justify-content:center;
+    border-radius:10px;
+    border:1px solid rgba(248,113,113,.55);
+    background:rgba(248,113,113,.16);
+    color:#fca5a5;
+    font-size:calc(var(--btn-font) * .9);
+    line-height:1;
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .panel-close:hover{background:rgba(248,113,113,.40);color:#fff;}
+
+  .panel-body{
+    flex:1 1 auto;
+    min-height:0;
+    overflow:auto;
+    padding:.5rem .7rem;
+    scrollbar-width:thin;
+    scrollbar-color:#2c3f5e transparent;
+  }
+  .panel-body::-webkit-scrollbar{width:12px;height:12px;}
+  .panel-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:6px;}
+
+  .resize-handle{
+    position:absolute;right:0;bottom:0;
+    width:52px;height:52px;
+    cursor:nwse-resize;
+    touch-action:none;
+    z-index:6;
+  }
+  .resize-handle::after{
+    content:'';
+    position:absolute;right:9px;bottom:9px;
+    width:22px;height:22px;
+    border-right:4px solid rgba(56,189,248,.85);
+    border-bottom:4px solid rgba(56,189,248,.85);
+    border-radius:0 0 6px 0;
+  }
+
+  /* ============ 控制栏按钮 ============ */
+  .ctl-row{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;}
+  .ctl-btn{
+    font:inherit;
+    font-size:var(--btn-font);
+    padding:.28em .7em;
+    border-radius:10px;
+    border:1px solid rgba(56,189,248,.35);
+    background:rgba(30,47,73,.82);
+    color:#dce8f8;
+    cursor:pointer;
+    min-height:56px;
+    white-space:nowrap;
+    transition:background .15s,border-color .15s,transform .1s;
+  }
+  .ctl-btn:hover:not(:disabled){background:rgba(56,189,248,.28);border-color:var(--accent);}
+  .ctl-btn:active:not(:disabled){transform:translateY(2px);}
+  .ctl-btn:disabled{opacity:.32;cursor:not-allowed;}
+  .ctl-btn.primary{
+    background:linear-gradient(180deg,#0ea5e9,#0284c7);
+    border-color:#7dd3fc;color:#04121f;font-weight:800;
+  }
+  .ctl-btn.primary.playing{
+    background:linear-gradient(180deg,#f59e0b,#d97706);
+    border-color:#fbbf24;color:#1a1200;
+  }
+  .speed-wrap{
+    display:flex;align-items:center;gap:.45rem;
+    font-size:var(--btn-font);color:#7d93b3;white-space:nowrap;
+  }
+  .speed-wrap input{
+    width:clamp(110px,9vw,240px);
+    accent-color:var(--accent);
+    cursor:pointer;
+    height:42px;
+  }
+  .speed-wrap b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:3.4em;display:inline-block;}
+
+  /* ============ 变量表 ============ */
+  .var-row{
+    display:flex;justify-content:space-between;align-items:center;gap:.6rem;
+    padding:.14em .6em;
+    border-radius:8px;
+    background:rgba(13,23,40,.88);
+    border:1px solid rgba(30,47,73,.95);
+    font-size:var(--var-font);
+    margin-bottom:.14em;
+    transition:background .25s,border-color .25s;
+  }
+  .var-row.k-ctx  {border-left:6px solid rgba(34,211,238,.8);}
+  .var-row.k-main {border-left:6px solid rgba(56,189,248,.8);}
+  .var-row.k-val  {border-left:6px solid rgba(244,114,182,.9);}
+  .var-row.k-sw   {border-left:6px solid rgba(45,212,191,.9);}
+  .var-row.k-money{border-left:6px solid rgba(251,191,36,.95);}
+  .var-row.k-sub  {border-left:6px solid rgba(192,132,252,.9);}
+  .var-row.k-note {border-left:6px solid rgba(45,212,191,.7);}
+  .var-row.k-ret  {border-left:6px solid rgba(251,191,36,.5);}
+  .var-row.changed{border-color:rgba(56,189,248,.95);background:rgba(56,189,248,.16);}
+  .var-name{color:#7d93b3;white-space:nowrap;}
+  .var-value{
+    font-family:ui-monospace,Consolas,monospace;
+    font-weight:800;
+    color:var(--accent);
+    text-align:right;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    max-width:62%;
+  }
+  .var-value.dim{color:#5f7796;font-weight:500;}
+  .var-row.k-ctx   .var-value{color:#4ade80;}
+  .var-row.k-val   .var-value{color:#f472b6;}
+  .var-row.k-sw    .var-value{color:#2dd4bf;}
+  .var-row.k-money .var-value{color:#fbbf24;}
+  .var-row.k-sub   .var-value{color:#c084fc;}
+  .var-row.k-note  .var-value{color:#2dd4bf;font-weight:600;}
+  .var-row.k-ret   .var-value{color:#fbbf24;}
+
+  @keyframes flash{
+    0%{transform:scale(1);}
+    35%{transform:scale(1.22);color:#fff;text-shadow:0 0 18px var(--accent);}
+    100%{transform:scale(1);}
+  }
+  .var-value.flash{animation:flash .55s ease-out;}
+
+  /* ============ 输出区 ============ */
+  .console{
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:var(--out-font);
+    line-height:1.35;
+    font-weight:800;
+    color:#fbbf24;
+    white-space:pre-wrap;
+    word-break:break-all;
+    tab-size:8;
+    -moz-tab-size:8;
+  }
+  .out-line{animation:slideIn .35s ease-out;}
+  @keyframes slideIn{from{opacity:0;transform:translateX(-1rem);}to{opacity:1;transform:none;}}
+
+  /* ============ 说明条 ============ */
+  .explain{font-size:var(--explain-font);line-height:1.5;color:#b8c9e0;}
+  .explain strong{color:#eaf3ff;}
+  .explain code{
+    font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.18);
+    border-radius:6px;
+    padding:0 .3em;
+    color:#e2e8f0;
+  }
+  .ex-tag{
+    display:inline-block;
+    margin-right:.5em;
+    padding:.05em .5em;
+    border-radius:8px;
+    background:rgba(56,189,248,.20);
+    color:var(--accent);
+    font-weight:800;
+    font-size:.8em;
+    vertical-align:middle;
+  }
+  .ex-tag.hit{background:rgba(74,222,128,.22);color:#4ade80;}
+  .ex-tag.ans{background:rgba(251,191,36,.26);color:#fbbf24;}
+  .explain .tip{
+    display:block;margin-top:.5em;padding:.4em .6em;border-radius:8px;
+    background:rgba(45,212,191,.12);border-left:6px solid #2dd4bf;color:#bff5ec;
+  }
+  .explain .warn{
+    display:block;margin-top:.5em;padding:.4em .6em;border-radius:8px;
+    background:rgba(251,191,36,.13);border-left:6px solid #fbbf24;color:#ffe6b0;
+  }
+
+  /* ============ 缩略图（保留缩进） ============ */
+  .mini-body{padding:0 !important;overflow:hidden !important;}
+  .mini-inner{
+    position:relative;width:100%;height:100%;
+    display:flex;flex-direction:column;
+    background:rgba(5,9,18,.55);
+  }
+  .mini-line{
+    flex:1 1 0;
+    min-height:0;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    font-family:ui-monospace,Consolas,monospace;
+    font-size:var(--mini-font);
+    line-height:1;
+    padding:0 4px;
+    border-left:3px solid transparent;
+    white-space:nowrap;
+  }
+  /* ★ 关键：用 white-space:pre 的 span 包住整行，保留行首缩进 */
+  .mini-src{
+    flex:1 1 auto;
+    min-width:0;
+    display:block;
+    white-space:pre;
+    overflow:hidden;
+  }
+  .mini-line.cur{
+    background:rgba(56,189,248,.35);
+    border-left-color:#38bdf8;
+    box-shadow:inset 0 0 0 2px rgba(56,189,248,.7);
+  }
+  .mini-viewport{
+    position:absolute;left:0;right:0;
+    pointer-events:none;
+    background:rgba(56,189,248,.16);
+    border-top:3px solid #38bdf8;
+    border-bottom:3px solid #38bdf8;
+    box-shadow:0 0 22px rgba(56,189,248,.55);
+    z-index:3;
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 全屏代码区 ================= -->
+<div class="code-viewport" id="codeViewport">
+  <div class="code-content" id="codeContent">
+
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                        <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                                 <span class="cmt">// 定义主函数</span></span></div>
+    <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">float</span> a<span class="op">=</span><span class="num">2</span>, b<span class="op">=</span><span class="num">1</span>, t, s<span class="op">=</span><span class="num">0</span>;             <span class="cmt">// a=2 分子，b=1 分母，t 未初始化，s=0 累加和</span></span></div>
+    <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">int</span> sign<span class="op">=</span><span class="num">1</span>, i, n;                    <span class="cmt">// sign=1 符号；i、n 未初始化</span></span></div>
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    <span class="fn">scanf</span>(<span class="str">"%d"</span>, <span class="op">&amp;</span>n);                     <span class="cmt">// 读入项数 n（演示输入 n = 5）</span></span></div>
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    <span class="kw">for</span> (i<span class="op">=</span><span class="num">1</span>; i<span class="op">&lt;=</span>n; i<span class="op">++</span>) {               <span class="cmt">// 循环 n 次，i 从 1 到 n</span></span></div>
+    <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">        s <span class="op">+=</span> a<span class="op">/</span>b <span class="op">*</span> sign;                   <span class="cmt">// 累加当前项（带符号）到 s</span></span></div>
+    <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">        <span class="fn">printf</span>(<span class="str">"No.%d:%.0f/%.0f \t"</span>, i, sign<span class="op">*</span>a, b); <span class="cmt">// 输出当前项（\t 制表符不换行）</span></span></div>
+    <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">        sign <span class="op">=</span> <span class="op">-</span>sign;                       <span class="cmt">// 符号取反，实现正负交替</span></span></div>
+    <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">        t <span class="op">=</span> a;                            <span class="cmt">// 第 1 步：临时变量保存旧 a</span></span></div>
+    <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">        a <span class="op">=</span> a <span class="op">+</span> b;                        <span class="cmt">// 第 2 步：新分子 = 旧分子 + 旧分母</span></span></div>
+    <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">        b <span class="op">=</span> t;                            <span class="cmt">// 第 3 步：新分母 = 旧分子</span></span></div>
+    <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">    }                                      <span class="cmt">// 结束 for 循环</span></span></div>
+    <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">    <span class="fn">printf</span>(<span class="str">"\ns=%.2f"</span>, s);                  <span class="cmt">// 换行后输出前 n 项之和（保留 2 位小数）</span></span></div>
+    <div class="code-line" data-line="15"><span class="ln">15</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                              <span class="cmt">// 返回 0，程序正常结束</span></span></div>
+    <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">}                                      <span class="cmt">// main 结束，栈帧销毁</span></span></div>
+
+  </div>
+</div>
+
+<!-- ================= 顶部控制栏 ================= -->
+<div class="panel" id="panelTop">
+  <div class="panel-head">
+    <span class="panel-title">控制台</span>
+    <button class="panel-close" data-close="panelTop">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="ctl-row">
+      <button class="ctl-btn" id="btnReset">⟲ 重置</button>
+      <button class="ctl-btn" id="btnPrev">◀ 上一步</button>
+      <button class="ctl-btn primary" id="btnPlay">▶ 自动播放</button>
+      <button class="ctl-btn" id="btnNext">下一步 ▶</button>
+      <span class="speed-wrap">速度
+        <input type="range" id="speed" min="300" max="3000" step="50" value="1200">
+        <b id="speedLabel">1.20s</b>
+      </span>
+      <button class="ctl-btn" id="btnFull">⛶ 全屏</button>
+      <button class="ctl-btn" id="btnToggleMini">▣ 缩略图</button>
+      <button class="ctl-btn" id="btnToggleAll">☰ 面板</button>
+      <button class="ctl-btn" id="btnResetLayout">↺ 重置布局</button>
+    </div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 变量面板 ================= -->
+<div class="panel" id="panelVars">
+  <div class="panel-head">
+    <span class="panel-title">变量 · 循环条件 · 状态表</span>
+    <button class="panel-close" data-close="panelVars">×</button>
+  </div>
+  <div class="panel-body" id="varTable"></div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 缩略图 ================= -->
+<div class="panel" id="panelMini">
+  <div class="panel-head">
+    <span class="panel-title">代码缩略图</span>
+    <button class="panel-close" data-close="panelMini">×</button>
+  </div>
+  <div class="panel-body mini-body">
+    <div class="mini-inner" id="miniInner">
+      <div class="mini-viewport" id="miniViewport"></div>
+    </div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 输出面板 ================= -->
+<div class="panel" id="panelOut">
+  <div class="panel-head">
+    <span class="panel-title">程序运行结果（屏幕输出）</span>
+    <button class="panel-close" data-close="panelOut">×</button>
+  </div>
+  <div class="panel-body" id="consoleBody">
+    <div class="console" id="consoleText"></div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 说明条 ================= -->
+<div class="panel" id="panelExplain">
+  <div class="panel-head">
+    <span class="panel-title">当前语句说明</span>
+    <button class="panel-close" data-close="panelExplain">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="explain" id="explainText"></div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   一、逐步执行轨迹（严格还原 C 程序真实执行过程）
+   演示输入 n = 5；printf 共 6 次
+   最终 a=21.0、b=13.0、t=13.0、s≈2.1917、sign=-1、i=6、n=5
+   ========================================================= */
+var STEPS = [];
+var outText = '';
+
+function V(o){
+  var base = {
+    ctx:'—', a:'—', b:'—', t:'—', s:'—',
+    sign:'—', i:'—', n:'—',
+    condLoop:'—', expr:'—', exprVal:'—', note:'—',
+    printfCnt:'0', ret:'—'
+  };
+  if(o){ for(var k in o){ if(Object.prototype.hasOwnProperty.call(o,k)) base[k]=o[k]; } }
+  return base;
+}
+function push(o){
+  STEPS.push({
+    line:o.line, ctx:o.ctx, vars:V(o.vars),
+    out:outText,
+    hit:o.hit||[], skip:o.skip||[],
+    title:o.title, desc:o.desc
+  });
+}
+function emit(t){ outText += t; }
+
+/* ---------- 第 1 行 ---------- */
+push({
+  line:1, ctx:'预处理阶段',
+  vars:{ note:'预处理指令，编译前处理，不占运行时间' },
+  hit:[], skip:[],
+  title:'#include &lt;stdio.h&gt; —— 引入标准输入输出头文件',
+  desc:'预处理器在编译之前把 <code>stdio.h</code> 的内容引入本文件，让后面的 <code>printf</code> 和 <code>scanf</code> 有函数声明可用。<br>这一行不是可执行语句，不产生任何屏幕输出。'
+});
+
+/* ---------- 第 2 行 ---------- */
+push({
+  line:2, ctx:'main · 程序入口',
+  vars:{ note:'main 是程序入口，从这里开始执行' },
+  hit:[], skip:[],
+  title:'int main() { —— 主函数入口',
+  desc:'操作系统把控制权交给 <code>main</code>，系统为它建立<b>栈帧</b>，本程序的 7 个变量 a、b、t、s、sign、i、n 都存放在这个栈帧里。'
+});
+
+/* ---------- 第 3 行 ---------- */
+push({
+  line:3, ctx:'main · 声明并初始化浮点变量',
+  vars:{
+    a:'2.000000', b:'1.000000', t:'未初始化', s:'0.000000',
+    note:'a=2 分子、b=1 分母；t 未初始化；s=0 累加和'
+  },
+  hit:[3], skip:[],
+  title:'float a=2, b=1, t, s=0; —— 定义浮点变量',
+  desc:'一次声明 <b>4 个 float</b> 变量：<br>· <b>a = 2</b>：当前项的<b>分子</b>；<br>· <b>b = 1</b>：当前项的<b>分母</b>；<br>· <b>t</b>：临时变量，<b>尚未初始化</b>（里面是不定值），稍后用来暂存旧的 a；<br>· <b>s = 0</b>：累加和，从 0 开始。<span class="tip">首项 <code>a/b = 2/1</code> 正是分数序列 2/1, 3/2, 5/3, 8/5, 13/8 … 的起点：每一项的分子 = 前一项分子+分母，分母 = 前一项分子。</span>'
+});
+
+/* ---------- 第 4 行 ---------- */
+push({
+  line:4, ctx:'main · 声明符号标记与循环变量',
+  vars:{
+    a:'2.000000', b:'1.000000', t:'未初始化', s:'0.000000',
+    sign:'1', i:'未初始化', n:'未初始化',
+    note:'sign=1 表示当前项取正号；i、n 还没有值'
+  },
+  hit:[4], skip:[],
+  title:'int sign=1, i, n; —— 定义符号标记和循环变量',
+  desc:'一次声明 <b>3 个 int</b> 变量：<br>· <b>sign = 1</b>：符号标记，取值只在 <b>1</b> 和 <b>−1</b> 之间来回翻转，决定当前项是加还是减；<br>· <b>i</b>：循环变量，尚未初始化；<br>· <b>n</b>：要累加的项数，尚未初始化，等待 <code>scanf</code> 读入。'
+});
+
+/* ---------- 第 5 行：scanf ---------- */
+push({
+  line:5, ctx:'main · scanf 读入项数 n',
+  vars:{
+    a:'2.000000', b:'1.000000', t:'未初始化', s:'0.000000',
+    sign:'1', i:'未初始化', n:'5',
+    expr:'scanf("%d", &amp;n)',
+    exprVal:'从键盘读入 5，存入 n',
+    note:'本次演示输入 n = 5'
+  },
+  hit:[5], skip:[],
+  title:'scanf("%d", &amp;n); —— 读入 n = 5',
+  desc:'<code>scanf("%d", &amp;n);</code> 从键盘读入一个整数存入变量 n。<br>· 本次演示输入 <b>5</b>，所以 <b>n = 5</b>，后面的 for 循环将执行 <b>5 轮</b>；<br>· <code>&amp;n</code> 取的是变量的<b>地址</b>，scanf 必须拿到地址才能把数据写回变量。'
+});
+
+/* ============ 第 6 行：for 第 1 轮 ============ */
+push({
+  line:6, ctx:'main · for 第 1 轮：i = 1，条件成立',
+  vars:{
+    a:'2.000000', b:'1.000000', t:'未初始化', s:'0.000000',
+    sign:'1', i:'1', n:'5',
+    condLoop:'i=1 ≤ n=5 → 真',
+    expr:'for (i=1; i<=n; i++)',
+    exprVal:'先 i=1，再判断 1≤5 成立 → 进入循环体',
+    note:'循环共 5 轮，i 依次取 1,2,3,4,5'
+  },
+  hit:[6], skip:[],
+  title:'for (i=1; i&lt;=n; i++)   第 1 轮：i = 1，条件为真',
+  desc:'<code>for</code> 语句的执行顺序是：<b>① 初始化 <code>i=1</code>；② 判断 <code>i&lt;=n</code></b>。<br>· 1 ≤ 5 成立 → 为真 → 进入循环体；<br>· 循环变量 i 从 1 开始，每轮结束自增 1，直到 <b>i 变成 6</b> 时条件为假，循环才结束。'
+});
+
+push({
+  line:7, ctx:'main · 第 1 轮：累加当前项到 s',
+  vars:{
+    a:'2.000000', b:'1.000000', t:'未初始化', s:'2.000000',
+    sign:'1', i:'1', n:'5',
+    condLoop:'i=1 ≤ 5 → 真',
+    expr:'s += a/b * sign',
+    exprVal:'s = 0 + 2.0/1.0 × 1 = 2.000000',
+    note:'当前项 = (a/b) × sign',
+    printfCnt:'0'
+  },
+  hit:[7], skip:[],
+  title:'s += a/b * sign;   →   s = 0 + 2/1 × 1 = 2.000000',
+  desc:'<code>s += a/b * sign</code> 等价于 <code>s = s + a/b * sign</code>。<br>· 第 1 轮：a = 2、b = 1、sign = 1 → 当前项 = 2/1 × 1 = <b>2</b>；<br>· s 由 0 变成 <b>2.000000</b>。<br><b>运算顺序：</b>先算 <code>a/b</code>，再乘 <code>sign</code>，最后加到 s 上。'
+});
+
+emit('No.1:2/1 \t');
+push({
+  line:8, ctx:'main · 第 1 轮：输出当前项',
+  vars:{
+    a:'2.000000', b:'1.000000', t:'未初始化', s:'2.000000',
+    sign:'1', i:'1', n:'5',
+    expr:'printf("No.%d:%.0f/%.0f \\t", i, sign*a, b)',
+    exprVal:'输出 "No.1:2/1 \t"',
+    note:'屏幕出现第 1 段输出',
+    printfCnt:'1'
+  },
+  hit:[8], skip:[],
+  title:'printf("No.%d:%.0f/%.0f \\t", i, sign*a, b);   →   No.1:2/1',
+  desc:'三个格式符依次被替换：<br>· <code>%d</code> ← <b>i = 1</b> → 打印 <b>1</b>；<br>· 第一个 <code>%.0f</code> ← <b>sign*a = 1 × 2 = 2</b> → 打印 <b>2</b>；<br>· 第二个 <code>%.0f</code> ← <b>b = 1</b> → 打印 <b>1</b>。<br>末尾的 <code>\\t</code> 是<b>制表符</b>，不换行，所以这一行还会继续往后接。'
+});
+
+push({
+  line:9, ctx:'main · 第 1 轮：符号取反',
+  vars:{
+    a:'2.000000', b:'1.000000', t:'未初始化', s:'2.000000',
+    sign:'-1', i:'1', n:'5',
+    expr:'sign = -sign',
+    exprVal:'sign = -1（由 1 变成 −1）',
+    note:'下一项将变成减号项',
+    printfCnt:'1'
+  },
+  hit:[9], skip:[],
+  title:'sign = -sign;   →   sign = −1',
+  desc:'<code>sign = -sign</code> 把当前值取相反数再赋回自身。<br>· 原来是 <b>1</b>，现在变成 <b>−1</b>；<br>· 于是下一轮的当前项会带上负号，实现序列的<b>正负交替</b>：+2/1 −3/2 +5/3 −8/5 +13/8 …'
+});
+
+push({
+  line:10, ctx:'main · 第 1 轮：备份 a 到 t',
+  vars:{
+    a:'2.000000', b:'1.000000', t:'2.000000', s:'2.000000',
+    sign:'-1', i:'1', n:'5',
+    expr:'t = a',
+    exprVal:'t = 2.000000（把当前 a 暂存起来）',
+    note:'为了下一步更新 a 后还能拿到旧的 a',
+    printfCnt:'1'
+  },
+  hit:[10], skip:[],
+  title:'t = a;   →   t = 2.000000',
+  desc:'先把 <b>a 的旧值 2.0</b> 备份到临时变量 t 里。<span class="tip"><b>为什么必须先备份？</b>因为第 11 行会改写 a，如果不提前备份，旧的 a 值就永远丢失了 —— 而新的 b 恰好需要这个旧值。</span>'
+});
+
+push({
+  line:11, ctx:'main · 第 1 轮：a 更新为 a + b',
+  vars:{
+    a:'3.000000', b:'1.000000', t:'2.000000', s:'2.000000',
+    sign:'-1', i:'1', n:'5',
+    expr:'a = a + b',
+    exprVal:'a = 2.0 + 1.0 = 3.000000',
+    note:'新分子 = 旧分子 + 旧分母',
+    printfCnt:'1'
+  },
+  hit:[11], skip:[],
+  title:'a = a + b;   →   a = 2.0 + 1.0 = 3.000000',
+  desc:'新分子 a 等于<b>旧分子与旧分母之和</b>：2 + 1 = <b>3</b>。<br>此时 a 已经变成 3.0，而 t 里还保存着旧的 a = 2.0。'
+});
+
+push({
+  line:12, ctx:'main · 第 1 轮：b 更新为旧的 a',
+  vars:{
+    a:'3.000000', b:'2.000000', t:'2.000000', s:'2.000000',
+    sign:'-1', i:'1', n:'5',
+    condLoop:'本轮结束，准备 i++',
+    expr:'b = t',
+    exprVal:'b = 2.0（即原来的 a）',
+    note:'新分母 = 旧分子，一项递推完成',
+    printfCnt:'1'
+  },
+  hit:[12], skip:[],
+  title:'b = t;   →   b = 2.000000（新分母 = 旧分子）',
+  desc:'把 t 中备份的旧 a 值 <b>2.0</b> 赋给 b。<br><b>本轮的递推完成：2/1 → 3/2。</b><br>这两步合起来就是斐波那契式递推：<code>新a = a+b</code>、<code>新b = 旧a</code>。'
+});
+
+/* ============ 第 6 行：for 第 2 轮 ============ */
+push({
+  line:6, ctx:'main · for 第 2 轮：i = 2，条件成立',
+  vars:{
+    a:'3.000000', b:'2.000000', t:'2.000000', s:'2.000000',
+    sign:'-1', i:'2', n:'5',
+    condLoop:'i=2 ≤ n=5 → 真',
+    expr:'for (i=1; i<=n; i++)',
+    exprVal:'i++ 后 i=2，2≤5 成立 → 继续循环',
+    note:'循环体执行完后回到 for 头部',
+    printfCnt:'1'
+  },
+  hit:[6], skip:[],
+  title:'for (i=1; i&lt;=n; i++)   第 2 轮：i = 2，条件为真',
+  desc:'第 12 行执行完、第 13 行的 <code>}</code> 之后，控制流回到 <code>for</code> 头部：<br>· 先执行 <b>i++</b>，i 从 1 变成 <b>2</b>；<br>· 再判断 <b>2 ≤ 5</b> 成立 → 进入第 2 轮循环体。'
+});
+
+push({
+  line:7, ctx:'main · 第 2 轮：累加当前项到 s',
+  vars:{
+    a:'3.000000', b:'2.000000', t:'2.000000', s:'0.500000',
+    sign:'-1', i:'2', n:'5',
+    condLoop:'i=2 ≤ 5 → 真',
+    expr:'s += a/b * sign',
+    exprVal:'s = 2.000000 + 3.0/2.0 × (−1) = 0.500000',
+    note:'当前项为负：−1.5',
+    printfCnt:'1'
+  },
+  hit:[7], skip:[],
+  title:'s += a/b * sign;   →   s = 2.000000 + 3/2 × (−1) = 0.500000',
+  desc:'· 第 2 轮：a = 3、b = 2、sign = −1 → 当前项 = 3/2 × (−1) = <b>−1.5</b>；<br>· s 由 2.000000 变成 <b>0.500000</b>。<br>符号交替发挥作用，正项之后紧跟一个负项。'
+});
+
+emit('No.2:-3/2 \t');
+push({
+  line:8, ctx:'main · 第 2 轮：输出当前项',
+  vars:{
+    a:'3.000000', b:'2.000000', t:'2.000000', s:'0.500000',
+    sign:'-1', i:'2', n:'5',
+    expr:'printf("No.%d:%.0f/%.0f \\t", i, sign*a, b)',
+    exprVal:'输出 "No.2:-3/2 \t"',
+    note:'屏幕第 1 行继续变长',
+    printfCnt:'2'
+  },
+  hit:[8], skip:[],
+  title:'printf(...);   →   No.2:-3/2',
+  desc:'· <code>%d</code> ← <b>i = 2</b>；<br>· <code>%.0f</code> ← <b>sign*a = (−1) × 3 = −3</b> → 打印 <b>-3</b>（负号来自 sign）；<br>· <code>%.0f</code> ← <b>b = 2</b>。<br>因为上一条 printf 末尾是 <code>\\t</code> 而不是 <code>\\n</code>，所以这次输出<b>接在同一行</b>后面。'
+});
+
+push({
+  line:9, ctx:'main · 第 2 轮：符号取反',
+  vars:{
+    a:'3.000000', b:'2.000000', t:'2.000000', s:'0.500000',
+    sign:'1', i:'2', n:'5',
+    expr:'sign = -sign',
+    exprVal:'sign = 1（由 −1 变回 1）',
+    printfCnt:'2'
+  },
+  hit:[9], skip:[],
+  title:'sign = -sign;   →   sign = 1',
+  desc:'sign 由 <b>−1</b> 翻转回 <b>1</b>，第 3 轮又是正项。'
+});
+
+push({
+  line:10, ctx:'main · 第 2 轮：备份 a 到 t',
+  vars:{
+    a:'3.000000', b:'2.000000', t:'3.000000', s:'0.500000',
+    sign:'1', i:'2', n:'5',
+    expr:'t = a',
+    exprVal:'t = 3.000000',
+    printfCnt:'2'
+  },
+  hit:[10], skip:[],
+  title:'t = a;   →   t = 3.000000',
+  desc:'把当前 a = <b>3.0</b> 备份到 t，供第 12 行使用。'
+});
+
+push({
+  line:11, ctx:'main · 第 2 轮：a 更新为 a + b',
+  vars:{
+    a:'5.000000', b:'2.000000', t:'3.000000', s:'0.500000',
+    sign:'1', i:'2', n:'5',
+    expr:'a = a + b',
+    exprVal:'a = 3.0 + 2.0 = 5.000000',
+    printfCnt:'2'
+  },
+  hit:[11], skip:[],
+  title:'a = a + b;   →   a = 3.0 + 2.0 = 5.000000',
+  desc:'新分子 = 3 + 2 = <b>5</b>。'
+});
+
+push({
+  line:12, ctx:'main · 第 2 轮：b 更新为旧的 a',
+  vars:{
+    a:'5.000000', b:'3.000000', t:'3.000000', s:'0.500000',
+    sign:'1', i:'2', n:'5',
+    condLoop:'本轮结束，准备 i++',
+    expr:'b = t',
+    exprVal:'b = 3.000000',
+    printfCnt:'2'
+  },
+  hit:[12], skip:[],
+  title:'b = t;   →   b = 3.000000（新分母 = 旧分子）',
+  desc:'递推完成：<b>3/2 → 5/3</b>。'
+});
+
+/* ============ 第 6 行：for 第 3 轮 ============ */
+push({
+  line:6, ctx:'main · for 第 3 轮：i = 3，条件成立',
+  vars:{
+    a:'5.000000', b:'3.000000', t:'3.000000', s:'0.500000',
+    sign:'1', i:'3', n:'5',
+    condLoop:'i=3 ≤ n=5 → 真',
+    printfCnt:'2'
+  },
+  hit:[6], skip:[],
+  title:'for (i=1; i&lt;=n; i++)   第 3 轮：i = 3，条件为真',
+  desc:'i++ 后 i = <b>3</b>，3 ≤ 5 成立 → 进入第 3 轮。'
+});
+
+push({
+  line:7, ctx:'main · 第 3 轮：累加当前项到 s',
+  vars:{
+    a:'5.000000', b:'3.000000', t:'3.000000', s:'2.166667',
+    sign:'1', i:'3', n:'5',
+    condLoop:'i=3 ≤ 5 → 真',
+    expr:'s += a/b * sign',
+    exprVal:'s = 0.500000 + 5.0/3.0 × 1 ≈ 2.166667',
+    note:'当前项 ≈ +1.666667',
+    printfCnt:'2'
+  },
+  hit:[7], skip:[],
+  title:'s += a/b * sign;   →   s = 0.500000 + 5/3 ≈ 2.166667',
+  desc:'· 当前项 = 5/3 × 1 ≈ <b>1.666667</b>；<br>· s 由 0.500000 变成 <b>2.166667</b>（约）。'
+});
+
+emit('No.3:5/3 \t');
+push({
+  line:8, ctx:'main · 第 3 轮：输出当前项',
+  vars:{
+    a:'5.000000', b:'3.000000', t:'3.000000', s:'2.166667',
+    sign:'1', i:'3', n:'5',
+    expr:'printf("No.%d:%.0f/%.0f \\t", i, sign*a, b)',
+    exprVal:'输出 "No.3:5/3 \t"',
+    printfCnt:'3'
+  },
+  hit:[8], skip:[],
+  title:'printf(...);   →   No.3:5/3',
+  desc:'· <code>%d</code> ← <b>3</b>；<code>%.0f</code> ← <b>sign*a = 1 × 5 = 5</b>；<code>%.0f</code> ← <b>3</b>。'
+});
+
+push({
+  line:9, ctx:'main · 第 3 轮：符号取反',
+  vars:{
+    a:'5.000000', b:'3.000000', t:'3.000000', s:'2.166667',
+    sign:'-1', i:'3', n:'5',
+    expr:'sign = -sign',
+    exprVal:'sign = −1',
+    printfCnt:'3'
+  },
+  hit:[9], skip:[],
+  title:'sign = -sign;   →   sign = −1',
+  desc:'符号再次翻转为 <b>−1</b>，第 4 轮将是负项。'
+});
+
+push({
+  line:10, ctx:'main · 第 3 轮：备份 a 到 t',
+  vars:{
+    a:'5.000000', b:'3.000000', t:'5.000000', s:'2.166667',
+    sign:'-1', i:'3', n:'5',
+    expr:'t = a',
+    exprVal:'t = 5.000000',
+    printfCnt:'3'
+  },
+  hit:[10], skip:[],
+  title:'t = a;   →   t = 5.000000',
+  desc:'备份当前 a = <b>5.0</b>。'
+});
+
+push({
+  line:11, ctx:'main · 第 3 轮：a 更新为 a + b',
+  vars:{
+    a:'8.000000', b:'3.000000', t:'5.000000', s:'2.166667',
+    sign:'-1', i:'3', n:'5',
+    expr:'a = a + b',
+    exprVal:'a = 5.0 + 3.0 = 8.000000',
+    printfCnt:'3'
+  },
+  hit:[11], skip:[],
+  title:'a = a + b;   →   a = 5.0 + 3.0 = 8.000000',
+  desc:'新分子 = 5 + 3 = <b>8</b>。'
+});
+
+push({
+  line:12, ctx:'main · 第 3 轮：b 更新为旧的 a',
+  vars:{
+    a:'8.000000', b:'5.000000', t:'5.000000', s:'2.166667',
+    sign:'-1', i:'3', n:'5',
+    condLoop:'本轮结束，准备 i++',
+    expr:'b = t',
+    exprVal:'b = 5.000000',
+    printfCnt:'3'
+  },
+  hit:[12], skip:[],
+  title:'b = t;   →   b = 5.000000（新分母 = 旧分子）',
+  desc:'递推完成：<b>5/3 → 8/5</b>。'
+});
+
+/* ============ 第 6 行：for 第 4 轮 ============ */
+push({
+  line:6, ctx:'main · for 第 4 轮：i = 4，条件成立',
+  vars:{
+    a:'8.000000', b:'5.000000', t:'5.000000', s:'2.166667',
+    sign:'-1', i:'4', n:'5',
+    condLoop:'i=4 ≤ n=5 → 真',
+    printfCnt:'3'
+  },
+  hit:[6], skip:[],
+  title:'for (i=1; i&lt;=n; i++)   第 4 轮：i = 4，条件为真',
+  desc:'i++ 后 i = <b>4</b>，4 ≤ 5 成立 → 进入第 4 轮。'
+});
+
+push({
+  line:7, ctx:'main · 第 4 轮：累加当前项到 s',
+  vars:{
+    a:'8.000000', b:'5.000000', t:'5.000000', s:'0.566667',
+    sign:'-1', i:'4', n:'5',
+    condLoop:'i=4 ≤ 5 → 真',
+    expr:'s += a/b * sign',
+    exprVal:'s = 2.166667 + 8.0/5.0 × (−1) ≈ 0.566667',
+    note:'当前项 = −1.6',
+    printfCnt:'3'
+  },
+  hit:[7], skip:[],
+  title:'s += a/b * sign;   →   s = 2.166667 + 8/5 × (−1) ≈ 0.566667',
+  desc:'· 当前项 = 8/5 × (−1) = <b>−1.6</b>；<br>· s 由 2.166667 减到 <b>0.566667</b>（约）。'
+});
+
+emit('No.4:-8/5 \t');
+push({
+  line:8, ctx:'main · 第 4 轮：输出当前项',
+  vars:{
+    a:'8.000000', b:'5.000000', t:'5.000000', s:'0.566667',
+    sign:'-1', i:'4', n:'5',
+    expr:'printf("No.%d:%.0f/%.0f \\t", i, sign*a, b)',
+    exprVal:'输出 "No.4:-8/5 \t"',
+    printfCnt:'4'
+  },
+  hit:[8], skip:[],
+  title:'printf(...);   →   No.4:-8/5',
+  desc:'· <code>%d</code> ← <b>4</b>；<code>%.0f</code> ← <b>sign*a = (−1) × 8 = −8</b>；<code>%.0f</code> ← <b>5</b>。'
+});
+
+push({
+  line:9, ctx:'main · 第 4 轮：符号取反',
+  vars:{
+    a:'8.000000', b:'5.000000', t:'5.000000', s:'0.566667',
+    sign:'1', i:'4', n:'5',
+    expr:'sign = -sign',
+    exprVal:'sign = 1',
+    printfCnt:'4'
+  },
+  hit:[9], skip:[],
+  title:'sign = -sign;   →   sign = 1',
+  desc:'符号翻转回 <b>1</b>，第 5 轮为正项。'
+});
+
+push({
+  line:10, ctx:'main · 第 4 轮：备份 a 到 t',
+  vars:{
+    a:'8.000000', b:'5.000000', t:'8.000000', s:'0.566667',
+    sign:'1', i:'4', n:'5',
+    expr:'t = a',
+    exprVal:'t = 8.000000',
+    printfCnt:'4'
+  },
+  hit:[10], skip:[],
+  title:'t = a;   →   t = 8.000000',
+  desc:'备份当前 a = <b>8.0</b>。'
+});
+
+push({
+  line:11, ctx:'main · 第 4 轮：a 更新为 a + b',
+  vars:{
+    a:'13.000000', b:'5.000000', t:'8.000000', s:'0.566667',
+    sign:'1', i:'4', n:'5',
+    expr:'a = a + b',
+    exprVal:'a = 8.0 + 5.0 = 13.000000',
+    printfCnt:'4'
+  },
+  hit:[11], skip:[],
+  title:'a = a + b;   →   a = 8.0 + 5.0 = 13.000000',
+  desc:'新分子 = 8 + 5 = <b>13</b>。'
+});
+
+push({
+  line:12, ctx:'main · 第 4 轮：b 更新为旧的 a',
+  vars:{
+    a:'13.000000', b:'8.000000', t:'8.000000', s:'0.566667',
+    sign:'1', i:'4', n:'5',
+    condLoop:'本轮结束，准备 i++',
+    expr:'b = t',
+    exprVal:'b = 8.000000',
+    printfCnt:'4'
+  },
+  hit:[12], skip:[],
+  title:'b = t;   →   b = 8.000000（新分母 = 旧分子）',
+  desc:'递推完成：<b>8/5 → 13/8</b>。'
+});
+
+/* ============ 第 6 行：for 第 5 轮 ============ */
+push({
+  line:6, ctx:'main · for 第 5 轮：i = 5，条件成立',
+  vars:{
+    a:'13.000000', b:'8.000000', t:'8.000000', s:'0.566667',
+    sign:'1', i:'5', n:'5',
+    condLoop:'i=5 ≤ n=5 → 真',
+    note:'这是最后一轮循环',
+    printfCnt:'4'
+  },
+  hit:[6], skip:[],
+  title:'for (i=1; i&lt;=n; i++)   第 5 轮：i = 5，条件为真',
+  desc:'i++ 后 i = <b>5</b>，5 ≤ 5 仍然成立 → 进入第 5 轮，这也是<b>最后一轮</b>。'
+});
+
+push({
+  line:7, ctx:'main · 第 5 轮：累加当前项到 s',
+  vars:{
+    a:'13.000000', b:'8.000000', t:'8.000000', s:'2.191667',
+    sign:'1', i:'5', n:'5',
+    condLoop:'i=5 ≤ 5 → 真',
+    expr:'s += a/b * sign',
+    exprVal:'s = 0.566667 + 13.0/8.0 × 1 ≈ 2.191667',
+    note:'当前项 = +1.625',
+    printfCnt:'4'
+  },
+  hit:[7], skip:[],
+  title:'s += a/b * sign;   →   s = 0.566667 + 13/8 ≈ 2.191667',
+  desc:'· 当前项 = 13/8 × 1 = <b>1.625</b>；<br>· s 由 0.566667 变成 <b>2.191667</b>（约）。'
+});
+
+emit('No.5:13/8 \t');
+push({
+  line:8, ctx:'main · 第 5 轮：输出当前项',
+  vars:{
+    a:'13.000000', b:'8.000000', t:'8.000000', s:'2.191667',
+    sign:'1', i:'5', n:'5',
+    expr:'printf("No.%d:%.0f/%.0f \\t", i, sign*a, b)',
+    exprVal:'输出 "No.5:13/8 \t"',
+    printfCnt:'5'
+  },
+  hit:[8], skip:[],
+  title:'printf(...);   →   No.5:13/8',
+  desc:'· <code>%d</code> ← <b>5</b>；<code>%.0f</code> ← <b>sign*a = 1 × 13 = 13</b>；<code>%.0f</code> ← <b>8</b>。<br>至此屏幕上第 1 行已经拼出 5 段分数。'
+});
+
+push({
+  line:9, ctx:'main · 第 5 轮：符号取反',
+  vars:{
+    a:'13.000000', b:'8.000000', t:'8.000000', s:'2.191667',
+    sign:'-1', i:'5', n:'5',
+    expr:'sign = -sign',
+    exprVal:'sign = −1',
+    note:'此后再没有用到 sign',
+    printfCnt:'5'
+  },
+  hit:[9], skip:[],
+  title:'sign = -sign;   →   sign = −1',
+  desc:'符号翻转为 <b>−1</b>。因为循环马上就结束了，这个值<b>不会再被使用</b>，但代码仍然照常执行。'
+});
+
+push({
+  line:10, ctx:'main · 第 5 轮：备份 a 到 t',
+  vars:{
+    a:'13.000000', b:'8.000000', t:'13.000000', s:'2.191667',
+    sign:'-1', i:'5', n:'5',
+    expr:'t = a',
+    exprVal:'t = 13.000000',
+    printfCnt:'5'
+  },
+  hit:[10], skip:[],
+  title:'t = a;   →   t = 13.000000',
+  desc:'备份当前 a = <b>13.0</b>。'
+});
+
+push({
+  line:11, ctx:'main · 第 5 轮：a 更新为 a + b',
+  vars:{
+    a:'21.000000', b:'8.000000', t:'13.000000', s:'2.191667',
+    sign:'-1', i:'5', n:'5',
+    expr:'a = a + b',
+    exprVal:'a = 13.0 + 8.0 = 21.000000',
+    printfCnt:'5'
+  },
+  hit:[11], skip:[],
+  title:'a = a + b;   →   a = 13.0 + 8.0 = 21.000000',
+  desc:'新分子 = 13 + 8 = <b>21</b>。这个值<b>不会再被使用</b>，但代码照常执行。'
+});
+
+push({
+  line:12, ctx:'main · 第 5 轮：b 更新为旧的 a',
+  vars:{
+    a:'21.000000', b:'13.000000', t:'13.000000', s:'2.191667',
+    sign:'-1', i:'5', n:'5',
+    condLoop:'本轮结束，准备 i++',
+    expr:'b = t',
+    exprVal:'b = 13.000000',
+    printfCnt:'5'
+  },
+  hit:[12], skip:[],
+  title:'b = t;   →   b = 13.000000（新分母 = 旧分子）',
+  desc:'递推完成：<b>13/8 → 21/13</b>。这两个值虽然算出来了，但循环已经不会再使用它们。'
+});
+
+/* ============ 第 6 行：条件不成立，循环结束 ============ */
+push({
+  line:6, ctx:'main · for 判断失败，循环结束',
+  vars:{
+    a:'21.000000', b:'13.000000', t:'13.000000', s:'2.191667',
+    sign:'-1', i:'6', n:'5',
+    condLoop:'i=6 ≤ n=5 → 假',
+    expr:'for (i=1; i<=n; i++)',
+    exprVal:'i++ 后 i=6，6≤5 不成立 → 退出循环',
+    note:'循环体共执行了 5 轮',
+    printfCnt:'5'
+  },
+  hit:[], skip:[7,8,9,10,11,12],
+  title:'for (i=1; i&lt;=n; i++)   i = 6，6 ≤ 5 为假 → 退出循环',
+  desc:'第 5 轮结束后回到 for 头部：<br>· 执行 <b>i++</b>，i 从 5 变成 <b>6</b>；<br>· 判断 <b>6 ≤ 5</b> 为<b>假</b> → 循环结束，控制流跳到第 13 行 <code>}</code> 之后。<br>所以循环体总共执行了 <b>5 轮</b>（i = 1,2,3,4,5）。'
+});
+
+/* ---------- 第 14 行：printf 求和结果（第 6 次 printf） ---------- */
+emit('\ns=2.19');
+push({
+  line:14, ctx:'main · printf 输出累加和 s（第 6 次 printf）',
+  vars:{
+    a:'21.000000', b:'13.000000', t:'13.000000', s:'2.191667',
+    sign:'-1', i:'6', n:'5',
+    expr:'printf("\\ns=%.2f", s)',
+    exprVal:'先换行，再输出 "s=2.19"',
+    note:'屏幕出现第 2 行输出',
+    printfCnt:'6'
+  },
+  hit:[14], skip:[],
+  title:'printf("\\ns=%.2f", s);   →   换行后输出 s=2.19',
+  desc:'· 字符串开头的 <code>\\n</code> 先<b>换行</b>，把光标移到下一行；<br>· <code>%.2f</code> 把 s 按<b>保留 2 位小数</b>输出：s ≈ 2.191667 → <b>2.19</b>；<br>· 屏幕上出现第二行 <b>s=2.19</b>；<br>· 这是本程序的<b>第 6 次 printf 调用</b>。'
+});
+
+/* ---------- 第 15 行：return 0 ---------- */
+push({
+  line:15, ctx:'main · return',
+  vars:{
+    a:'21.000000', b:'13.000000', t:'13.000000', s:'2.191667',
+    sign:'-1', i:'6', n:'5',
+    printfCnt:'6',
+    ret:'0',
+    expr:'return 0;',
+    exprVal:'返回 0，程序正常结束'
+  },
+  hit:[15], skip:[],
+  title:'return 0; —— 结束 main 函数',
+  desc:'<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。约定返回 0 表示程序<b>正常结束</b>。'
+});
+
+/* ---------- 第 16 行：} ---------- */
+push({
+  line:16, ctx:'程序结束',
+  vars:{
+    a:'21.000000', b:'13.000000', t:'13.000000', s:'2.191667',
+    sign:'-1', i:'6', n:'5',
+    printfCnt:'6',
+    ret:'0',
+    note:'栈帧销毁，变量随栈帧释放'
+  },
+  hit:[], skip:[],
+  title:'main 函数体结束 }',
+  desc:'函数收尾，main 的栈帧被销毁，a、b、t、s、sign、i、n 七个变量随之释放。<br>程序共调用 <b>6 次 printf</b>，返回值 0。<span class="tip"><b>本程序要点总结：</b><br>① <b>分数序列递推</b>：<code>t=a; a=a+b; b=t;</code> —— 新分子 = 旧分子+旧分母，新分母 = 旧分子，即 2/1 → 3/2 → 5/3 → 8/5 → 13/8；<br>② <b>符号交替</b>：<code>sign = -sign;</code> 让 sign 在 1 与 −1 之间翻转，实现 + − + − 交替；<br>③ <b>累加</b>：<code>s += a/b * sign;</code> 注意先算 <code>a/b</code>，再乘 sign；<br>④ <b>输出顺序</b>：先累加 s，再 printf 输出当前项 —— 所以第 i 次输出的一定是刚累加过的那一项；<br>⑤ <b>临时变量不可省</b>：<code>t=a</code> 必须在 <code>a=a+b</code> 之前，否则旧 a 值会丢失。<br><b>演示输入 n = 5 的输出：</b><br>· 第 1 行：<code>No.1:2/1 &nbsp;&nbsp;No.2:-3/2 &nbsp;&nbsp;No.3:5/3 &nbsp;&nbsp;No.4:-8/5 &nbsp;&nbsp;No.5:13/8</code>（各项之间是制表符）<br>· 第 2 行：<code>s=2.19</code><br><b>手算核对：</b>2 − 1.5 + 1.6667 − 1.6 + 1.625 = 2.1917 ≈ <b>2.19</b> ✓<br><b>常见错误：</b>① 把 <code>t=a;</code> 和 <code>a=a+b;</code> 顺序写反，导致分母错误；② 忘记 <code>sign=-sign;</code>，结果全为正数；③ 写成 <code>a/b*sign</code> 时把 <code>a</code>、<code>b</code> 写成 int，2/1 之后的 3/2 会被整数除法截断成 1；④ printf 里用 <code>%.0f</code> 而不是 <code>%d</code> 打印 sign*a 与 b（因为它们是 float）。</span>'
+});
+
+/* =========================================================
+   二、DOM 引用
+   ========================================================= */
+var codeViewport = document.getElementById('codeViewport');
+var codeContent  = document.getElementById('codeContent');
+var codeLines    = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+var varTable     = document.getElementById('varTable');
+var consoleText  = document.getElementById('consoleText');
+var explainText  = document.getElementById('explainText');
+var miniInner    = document.getElementById('miniInner');
+var miniViewport = document.getElementById('miniViewport');
+
+var panelTop     = document.getElementById('panelTop');
+var panelVars    = document.getElementById('panelVars');
+var panelMini    = document.getElementById('panelMini');
+var panelOut     = document.getElementById('panelOut');
+var panelExplain = document.getElementById('panelExplain');
+var ALL_PANELS   = [panelTop, panelVars, panelMini, panelOut, panelExplain];
+
+var btnReset       = document.getElementById('btnReset');
+var btnPrev        = document.getElementById('btnPrev');
+var btnPlay        = document.getElementById('btnPlay');
+var btnNext        = document.getElementById('btnNext');
+var btnFull        = document.getElementById('btnFull');
+var btnToggleMini  = document.getElementById('btnToggleMini');
+var btnToggleAll   = document.getElementById('btnToggleAll');
+var btnResetLayout = document.getElementById('btnResetLayout');
+var speedInput     = document.getElementById('speed');
+var speedLabel     = document.getElementById('speedLabel');
+
+/* =========================================================
+   三、变量面板行定义
+   ========================================================= */
+var VAR_ROWS = [
+  { key:'ctx',       name:'当前执行位置',                          kind:'k-ctx'   },
+  { key:'n',         name:'n      (int)   项数',                   kind:'k-main'  },
+  { key:'i',         name:'i      (int)   循环变量',               kind:'k-main'  },
+  { key:'sign',      name:'sign   (int)   符号 1 / −1',            kind:'k-sw'    },
+  { key:'a',         name:'a      (float) 分子',                   kind:'k-val'   },
+  { key:'b',         name:'b      (float) 分母',                   kind:'k-val'   },
+  { key:'t',         name:'t      (float) 临时变量',               kind:'k-money' },
+  { key:'s',         name:'s      (float) 累加和',                 kind:'k-money' },
+  { key:'condLoop',  name:'循环条件 i <= n',                      kind:'k-note'  },
+  { key:'expr',      name:'正在求值的表达式',                      kind:'k-sub'   },
+  { key:'exprVal',   name:'表达式结果',                            kind:'k-val'   },
+  { key:'note',      name:'关键规则提示',                          kind:'k-note'  },
+  { key:'printfCnt', name:'printf 调用次数',                       kind:'k-ret'   },
+  { key:'ret',       name:'main 返回值',                           kind:'k-ret'   }
+];
+
+function buildVarTable(){
+  varTable.innerHTML = VAR_ROWS.map(function(r){
+    return '<div class="var-row '+r.kind+'" data-key="'+r.key+'">'+
+             '<span class="var-name">'+r.name+'</span>'+
+             '<span class="var-value dim">—</span>'+
+           '</div>';
+  }).join('');
+}
+
+/* =========================================================
+   四、缩略图生成（保留缩进 + 语法高亮轮廓）
+   ========================================================= */
+var miniMaxUnits = 1;
+
+function computeMiniMaxUnits(){
+  var maxU = 0;
+  codeLines.forEach(function(el){
+    var clone = el.querySelector('.src').cloneNode(true);
+    var cmts = clone.querySelectorAll('.cmt');
+    Array.prototype.forEach.call(cmts, function(c){
+      if(c.parentNode) c.parentNode.removeChild(c);
+    });
+    var t = clone.textContent || '';
+    var u = 0;
+    for(var i = 0; i < t.length; i++){
+      u += (t.charCodeAt(i) > 255) ? 2 : 1;
+    }
+    if(u > maxU) maxU = u;
+  });
+  miniMaxUnits = maxU || 1;
+}
+
+function buildMinimap(){
+  var html = '';
+  codeLines.forEach(function(el){
+    var srcHTML = el.querySelector('.src').innerHTML;
+    /* ★ 用 mini-src（white-space:pre）包住整行，保留行首缩进 */
+    html += '<div class="mini-line"><span class="mini-src">'+srcHTML+'</span></div>';
+  });
+  miniViewport.insertAdjacentHTML('beforebegin', html);
+  computeMiniMaxUnits();
+}
+buildMinimap();
+var miniLines = Array.prototype.slice.call(miniInner.querySelectorAll('.mini-line'));
+
+/* =========================================================
+   五、渲染逻辑
+   ========================================================= */
+var current = -1;
+var playing = false;
+var timer   = null;
+var speed   = Number(speedInput.value);
+var lastOutSig = '';
+
+function valueOf(step, key){
+  if(!step) return '—';
+  if(key === 'ctx') return step.ctx;
+  var v = step.vars[key];
+  return (v === undefined || v === null) ? '—' : v;
+}
+
+function updateVars(step, prevStep){
+  VAR_ROWS.forEach(function(r){
+    var row = varTable.querySelector('.var-row[data-key="'+r.key+'"]');
+    if(!row) return;
+    var valEl = row.querySelector('.var-value');
+    var val = String(valueOf(step, r.key));
+    var old = String(valueOf(prevStep, r.key));
+    if(valEl.textContent !== val){
+      valEl.textContent = val;
+      valEl.classList.toggle('dim', val === '—');
+      valEl.title = val;
+      valEl.classList.remove('flash');
+      void valEl.offsetWidth;
+      valEl.classList.add('flash');
+      if(prevStep && old !== val){
+        row.classList.add('changed');
+        window.setTimeout(function(){ row.classList.remove('changed'); }, 700);
+      }
+    }
+  });
+}
+
+function updateCode(step){
+  var activeLine = step ? step.line : null;
+  var hitLines   = (step && step.hit)  || [];
+  var skipLines  = (step && step.skip) || [];
+  codeLines.forEach(function(el){
+    var n = Number(el.dataset.line);
+    el.classList.toggle('active', activeLine !== null && n === activeLine);
+    el.classList.toggle('hit',    hitLines.indexOf(n)  !== -1 && n !== activeLine);
+    el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+  });
+  /* 当前执行行如果在视野外，滚动到中间 */
+  if(activeLine !== null){
+    var el = codeLines[activeLine - 1];
+    if(el){
+      var lineH = el.offsetHeight || 1;
+      var top = el.offsetTop;
+      var bottom = top + lineH;
+      var vTop = codeViewport.scrollTop;
+      var vBottom = vTop + codeViewport.clientHeight;
+      if(top < vTop + 20 || bottom > vBottom - 20){
+        var target = top - (codeViewport.clientHeight - lineH) / 2;
+        var maxScroll = Math.max(0, codeContent.scrollHeight - codeViewport.clientHeight);
+        target = Math.max(0, Math.min(maxScroll, target));
+        try{
+          codeViewport.scrollTo({ top: target, behavior:'smooth' });
+        }catch(e){
+          codeViewport.scrollTop = target;
+        }
+      }
+    }
+  }
+}
+
+function updateOutput(){
+  var text = (current >= 0 && STEPS[current]) ? STEPS[current].out : '';
+  var sig = text;
+  if(sig === lastOutSig) return;
+  lastOutSig = sig;
+  if(!text){
+    consoleText.innerHTML = '<span style="color:#3d5474">（等待程序输出…）</span>';
+    return;
+  }
+  consoleText.innerHTML = text.split('\n').map(function(t){
+    return '<div class="out-line">'+t.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>';
+  }).join('');
+}
+
+function updateExplain(step){
+  if(!step){
+    explainText.innerHTML =
+      '<em>点击「自动播放」或「下一步」，开始逐条执行程序。<br>'+
+      '本程序计算分数序列 <b>2/1 − 3/2 + 5/3 − 8/5 + 13/8 − …</b> 的前 n 项之和：<br>'+
+      '· 分子分母由 <code>t=a; a=a+b; b=t;</code> 递推得到；<br>'+
+      '· 符号由 <code>sign = -sign;</code> 正负交替；<br>'+
+      '· 每轮把 <code>a/b*sign</code> 累加进 <b>s</b>，并打印当前项；<br>'+
+      '· 循环 n 次后输出累加和。<br>'+
+      '<b>示例输入：5</b>（循环 5 轮，最终输出 s=2.19）。</em>';
+    return;
+  }
+  var isHit = step.hit && step.hit.length > 0;
+  var isKey = step.title.indexOf('★') !== -1 ||
+              (step.line === 6 && /条件为真|条件成立/.test(step.title)) ||
+              (step.line === 8) ||
+              (step.line === 14);
+  var cls = isKey ? 'ans' : (isHit ? 'hit' : '');
+  explainText.innerHTML =
+    '<span class="ex-tag '+cls+'">第 '+step.line+' 行</span>'+
+    '<strong>'+step.title+'</strong> —— '+step.desc;
+}
+
+function updateMiniCurrent(lineNo){
+  miniLines.forEach(function(el, i){
+    el.classList.toggle('cur', lineNo !== null && (i + 1) === lineNo);
+  });
+}
+
+/* =========================================================
+   六、缩略图荧光框（与全屏可见区域严格同步）+ 字体自适应
+   ========================================================= */
+var syncPending = false;
+var miniFontCache = -1;
+
+function getLineHeight(){
+  if(!codeLines.length) return 1;
+  var h = codeContent.scrollHeight / codeLines.length;
+  return h > 0 ? h : (codeLines[0].offsetHeight || 1);
+}
+
+function fitMiniFont(bodyH, bodyW){
+  var avail = bodyW - 10;
+  if(avail <= 0 || bodyH <= 0) return;
+  var thumbLineH = bodyH / codeLines.length;
+  var fsByWidth  = avail / miniMaxUnits / 0.6;
+  var fsByHeight = thumbLineH * 0.82;
+  var fs = Math.min(fsByWidth, fsByHeight);
+  fs = Math.max(4, Math.min(16, fs));
+  fs = Math.round(fs * 100) / 100;
+  if(Math.abs(fs - miniFontCache) < 0.05) return;
+  miniFontCache = fs;
+  miniInner.style.setProperty('--mini-font', fs + 'px');
+}
+
+function updateMinimapViewport(){
+  var lineH = getLineHeight();
+  var bodyH = miniInner.clientHeight;
+  var bodyW = miniInner.clientWidth;
+  if(bodyH <= 0 || bodyW <= 0) return;
+
+  var totalLines = codeLines.length;                 /* 16 */
+  var thumbLineH = bodyH / totalLines;
+
+  fitMiniFont(bodyH, bodyW);
+
+  var scrollTop  = codeViewport.scrollTop;
+  var visibleRows = codeViewport.clientHeight / lineH;
+  if(visibleRows > totalLines) visibleRows = totalLines;
+
+  var top = (scrollTop / lineH) * thumbLineH;
+  var h   = visibleRows * thumbLineH;
+  if(top < 0) top = 0;
+  if(top + h > bodyH) top = Math.max(0, bodyH - h);
+
+  miniViewport.style.top    = top + 'px';
+  miniViewport.style.height = h + 'px';
+  miniViewport.style.left   = '0px';
+  miniViewport.style.right  = '0px';
+}
+
+function requestMiniSync(){
+  if(syncPending) return;
+  syncPending = true;
+  window.requestAnimationFrame(function(){
+    syncPending = false;
+    updateMinimapViewport();
+  });
+}
+
+/* 滚动同步 */
+codeViewport.addEventListener('scroll', requestMiniSync, { passive:true });
+
+/* 尺寸变化同步 */
+if(window.ResizeObserver){
+  var ro = new ResizeObserver(function(){
+    requestMiniSync();
+  });
+  ro.observe(codeViewport);
+  ro.observe(miniInner);
+}
+window.addEventListener('resize', function(){
+  requestMiniSync();
+  clampAllPanels();
+});
+window.addEventListener('orientationchange', function(){ requestMiniSync(); });
+if(document.fonts && document.fonts.ready){
+  document.fonts.ready.then(function(){ requestMiniSync(); });
+}
+window.addEventListener('load', requestMiniSync);
+
+/* 点击缩略图跳转 */
+miniInner.addEventListener('pointerdown', function(e){
+  if(e.target.closest('.resize-handle')) return;
+  var r = miniInner.getBoundingClientRect();
+  var y = e.clientY - r.top;
+  var totalLines = codeLines.length;
+  var thumbLineH = r.height / totalLines;
+  var row = Math.floor(y / thumbLineH);
+  row = Math.max(0, Math.min(totalLines - 1, row));
+
+  var lineH = getLineHeight();
+  var target = row * lineH - (codeViewport.clientHeight - lineH) / 2;
+  var maxScroll = Math.max(0, codeContent.scrollHeight - codeViewport.clientHeight);
+  target = Math.max(0, Math.min(maxScroll, target));
+  try{
+    codeViewport.scrollTo({ top: target, behavior:'smooth' });
+  }catch(err){
+    codeViewport.scrollTop = target;
+  }
+  requestMiniSync();
+});
+
+/* =========================================================
+   七、主渲染
+   ========================================================= */
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+  var prev = current > 0 ? STEPS[current - 1] : null;
+
+  updateCode(step);
+  updateVars(step, prev);
+  updateOutput();
+  updateExplain(step);
+  updateMiniCurrent(step ? step.line : null);
+  requestMiniSync();
+
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+}
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+
+function tick(){
+  if(current >= STEPS.length - 1){ pause(); return; }
+  current += 1;
+  render();
+  if(current >= STEPS.length - 1) pause();
+}
+
+function play(){
+  if(playing) return;
+  if(current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){
+  pause();
+  if(current < STEPS.length - 1){ current += 1; render(); }
+}
+
+function prevStep(){
+  pause();
+  if(current > -1){ current -= 1; render(); }
+}
+
+function resetAll(){
+  pause();
+  current = -1;
+  lastOutSig = '';
+  codeViewport.scrollTop = 0;
+  render();
+}
+
+/* =========================================================
+   八、面板：拖动 / 调整大小 / 置顶 / 关闭 / 重置布局
+   ========================================================= */
+var zTop = 100;
+
+function activatePanel(p){
+  zTop += 1;
+  p.style.zIndex = zTop;
+  ALL_PANELS.forEach(function(x){
+    x.classList.toggle('active', x === p);
+  });
+}
+
+function setPanel(p, left, top, width, height){
+  p.style.left   = (typeof left   === 'number') ? left + 'px'   : left;
+  p.style.top    = (typeof top    === 'number') ? top + 'px'    : top;
+  p.style.width  = (typeof width  === 'number') ? width + 'px'  : width;
+  p.style.height = (typeof height === 'number') ? height + 'px' : height;
+  p.style.right  = 'auto';
+  p.style.bottom = 'auto';
+}
+
+var DEFAULTS = {};
+function computeDefaults(){
+  var W = window.innerWidth, H = window.innerHeight;
+  DEFAULTS = {
+    panelTop:     { left: 16,            top: 16,               width:'auto', height:'auto' },
+    panelVars:    { left: Math.max(16, W - 760), top: 16,        width: 740,  height: Math.min(620, H * 0.60) },
+    panelMini:    { left: 16,            top: Math.max(16, H*0.16), width: 280, height: Math.min(720, H * 0.68) },
+    panelOut:     { left: Math.max(16, W - 760), top: Math.max(16, H - 300), width: 740, height: 280 },
+    panelExplain: { left: Math.max(16, W*0.18), top: Math.max(16, H - 420), width: Math.min(980, W*0.62), height: 400 }
+  };
+}
+
+function resetLayout(){
+  computeDefaults();
+  setPanel(panelTop,     DEFAULTS.panelTop.left,     DEFAULTS.panelTop.top,     DEFAULTS.panelTop.width,     DEFAULTS.panelTop.height);
+  setPanel(panelVars,    DEFAULTS.panelVars.left,    DEFAULTS.panelVars.top,    DEFAULTS.panelVars.width,    DEFAULTS.panelVars.height);
+  setPanel(panelMini,    DEFAULTS.panelMini.left,    DEFAULTS.panelMini.top,    DEFAULTS.panelMini.width,    DEFAULTS.panelMini.height);
+  setPanel(panelOut,     DEFAULTS.panelOut.left,     DEFAULTS.panelOut.top,     DEFAULTS.panelOut.width,     DEFAULTS.panelOut.height);
+  setPanel(panelExplain, DEFAULTS.panelExplain.left, DEFAULTS.panelExplain.top, DEFAULTS.panelExplain.width, DEFAULTS.panelExplain.height);
+
+  ALL_PANELS.forEach(function(p){
+    p.classList.remove('hidden');
+    p.classList.remove('active');
+  });
+  zTop = 100;
+  panelTop.style.zIndex     = (++zTop);
+  panelVars.style.zIndex    = (++zTop);
+  panelMini.style.zIndex    = (++zTop);
+  panelOut.style.zIndex     = (++zTop);
+  panelExplain.style.zIndex = (++zTop);
+
+  miniFontCache = -1;
+  requestMiniSync();
+}
+
+function clampAllPanels(){
+  ALL_PANELS.forEach(function(p){
+    if(p.classList.contains('hidden')) return;
+    var r = p.getBoundingClientRect();
+    var left = r.left, top = r.top;
+    var maxL = window.innerWidth  - 60;
+    var maxT = window.innerHeight - 40;
+    if(left > maxL){ p.style.left = maxL + 'px'; }
+    if(top  > maxT){ p.style.top  = maxT + 'px'; }
+    if(left + r.width  < 60){ p.style.left = (60 - r.width) + 'px'; }
+    if(top  + r.height < 40){ p.style.top  = '8px'; }
+  });
+}
+
+function startDrag(panel, e){
+  e.preventDefault();
+  var r = panel.getBoundingClientRect();
+  if(getComputedStyle(panel).width === 'auto' || panel.style.width === 'auto' || !panel.style.width){
+    panel.style.width  = r.width + 'px';
+  }
+  if(panel.style.height === 'auto' || !panel.style.height){
+    panel.style.height = r.height + 'px';
+  }
+  var ox = e.clientX - r.left;
+  var oy = e.clientY - r.top;
+
+  function move(ev){
+    var nl = ev.clientX - ox;
+    var nt = ev.clientY - oy;
+    var w = panel.offsetWidth, h = panel.offsetHeight;
+    nl = Math.max(-w + 80, Math.min(window.innerWidth - 80, nl));
+    nt = Math.max(0, Math.min(window.innerHeight - 40, nt));
+    panel.style.left = nl + 'px';
+    panel.style.top  = nt + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+  }
+  function up(){
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    document.removeEventListener('pointercancel', up);
+    requestMiniSync();
+  }
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+  document.addEventListener('pointercancel', up);
+}
+
+function startResize(panel, e){
+  e.preventDefault();
+  e.stopPropagation();
+  var r = panel.getBoundingClientRect();
+  var startW = r.width, startH = r.height;
+  var sx = e.clientX, sy = e.clientY;
+
+  function move(ev){
+    var nw = startW + (ev.clientX - sx);
+    var nh = startH + (ev.clientY - sy);
+    panel.style.width  = nw + 'px';
+    panel.style.height = nh + 'px';
+    panel.style.right  = 'auto';
+    panel.style.bottom = 'auto';
+    requestMiniSync();
+  }
+  function up(){
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    document.removeEventListener('pointercancel', up);
+    requestMiniSync();
+  }
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+  document.addEventListener('pointercancel', up);
+}
+
+ALL_PANELS.forEach(function(p){
+  p.addEventListener('pointerdown', function(){ activatePanel(p); }, true);
+  p.addEventListener('focusin', function(){ activatePanel(p); });
+
+  var head = p.querySelector('.panel-head');
+  head.addEventListener('pointerdown', function(e){
+    if(e.target.closest('button')) return;
+    startDrag(p, e);
+  });
+
+  var rh = p.querySelector('.resize-handle');
+  if(rh){
+    rh.addEventListener('pointerdown', function(e){
+      startResize(p, e);
+    });
+  }
+
+  var closeBtn = p.querySelector('.panel-close');
+  if(closeBtn){
+    closeBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      p.classList.add('hidden');
+    });
+  }
+});
+
+document.querySelectorAll('[data-close]').forEach(function(btn){
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var el = document.getElementById(btn.getAttribute('data-close'));
+    if(el) el.classList.add('hidden');
+  });
+});
+
+/* =========================================================
+   九、按钮与快捷键
+   ========================================================= */
+btnPlay.addEventListener('click', function(){ playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if(playing){
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+btnFull.addEventListener('click', function(){
+  if(!document.fullscreenElement){
+    if(document.documentElement.requestFullscreen){
+      document.documentElement.requestFullscreen().catch(function(){});
+    }
+  }else{
+    if(document.exitFullscreen) document.exitFullscreen();
+  }
+});
+
+btnToggleMini.addEventListener('click', function(){
+  panelMini.classList.toggle('hidden');
+  if(!panelMini.classList.contains('hidden')){
+    activatePanel(panelMini);
+    miniFontCache = -1;
+  }
+  requestMiniSync();
+});
+
+var allHidden = false;
+btnToggleAll.addEventListener('click', function(){
+  allHidden = !allHidden;
+  ALL_PANELS.forEach(function(p){
+    p.classList.toggle('hidden', allHidden);
+  });
+  if(!allHidden){
+    panelTop.classList.remove('hidden');
+    miniFontCache = -1;
+    requestMiniSync();
+  }
+});
+
+btnResetLayout.addEventListener('click', function(){
+  resetLayout();
+});
+
+document.addEventListener('keydown', function(e){
+  if(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  if(e.code === 'Space'){ e.preventDefault(); playing ? pause() : play(); }
+  else if(e.code === 'ArrowRight'){ e.preventDefault(); nextStep(); }
+  else if(e.code === 'ArrowLeft'){ e.preventDefault(); prevStep(); }
+  else if(e.code === 'KeyR'){ e.preventDefault(); resetAll(); }
+  else if(e.code === 'KeyF'){
+    e.preventDefault();
+    if(!document.fullscreenElement){
+      if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function(){});
+    }else{
+      if(document.exitFullscreen) document.exitFullscreen();
+    }
+  }
+  else if(e.code === 'KeyM'){
+    e.preventDefault();
+    panelMini.classList.toggle('hidden');
+    if(!panelMini.classList.contains('hidden')){
+      activatePanel(panelMini);
+      miniFontCache = -1;
+    }
+    requestMiniSync();
+  }
+  else if(e.code === 'KeyH'){
+    e.preventDefault();
+    var anyVisible = ALL_PANELS.some(function(p){ return !p.classList.contains('hidden'); });
+    ALL_PANELS.forEach(function(p){ p.classList.toggle('hidden', anyVisible); });
+    if(!anyVisible){ panelTop.classList.remove('hidden'); }
+    miniFontCache = -1;
+    requestMiniSync();
+  }
+});
+
+/* =========================================================
+   十、初始化
+   ========================================================= */
+buildVarTable();
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+resetLayout();
+render();
+requestMiniSync();
+window.setTimeout(requestMiniSync, 120);
+window.setTimeout(requestMiniSync, 600);
+
+})();
+</script>
+</body>
+</html>

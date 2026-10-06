@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 双重 for + flag 标记 + break · 渔夫分鱼问题（希沃大屏版）</title>
+<style>
+  /* ============ 字体与全局变量（大屏硬指标） ============ */
+  :root{
+    --code-font: clamp(44px, 4.2vw, 118px);
+    --line-h: calc(var(--code-font) * 1.62);
+    --out-font: clamp(40px, 4vw, 100px);
+    --var-font: clamp(24px, 2.2vw, 46px);
+    --explain-font: clamp(28px, 2.6vw, 58px);
+    --btn-font: clamp(24px, 2.1vw, 44px);
+    --title-font: clamp(28px, 3vw, 60px);
+    --mini-font: clamp(6px, 0.46vw, 12px);
+    --bg:#0d1117;
+    --accent:#38bdf8;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;}
+  body{
+    background:var(--bg);
+    color:#dce8f8;
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  }
+
+  /* ============ 全屏代码区 ============ */
+  .code-viewport{
+    position:fixed; inset:0;
+    overflow:auto;
+    background:var(--bg);
+    z-index:1;
+    scrollbar-width:thin;
+    scrollbar-color:#2c3f5e transparent;
+  }
+  .code-viewport::-webkit-scrollbar{width:16px;height:16px;}
+  .code-viewport::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+  .code-viewport::-webkit-scrollbar-track{background:transparent;}
+
+  .code-content{width:max-content;min-width:100%;}
+
+  .code-line{
+    display:flex;
+    align-items:center;
+    height:var(--line-h);
+    white-space:pre;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:var(--code-font);
+    line-height:1;
+    padding:0 1em 0 .35em;
+    border-left:8px solid transparent;
+    transition:background .22s,border-color .22s,opacity .22s;
+  }
+  .code-line .ln{
+    flex:0 0 auto;
+    width:3.6ch;
+    text-align:right;
+    margin-right:.9ch;
+    color:#3f5a7d;
+    font-size:.7em;
+    font-variant-numeric:tabular-nums;
+    user-select:none;
+  }
+  .code-line .src{flex:1 1 auto;}
+
+  .code-line.active{
+    background:linear-gradient(90deg,rgba(56,189,248,.30),rgba(56,189,248,.03));
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 3px rgba(56,189,248,.40);
+  }
+  .code-line.active .src{color:#ffffff;}
+  .code-line.active .ln{color:var(--accent);font-weight:800;}
+
+  .code-line.hit{
+    background:linear-gradient(90deg,rgba(74,222,128,.18),rgba(74,222,128,0));
+    border-left-color:#4ade80;
+  }
+  .code-line.hit .ln{color:#4ade80;}
+
+  .code-line.skip{opacity:.22;}
+
+  /* 语法高亮 */
+  .pp{color:#c084fc;font-weight:700;}
+  .str{color:#4ade80;}
+  .cmt{color:#6b7f99;font-style:italic;}
+  .fn{color:#38bdf8;}
+  .kw{color:#f472b6;font-weight:700;}
+  .num{color:#fbbf24;}
+  .op{color:#fb923c;font-weight:700;}
+
+  /* ============ 悬浮面板通用 ============ */
+  .panel{
+    position:fixed;
+    z-index:100;
+    background:rgba(13,17,23,.82);
+    -webkit-backdrop-filter:blur(14px);
+    backdrop-filter:blur(14px);
+    border:2px solid rgba(56,189,248,.25);
+    border-radius:14px;
+    display:flex;flex-direction:column;
+    overflow:hidden;
+    box-shadow:0 12px 44px rgba(0,0,0,.66);
+    transition:border-color .18s,box-shadow .18s,background .18s;
+  }
+  .panel.active{
+    border-color:var(--accent);
+    box-shadow:0 0 0 4px rgba(56,189,248,.28),0 18px 60px rgba(0,0,0,.82);
+    background:rgba(13,17,23,.96);
+  }
+  .panel.hidden{display:none;}
+
+  .panel-head{
+    flex:0 0 auto;
+    display:flex;align-items:center;gap:.6rem;
+    padding:.32em .7em;
+    background:rgba(30,47,73,.72);
+    cursor:move;
+    user-select:none;
+    touch-action:none;
+    border-bottom:1px solid rgba(56,189,248,.18);
+  }
+  .panel-title{
+    font-size:var(--title-font);
+    font-weight:700;
+    color:#dce8f8;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .panel-close{
+    margin-left:auto;flex:0 0 auto;
+    min-width:52px;min-height:52px;
+    display:flex;align-items:center;justify-content:center;
+    border-radius:10px;
+    border:1px solid rgba(248,113,113,.55);
+    background:rgba(248,113,113,.16);
+    color:#fca5a5;
+    font-size:calc(var(--btn-font) * .9);
+    line-height:1;
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .panel-close:hover{background:rgba(248,113,113,.40);color:#fff;}
+
+  .panel-body{
+    flex:1 1 auto;
+    min-height:0;
+    overflow:auto;
+    padding:.5rem .7rem;
+    scrollbar-width:thin;
+    scrollbar-color:#2c3f5e transparent;
+  }
+  .panel-body::-webkit-scrollbar{width:12px;height:12px;}
+  .panel-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:6px;}
+
+  .resize-handle{
+    position:absolute;right:0;bottom:0;
+    width:56px;height:56px;
+    cursor:nwse-resize;
+    touch-action:none;
+    z-index:6;
+  }
+  .resize-handle::after{
+    content:'';
+    position:absolute;right:9px;bottom:9px;
+    width:24px;height:24px;
+    border-right:4px solid rgba(56,189,248,.85);
+    border-bottom:4px solid rgba(56,189,248,.85);
+    border-radius:0 0 6px 0;
+  }
+
+  /* ============ 控制栏按钮 ============ */
+  .ctl-row{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;}
+  .ctl-btn{
+    font:inherit;
+    font-size:var(--btn-font);
+    padding:.28em .7em;
+    border-radius:10px;
+    border:1px solid rgba(56,189,248,.35);
+    background:rgba(30,47,73,.82);
+    color:#dce8f8;
+    cursor:pointer;
+    min-height:60px;
+    white-space:nowrap;
+    transition:background .15s,border-color .15s,transform .1s;
+  }
+  .ctl-btn:hover:not(:disabled){background:rgba(56,189,248,.28);border-color:var(--accent);}
+  .ctl-btn:active:not(:disabled){transform:translateY(2px);}
+  .ctl-btn:disabled{opacity:.32;cursor:not-allowed;}
+  .ctl-btn.primary{
+    background:linear-gradient(180deg,#0ea5e9,#0284c7);
+    border-color:#7dd3fc;color:#04121f;font-weight:800;
+  }
+  .ctl-btn.primary.playing{
+    background:linear-gradient(180deg,#f59e0b,#d97706);
+    border-color:#fbbf24;color:#1a1200;
+  }
+  .speed-wrap{
+    display:flex;align-items:center;gap:.45rem;
+    font-size:var(--btn-font);color:#7d93b3;white-space:nowrap;
+  }
+  .speed-wrap input{
+    width:clamp(120px,10vw,260px);
+    accent-color:var(--accent);
+    cursor:pointer;
+    height:44px;
+  }
+  .speed-wrap b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:3.4em;display:inline-block;}
+
+  /* ============ 变量表 ============ */
+  .var-row{
+    display:flex;justify-content:space-between;align-items:center;gap:.6rem;
+    padding:.16em .6em;
+    border-radius:8px;
+    background:rgba(13,23,40,.88);
+    border:1px solid rgba(30,47,73,.95);
+    font-size:var(--var-font);
+    margin-bottom:.16em;
+    transition:background .25s,border-color .25s;
+  }
+  .var-row.k-ctx  {border-left:6px solid rgba(34,211,238,.8);}
+  .var-row.k-main {border-left:6px solid rgba(56,189,248,.8);}
+  .var-row.k-val  {border-left:6px solid rgba(244,114,182,.9);}
+  .var-row.k-sw   {border-left:6px solid rgba(45,212,191,.9);}
+  .var-row.k-money{border-left:6px solid rgba(251,191,36,.95);}
+  .var-row.k-sub  {border-left:6px solid rgba(192,132,252,.9);}
+  .var-row.k-note {border-left:6px solid rgba(45,212,191,.7);}
+  .var-row.k-ret  {border-left:6px solid rgba(251,191,36,.5);}
+  .var-row.changed{border-color:rgba(56,189,248,.95);background:rgba(56,189,248,.16);}
+  .var-name{color:#7d93b3;white-space:nowrap;}
+  .var-value{
+    font-family:ui-monospace,Consolas,monospace;
+    font-weight:800;
+    color:var(--accent);
+    text-align:right;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    max-width:62%;
+  }
+  .var-value.dim{color:#5f7796;font-weight:500;}
+  .var-row.k-ctx   .var-value{color:#4ade80;}
+  .var-row.k-val   .var-value{color:#f472b6;}
+  .var-row.k-sw    .var-value{color:#2dd4bf;}
+  .var-row.k-money .var-value{color:#fbbf24;}
+  .var-row.k-sub   .var-value{color:#c084fc;}
+  .var-row.k-note  .var-value{color:#2dd4bf;font-weight:600;}
+  .var-row.k-ret   .var-value{color:#fbbf24;}
+
+  @keyframes flash{
+    0%{transform:scale(1);}
+    35%{transform:scale(1.22);color:#fff;text-shadow:0 0 18px var(--accent);}
+    100%{transform:scale(1);}
+  }
+  .var-value.flash{animation:flash .55s ease-out;}
+
+  /* ============ 输出区 ============ */
+  .console{
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:var(--out-font);
+    line-height:1.35;
+    font-weight:800;
+    color:#fbbf24;
+    white-space:pre-wrap;
+    word-break:break-all;
+  }
+  .out-line{animation:slideIn .35s ease-out;}
+  @keyframes slideIn{from{opacity:0;transform:translateX(-1rem);}to{opacity:1;transform:none;}}
+
+  /* ============ 说明条 ============ */
+  .explain{font-size:var(--explain-font);line-height:1.5;color:#b8c9e0;}
+  .explain strong{color:#eaf3ff;}
+  .explain code{
+    font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.18);
+    border-radius:6px;
+    padding:0 .3em;
+    color:#e2e8f0;
+  }
+  .ex-tag{
+    display:inline-block;
+    margin-right:.5em;
+    padding:.05em .5em;
+    border-radius:8px;
+    background:rgba(56,189,248,.20);
+    color:var(--accent);
+    font-weight:800;
+    font-size:.8em;
+    vertical-align:middle;
+  }
+  .ex-tag.hit{background:rgba(74,222,128,.22);color:#4ade80;}
+  .ex-tag.batch{background:rgba(192,132,252,.24);color:#c084fc;}
+  .ex-tag.ans{background:rgba(251,191,36,.26);color:#fbbf24;}
+  .explain .tip{
+    display:block;margin-top:.5em;padding:.4em .6em;border-radius:8px;
+    background:rgba(45,212,191,.12);border-left:6px solid #2dd4bf;color:#bff5ec;
+  }
+  .explain .warn{
+    display:block;margin-top:.5em;padding:.4em .6em;border-radius:8px;
+    background:rgba(251,191,36,.13);border-left:6px solid #fbbf24;color:#ffe6b0;
+  }
+
+  /* ============ 缩略图 ============ */
+  .mini-body{padding:0 !important;overflow:hidden !important;}
+  .mini-inner{
+    position:relative;width:100%;height:100%;
+    display:flex;flex-direction:column;
+    background:rgba(5,9,18,.55);
+  }
+  .mini-line{
+    flex:1 1 0;
+    min-height:0;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    font-family:ui-monospace,Consolas,monospace;
+    font-size:var(--mini-font);
+    line-height:1;
+    padding:0 4px;
+    border-left:3px solid transparent;
+    white-space:nowrap;
+  }
+  /* ★ 关键：保留缩进 —— 用 white-space:pre 的 span 包住整行 */
+  .mini-src{
+    flex:1 1 auto;
+    min-width:0;
+    display:block;
+    white-space:pre;
+    overflow:hidden;
+  }
+  .mini-line.cur{
+    background:rgba(56,189,248,.35);
+    border-left-color:#38bdf8;
+    box-shadow:inset 0 0 0 2px rgba(56,189,248,.7);
+  }
+  .mini-viewport{
+    position:absolute;left:0;right:0;
+    pointer-events:none;
+    background:rgba(56,189,248,.16);
+    border-top:3px solid #38bdf8;
+    border-bottom:3px solid #38bdf8;
+    box-shadow:0 0 22px rgba(56,189,248,.55);
+    z-index:3;
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 全屏代码区 ================= -->
+<div class="code-viewport" id="codeViewport">
+  <div class="code-content" id="codeContent">
+
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span></span></div>
+    <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">int</span> n, i, x, flag<span class="op">=</span><span class="num">1</span>;               <span class="cmt">// 定义变量和标记（flag 有初值 1，n/i/x 未初始化）</span></span></div>
+    <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">for</span> (n<span class="op">=</span><span class="num">6</span>; flag; n<span class="op">++</span>) {             <span class="cmt">// 外层：条件就是 flag，n 从 6 起每次 +1</span></span></div>
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">        <span class="kw">for</span> (x<span class="op">=</span>n, i<span class="op">=</span><span class="num">1</span>; flag <span class="op">&amp;&amp;</span> i<span class="op">&lt;=</span><span class="num">5</span>; i<span class="op">++</span>) { <span class="cmt">// 内层：逗号表达式同时初始化 x=n、i=1</span></span></div>
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">            <span class="kw">if</span> ((x<span class="op">-</span><span class="num">1</span>) <span class="op">%</span> <span class="num">5</span> <span class="op">==</span> <span class="num">0</span>) {       <span class="cmt">// 如果扔掉 1 条后能平分成 5 份</span></span></div>
+    <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">                x <span class="op">=</span> <span class="num">4</span> <span class="op">*</span> (x<span class="op">-</span><span class="num">1</span>) <span class="op">/</span> <span class="num">5</span>;      <span class="cmt">// 分鱼：扔掉 1 条后平分 5 份，留下 4 份</span></span></div>
+    <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">            } <span class="kw">else</span> {                    <span class="cmt">// 否则（不能平分）</span></span></div>
+    <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">                flag <span class="op">=</span> <span class="num">0</span>;               <span class="cmt">// 标记失败</span></span></div>
+    <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">                <span class="kw">break</span>;                  <span class="cmt">// 立即跳出内层 i 循环（只跳一层）</span></span></div>
+    <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">            }                          <span class="cmt">// 结束 if-else</span></span></div>
+    <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">        }                              <span class="cmt">// 结束内层 for</span></span></div>
+    <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">        <span class="kw">if</span> (flag) {                     <span class="cmt">// 如果 flag 为真（内层 5 次全部成功）</span></span></div>
+    <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">            <span class="kw">break</span>;                     <span class="cmt">// 找到结果，跳出外层 n 循环（n 不再 ++）</span></span></div>
+    <div class="code-line" data-line="15"><span class="ln">15</span><span class="src">        } <span class="kw">else</span> {                        <span class="cmt">// 否则</span></span></div>
+    <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">            flag <span class="op">=</span> <span class="num">1</span>;                  <span class="cmt">// 重置 flag，继续试探下一个 n</span></span></div>
+    <div class="code-line" data-line="17"><span class="ln">17</span><span class="src">        }                              <span class="cmt">// 结束 if-else</span></span></div>
+    <div class="code-line" data-line="18"><span class="ln">18</span><span class="src">    }                                  <span class="cmt">// 结束外层 for</span></span></div>
+    <div class="code-line" data-line="19"><span class="ln">19</span><span class="src">    <span class="fn">printf</span>(<span class="str">"The total number of fish is:%d \n"</span>, n); <span class="cmt">// 输出结果</span></span></div>
+    <div class="code-line" data-line="20"><span class="ln">20</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回 0，程序正常结束</span></span></div>
+    <div class="code-line" data-line="21"><span class="ln">21</span><span class="src">}                                      <span class="cmt">// main 结束，栈帧销毁</span></span></div>
+
+  </div>
+</div>
+
+<!-- ================= 顶部控制栏 ================= -->
+<div class="panel" id="panelTop">
+  <div class="panel-head">
+    <span class="panel-title">控制台</span>
+    <button class="panel-close" data-close="panelTop">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="ctl-row">
+      <button class="ctl-btn" id="btnReset">⟲ 重置</button>
+      <button class="ctl-btn" id="btnPrev">◀ 上一步</button>
+      <button class="ctl-btn primary" id="btnPlay">▶ 自动播放</button>
+      <button class="ctl-btn" id="btnNext">下一步 ▶</button>
+      <span class="speed-wrap">速度
+        <input type="range" id="speed" min="300" max="3000" step="50" value="1200">
+        <b id="speedLabel">1.20s</b>
+      </span>
+      <button class="ctl-btn" id="btnFull">⛶ 全屏</button>
+      <button class="ctl-btn" id="btnToggleMini">▣ 缩略图</button>
+      <button class="ctl-btn" id="btnToggleAll">☰ 面板</button>
+      <button class="ctl-btn" id="btnResetLayout">↺ 重置布局</button>
+    </div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 变量面板 ================= -->
+<div class="panel" id="panelVars">
+  <div class="panel-head">
+    <span class="panel-title">变量 · 循环条件 · 状态表</span>
+    <button class="panel-close" data-close="panelVars">×</button>
+  </div>
+  <div class="panel-body" id="varTable"></div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 缩略图 ================= -->
+<div class="panel" id="panelMini">
+  <div class="panel-head">
+    <span class="panel-title">代码缩略图</span>
+    <button class="panel-close" data-close="panelMini">×</button>
+  </div>
+  <div class="panel-body mini-body">
+    <div class="mini-inner" id="miniInner">
+      <div class="mini-viewport" id="miniViewport"></div>
+    </div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 输出面板 ================= -->
+<div class="panel" id="panelOut">
+  <div class="panel-head">
+    <span class="panel-title">程序运行结果（屏幕输出）</span>
+    <button class="panel-close" data-close="panelOut">×</button>
+  </div>
+  <div class="panel-body" id="consoleBody">
+    <div class="console" id="consoleText"></div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 说明条 ================= -->
+<div class="panel" id="panelExplain">
+  <div class="panel-head">
+    <span class="panel-title">当前语句说明</span>
+    <button class="panel-close" data-close="panelExplain">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="explain" id="explainText"></div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   一、逐步执行轨迹（严格还原 C 程序真实执行过程）
+   外层 n 从 6 开始逐个 +1 试探，靠 flag 刹车
+   内层 i 从 1 到 5 模拟 5 次分鱼
+   命中 n = 3121；printf 调用 1 次；最终 n=3121、i=6、x=1020、flag=1
+   ========================================================= */
+var STEPS = [];
+var consoleLines = [];
+
+function V(o){
+  var base = {
+    ctx:'—', n:'—', i:'—', x:'—', flag:'—',
+    condOuter:'—', condInner:'—',
+    divCheck:'—', divRes:'—', sellCalc:'—',
+    ifFlag:'—', note:'—',
+    printfCnt:'0', found:'0', ret:'—'
+  };
+  if(o){ for(var k in o){ if(Object.prototype.hasOwnProperty.call(o,k)) base[k]=o[k]; } }
+  return base;
+}
+function push(o){
+  STEPS.push({
+    line:o.line, ctx:o.ctx, vars:V(o.vars),
+    out:consoleLines.slice(),
+    hit:o.hit||[], skip:o.skip||[],
+    title:o.title, desc:o.desc
+  });
+}
+
+/* ---------- 第 1 行 ---------- */
+push({
+  line:1, ctx:'预处理阶段',
+  vars:{ note:'预处理指令，编译前处理，不占运行时间' },
+  hit:[], skip:[],
+  title:'#include &lt;stdio.h&gt; —— 引入标准输入输出头文件',
+  desc:'预处理器在编译之前把 <code>stdio.h</code> 的内容引入本文件，让后面的 <code>printf</code> 有函数声明可用。<br>这一行不是可执行语句，不产生任何屏幕输出。'
+});
+
+/* ---------- 第 2 行 ---------- */
+push({
+  line:2, ctx:'main · 程序入口',
+  vars:{ note:'main 是程序入口，从这里开始执行' },
+  hit:[], skip:[],
+  title:'int main() { —— 主函数入口',
+  desc:'操作系统把控制权交给 <code>main</code>，系统为它建立<b>栈帧</b>，变量 n、i、x、flag 都存放在这个栈帧里。'
+});
+
+/* ---------- 第 3 行 ---------- */
+push({
+  line:3, ctx:'main · 声明并初始化变量',
+  vars:{
+    flag:'1',
+    n:'未初始化（不定值）', i:'未初始化（不定值）', x:'未初始化（不定值）',
+    note:'flag=1 表示"还没找到，继续循环"'
+  },
+  hit:[3], skip:[],
+  title:'int n, i, x, flag=1; —— 声明 4 个 int 变量',
+  desc:'· <b>n</b>：外层循环变量，<b>试探的鱼的总数</b>（未初始化）；<br>· <b>i</b>：内层循环变量，表示<b>第几次分鱼</b>（未初始化）；<br>· <b>x</b>：<b>当前剩余的鱼数</b>（未初始化）；<br>· <b>flag</b>：标记变量，初值 <b>1</b>，表示"还没找到答案，继续循环"（有初值！）。<span class="tip"><b>题目背景：</b>渔夫把鱼分 5 次卖出。每次分鱼规则：<b>先扔掉 1 条</b>，再<b>平分成 5 份</b>，只留下其中 <b>4 份</b>（即 x = 4×(x−1)/5）。如果某一次扔掉 1 条后不能平分成 5 份，说明这个总数不对。<br>程序从 n=6 开始逐个试探，找到<b>能连续成功分 5 次</b>的最小鱼总数。</span>'
+});
+
+/* =========== n = 6 详细展开 =========== */
+push({
+  line:4, ctx:'main · 外层 for 第 1 轮（n = 6，flag = 1）',
+  vars:{
+    n:'6', flag:'1',
+    condOuter:'flag = 1 → 真（非 0 即真）',
+    note:'外层条件不是 n&lt;=某值，而是 flag'
+  },
+  hit:[4], skip:[],
+  title:'for (n=6; flag; n++) —— n 初始化为 6，flag=1 为真，进入外层循环',
+  desc:'外层 <code>for</code> 先把 n 赋为 <b>6</b>；条件就是 <b>flag</b> 本身，flag = 1 → 真，进入循环体。<br>步长 <code>n++</code>，每次加 1，逐个试探鱼总数。<span class="tip">外层负责<b>试探鱼总数</b>，内层负责<b>模拟 5 次分鱼</b>。</span>'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 初始化（i = 1，x = n = 6）',
+  vars:{
+    n:'6', i:'1', x:'6', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 1 &lt;= 5 → 真',
+    note:'x 每次外层循环都重新赋值为 n'
+  },
+  hit:[5], skip:[],
+  title:'for (x=n, i=1; flag &amp;&amp; i&lt;=5; i++) —— 逗号表达式同时初始化 x=6、i=1',
+  desc:'内层 <code>for</code> 用<b>逗号表达式</b>同时初始化两个变量：x = <b>n</b> = <b>6</b>，i = <b>1</b>。<br>条件 <code>flag &amp;&amp; i&lt;=5</code>：flag=1 真，1 ≤ 5 真 → <b>整体为真</b>，进入循环体。<span class="warn">关键：x 每轮外层循环都要重新赋值为 n，不能带着上一轮的残值。</span>'
+});
+
+push({
+  line:6, ctx:'main · 整除判断（第 1 次分鱼）',
+  vars:{
+    n:'6', i:'1', x:'6', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 1 &lt;= 5 → 真',
+    divCheck:'(x-1) % 5  →  (6-1) % 5 = 5 % 5',
+    divRes:'5 % 5 = 0 → 真（能平分）',
+    note:'扔掉 1 条后剩 5 条，能平分成 5 份'
+  },
+  hit:[6], skip:[],
+  title:'(6-1) % 5 = 5 % 5 = 0 → 真，进入分鱼分支',
+  desc:'<code>(x-1) % 5 == 0</code> 判断"扔掉 1 条后能否平分成 5 份"：<br>· x = 6，扔掉 1 条剩 <b>5</b> 条<br>· 5 % 5 = <b>0</b> → <b>能平分</b>，条件为真，进入 if 体。<br><b>含义：</b>第 1 次分鱼，扔掉 1 条后每份 1 条，渔夫留下 4 份 = 4 条。'
+});
+
+push({
+  line:7, ctx:'main · 执行分鱼（第 1 次）',
+  vars:{
+    n:'6', i:'1', x:'4', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 1 &lt;= 5 → 真',
+    divCheck:'(6-1) % 5 = 0',
+    divRes:'真（能平分）',
+    sellCalc:'x = 4 * (6-1) / 5 = 4 * 5 / 5',
+    note:'第 1 次留下 4 条'
+  },
+  hit:[7], skip:[],
+  title:'x = 4 * (6-1) / 5 = 4  →  x = 4',
+  desc:'执行分鱼：<br>· <code>4 * (x-1) / 5</code> = 4 × 5 / 5 = <b>4</b><br>· x 更新为 <b>4</b><br>第 1 次分鱼完成，剩下 4 条鱼留给下一次。'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 递增（i = 2）',
+  vars:{
+    n:'6', i:'2', x:'4', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 2 &lt;= 5 → 真',
+    note:'继续第 2 次分鱼'
+  },
+  hit:[5], skip:[],
+  title:'i++ → i = 2：flag = 1 &amp;&amp; 2 &lt;= 5 → 真',
+  desc:'内层循环执行 <code>i++</code>，i 从 1 递增到 <b>2</b>。<br>条件检查：<code>flag=1</code> 且 <code>2 &lt;= 5</code> → <b>真</b>，继续第 2 次分鱼。'
+});
+
+push({
+  line:6, ctx:'main · 整除判断（第 2 次分鱼）',
+  vars:{
+    n:'6', i:'2', x:'4', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 2 &lt;= 5 → 真',
+    divCheck:'(x-1) % 5  →  (4-1) % 5 = 3 % 5',
+    divRes:'3 % 5 = 3 ≠ 0 → 假（不能平分）',
+    note:'3 不能被 5 整除'
+  },
+  hit:[6], skip:[],
+  title:'(4-1) % 5 = 3 % 5 = 3 ≠ 0 → 假，进入 else 分支',
+  desc:'<code>(x-1) % 5 == 0</code> 判断：<br>· x = 4，扔掉 1 条剩 <b>3</b> 条<br>· 3 % 5 = <b>3</b> ≠ 0 → <b>不能平分</b><br>条件为假，进入 <code>else</code> 分支，说明 n = 6 不是答案。'
+});
+
+push({
+  line:9, ctx:'main · 标记失败',
+  vars:{
+    n:'6', i:'2', x:'4', flag:'0',
+    condOuter:'flag = 1 → 真（本轮开始时的值）',
+    condInner:'flag = 1 &amp;&amp; 2 &lt;= 5 → 真',
+    divCheck:'(4-1) % 5 = 3 ≠ 0',
+    divRes:'假（不能平分）',
+    note:'flag 被置 0，表示"这个 n 不行"'
+  },
+  hit:[9], skip:[],
+  title:'flag = 0;  标记 n = 6 失败',
+  desc:'<code>flag = 0;</code> 把标记从 <b>1</b> 改成 <b>0</b>。<br>flag 一旦变成 0，内层循环的继续条件（<code>flag &amp;&amp; i&lt;=5</code>）就会失效，外层循环也会在后面对 flag 做判断。'
+});
+
+push({
+  line:10, ctx:'main · break 跳出内层循环',
+  vars:{
+    n:'6', i:'2', x:'4', flag:'0',
+    condOuter:'flag = 0（下次判断将退出）',
+    condInner:'flag = 0 → 不再继续',
+    divCheck:'(4-1) % 5 = 3 ≠ 0',
+    divRes:'假（不能平分）',
+    note:'break 只跳出最近的一层循环'
+  },
+  hit:[10], skip:[],
+  title:'break;  立即跳出内层 i 循环',
+  desc:'<code>break;</code> 立即<b>跳出内层 i 循环</b>，不再继续 i = 3、4、5 的分鱼。<br><span class="warn"><b>注意：</b><code>break</code> 只会跳出<b>离它最近的一层循环</b>（也就是内层 i 循环），<b>不会</b>直接跳出外层 n 循环。外层循环还需要靠 flag = 0 来让它停下（本轮靠后面对 flag 的判断）。</span>'
+});
+
+push({
+  line:13, ctx:'main · 判断内层循环是否成功',
+  vars:{
+    n:'6', i:'2', x:'4', flag:'0',
+    condOuter:'flag = 0 → 假',
+    condInner:'已退出（flag=0）',
+    ifFlag:'if (flag)  →  flag = 0 → 假',
+    note:'内层失败，走 else 分支'
+  },
+  hit:[13], skip:[14],
+  title:'if (flag) → flag = 0 → 假，进入 else 分支',
+  desc:'内层循环结束后检查 <code>if (flag)</code>：<br>· flag 现在是 <b>0</b>，在 C 语言中 <b>0 表示假</b><br>· 条件为假 → <b>跳过 L14 的 break</b>，进入 <code>else</code> 分支（L16）。<br>这意味着 n = 6 这个总数不对，需要继续试探下一个。'
+});
+
+push({
+  line:16, ctx:'main · 重置 flag，准备试探下一个 n',
+  vars:{
+    n:'6 → 7（n++）', i:'2', x:'4', flag:'1',
+    condOuter:'即将 n++ 变成 7，flag = 1',
+    condInner:'已退出',
+    ifFlag:'else 分支：flag = 1',
+    note:'n++ 会让 n 变成 7'
+  },
+  hit:[16], skip:[],
+  title:'flag = 1;  重置标记，n 递增到 7',
+  desc:'<code>flag = 1;</code> 把标记恢复成 <b>1</b>，准备试探下一个数。<br>外层循环执行 <code>n++</code>，n 从 6 变成 <b>7</b>，进入下一轮。'
+});
+
+/* ---------- 批量 n = 7 ~ 10 ---------- */
+push({
+  line:5, ctx:'main · 批量：n = 7 ~ 10',
+  vars:{
+    n:'7~10', i:'1', x:'—', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'各轮均在 i=1 时失败',
+    divCheck:'n-1 = 6、7、8、9 都不能被 5 整除',
+    divRes:'假（不能平分）',
+    note:'第一次分鱼就失败，flag=0 后 break'
+  },
+  hit:[4,5,6,9,10,13,16], skip:[7],
+  title:'批量：n = 7 ~ 10，第一次检查全部失败',
+  desc:'n 依次取 7、8、9、10，内层 i=1 时：<br>· n=7：(7-1) % 5 = 6 % 5 = <b>1</b> ≠ 0 → flag=0，break<br>· n=8：(8-1) % 5 = 7 % 5 = <b>2</b> ≠ 0 → flag=0，break<br>· n=9：(9-1) % 5 = 8 % 5 = <b>3</b> ≠ 0 → flag=0，break<br>· n=10：(10-1) % 5 = 9 % 5 = <b>4</b> ≠ 0 → flag=0，break<br><b>4 个 n 都在第一次检查就失败，无任何输出。</b>'
+});
+
+/* ---------- 批量 n = 11 ~ 20 ---------- */
+push({
+  line:5, ctx:'main · 批量：n = 11 ~ 20',
+  vars:{
+    n:'11~20', i:'1~2', x:'—', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'各轮最多到 i=2 就失败',
+    divCheck:'n=11、16 通过第一次；其余第一次就失败',
+    divRes:'假（不能平分）',
+    note:'继续失败，无任何命中'
+  },
+  hit:[4,5,6,7,9,10,13,16], skip:[],
+  title:'批量：n = 11 ~ 20，仍然全部失败',
+  desc:'n 依次取 11、12、13、…、20：<br>· n=11：(11-1) % 5 = 10 % 5 = 0 ✓ → x = 4×10/5 = 8；i=2 时 (8-1) % 5 = 7 % 5 = 2 ≠ 0 ✗<br>· n=12~15：(n-1) % 5 = 1、2、3、4 ≠ 0 ✗<br>· n=16：(16-1) % 5 = 15 % 5 = 0 ✓ → x = 4×15/5 = 12；i=2 时 (12-1) % 5 = 11 % 5 = 1 ≠ 0 ✗<br>· n=17~20：(n-1) % 5 ≠ 0 ✗<br><b>10 个 n 全部失败，无任何输出。</b>'
+});
+
+/* ---------- 批量 n = 21 ~ 120 ---------- */
+push({
+  line:5, ctx:'main · 批量：n = 21 ~ 120',
+  vars:{
+    n:'21~120', i:'1~3', x:'—', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'各轮最多到 i=3 就失败',
+    divCheck:'n=21、46、71、96 能通过前两次，第三次失败',
+    divRes:'假（不能平分）',
+    note:'n=21 时首次出现"能分 2 次"的情况'
+  },
+  hit:[4,5,6,7,9,10,13,16], skip:[],
+  title:'批量：n = 21 ~ 120，仍然全部失败',
+  desc:'n 从 21 到 120 逐个试探。绝大多数 n 在第一次检查就失败，少数（n ≡ 1 mod 5）能过第一次，其中 n = 21、46、71、96 还能过第二次：<br>· n=21：(21-1)%5=0 ✓，x=16；i=2 时 (16-1)%5=0 ✓，x=12；i=3 时 (12-1)%5=1 ✗<br>· n=46、71、96 类似，都是第三次检查失败<br><b>没有任何 n 能走完 5 次分鱼，无任何输出。</b><span class="tip"><b>规律：</b>要过第一次检查，需要 n ≡ 1 (mod 5)；要过第二次，还需要 (n-1)/5 ≡ 4 (mod 5)，即 n ≡ 21 (mod 25)；要过第三次，需要 n ≡ 121 (mod 125)……每多过一次检查，对 n 的约束就多一个 5 的倍数。</span>'
+});
+
+/* ---------- 批量 n = 121 ~ 620 ---------- */
+push({
+  line:5, ctx:'main · 批量：n = 121 ~ 620',
+  vars:{
+    n:'121~620', i:'1~4', x:'—', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'各轮最多到 i=4 就失败',
+    divCheck:'n=121、246、371、496 能过前三次，第四次失败',
+    divRes:'假（不能平分）',
+    note:'n=121 首次能分 3 次'
+  },
+  hit:[4,5,6,7,9,10,13,16], skip:[],
+  title:'批量：n = 121 ~ 620，仍然全部失败',
+  desc:'n 从 121 到 620 逐个试探，绝大多数很快失败。其中 n = 121、246、371、496 能通过前 3 次分鱼：<br>· n=121：x=121 → 96 → 76，i=4 时 (76-1) % 5 = 75 % 5 = 0 ✓，x = 60，i=5 时 (60-1)%5 = 59%5 = 4 ✗<br>· n=246、371、496 类似，都是第四次或第五次检查失败<br><b>仍然没有任何 n 能走完 5 次分鱼，无任何输出。</b>'
+});
+
+/* ---------- 批量 n = 621 ~ 3120 ---------- */
+push({
+  line:5, ctx:'main · 批量：n = 621 ~ 3120（含 4 个"差一点"的 n）',
+  vars:{
+    n:'621~3120', i:'1~5', x:'—', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'绝大多数很快失败',
+    divCheck:'n=621、1246、1871、2496 能过前四次，第五次失败',
+    divRes:'假（不能平分）',
+    note:'★ n=3121 是第一个能走完 5 次分鱼的数'
+  },
+  hit:[4,5,6,7,9,10,13,16], skip:[],
+  title:'批量：n = 621 ~ 3120，仍然全部失败',
+  desc:'n 从 621 到 3120 逐个试探，绝大多数很快失败。其中有 4 个"差一点"的 n 能通过前 4 次分鱼，但在<b>第 5 次</b>失败：<br>· <b>n=621</b>：x 依次为 621 → 496 → 396 → 316 → 252，i=5 时 (252-1) % 5 = 251 % 5 = 1 ✗<br>· <b>n=1246</b>：同理，在 i=5 时失败<br>· <b>n=1871、n=2496</b>：同样在 i=5 时失败<br><b>这 4 个 n 都只是"差一点点"，但真正能走完 5 次分鱼的最小 n 是 3121。</b><span class="tip"><b>规律递推：</b><br>· 过 1 次检查：n ≡ 1 (mod 5)<br>· 过 2 次检查：n ≡ 21 (mod 25)<br>· 过 3 次检查：n ≡ 121 (mod 125)<br>· 过 4 次检查：n ≡ 621 (mod 625)<br>· 过 5 次检查：n ≡ 3121 (mod 3125)<br>所以第一个能过全部 5 次检查的 n 就是 <b>3121</b>——正是经典"分鱼/分椰子"问题的答案！</span>'
+});
+
+/* =========================================================
+   n = 3121：详细展开
+   ========================================================= */
+push({
+  line:4, ctx:'main · 外层 for 递增，n 变为 3121 ★',
+  vars:{
+    n:'3121', flag:'1',
+    condOuter:'flag = 1 → 真',
+    note:'★ 第一个能走完 5 次分鱼的 n'
+  },
+  hit:[4], skip:[],
+  title:'n++ → n = 3121：flag = 1 → 真 ★',
+  desc:'外层执行 <code>n++</code>，n 从 3120 递增到 <b>3121</b>，flag 仍为 1，条件成立。<br><span class="tip"><b>伏笔：</b>前面 3000 多个 n 全部失败，答案就在 <b>n = 3121</b>。它是经典"渔夫分鱼"问题的最小正整数解（等价于 5 个水手分椰子问题的 3121）。</span>'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 初始化（i = 1, x = 3121）★',
+  vars:{
+    n:'3121', i:'1', x:'3121', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 1 &lt;= 5 → 真',
+    note:'x 重新赋值为 n = 3121'
+  },
+  hit:[5], skip:[],
+  title:'for (x=n, i=1; ...)  i = 1, x = 3121',
+  desc:'x 重新被赋值为 n = <b>3121</b>，条件成立，进入第 1 次分鱼。'
+});
+
+push({
+  line:6, ctx:'main · 整除判断（第 1 次分鱼）',
+  vars:{
+    n:'3121', i:'1', x:'3121', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 1 &lt;= 5 → 真',
+    divCheck:'(3121-1) % 5 = 3120 % 5',
+    divRes:'3120 % 5 = 0 → 真（能平分）',
+    note:'能整除'
+  },
+  hit:[6], skip:[],
+  title:'(3121-1) % 5 = 3120 % 5 = 0 → 真',
+  desc:'· x = 3121，扔掉 1 条剩 <b>3120</b> 条<br>· 3120 % 5 = <b>0</b> → 能平分，条件为真。'
+});
+
+push({
+  line:7, ctx:'main · 执行分鱼（第 1 次）',
+  vars:{
+    n:'3121', i:'1', x:'2496', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 1 &lt;= 5 → 真',
+    divCheck:'3120 % 5 = 0',
+    divRes:'真（能平分）',
+    sellCalc:'x = 4 * 3120 / 5 = 12480 / 5 = 2496',
+    note:'第 1 次留下 2496 条'
+  },
+  hit:[7], skip:[],
+  title:'x = 4 * 3120 / 5 = 2496  →  x = 2496',
+  desc:'· <code>4 * (x-1) / 5</code> = 4 × 3120 / 5 = 12480 / 5 = <b>2496</b><br>· x 更新为 <b>2496</b>'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 递增（i = 2）',
+  vars:{
+    n:'3121', i:'2', x:'2496', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 2 &lt;= 5 → 真',
+    note:'继续第 2 次分鱼'
+  },
+  hit:[5], skip:[],
+  title:'i++ → i = 2：2 &lt;= 5 → 真',
+  desc:'i 递增到 <b>2</b>，继续第 2 次分鱼。'
+});
+
+push({
+  line:6, ctx:'main · 整除判断（第 2 次分鱼）',
+  vars:{
+    n:'3121', i:'2', x:'2496', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 2 &lt;= 5 → 真',
+    divCheck:'(2496-1) % 5 = 2495 % 5',
+    divRes:'2495 % 5 = 0 → 真（能平分）',
+    note:'能整除'
+  },
+  hit:[6], skip:[],
+  title:'(2496-1) % 5 = 2495 % 5 = 0 → 真',
+  desc:'· x = 2496，扔掉 1 条剩 <b>2495</b> 条<br>· 2495 % 5 = <b>0</b> → 能平分。'
+});
+
+push({
+  line:7, ctx:'main · 执行分鱼（第 2 次）',
+  vars:{
+    n:'3121', i:'2', x:'1996', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 2 &lt;= 5 → 真',
+    divCheck:'2495 % 5 = 0',
+    divRes:'真（能平分）',
+    sellCalc:'x = 4 * 2495 / 5 = 9980 / 5 = 1996',
+    note:'第 2 次留下 1996 条'
+  },
+  hit:[7], skip:[],
+  title:'x = 4 * 2495 / 5 = 1996  →  x = 1996',
+  desc:'· 4 × 2495 / 5 = 9980 / 5 = <b>1996</b><br>· x 更新为 <b>1996</b>'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 递增（i = 3）',
+  vars:{
+    n:'3121', i:'3', x:'1996', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 3 &lt;= 5 → 真',
+    note:'继续第 3 次分鱼'
+  },
+  hit:[5], skip:[],
+  title:'i++ → i = 3：3 &lt;= 5 → 真',
+  desc:'i 递增到 <b>3</b>，继续第 3 次分鱼。'
+});
+
+push({
+  line:6, ctx:'main · 整除判断（第 3 次分鱼）',
+  vars:{
+    n:'3121', i:'3', x:'1996', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 3 &lt;= 5 → 真',
+    divCheck:'(1996-1) % 5 = 1995 % 5',
+    divRes:'1995 % 5 = 0 → 真（能平分）',
+    note:'能整除'
+  },
+  hit:[6], skip:[],
+  title:'(1996-1) % 5 = 1995 % 5 = 0 → 真',
+  desc:'· x = 1996，扔掉 1 条剩 <b>1995</b> 条<br>· 1995 % 5 = <b>0</b> → 能平分。'
+});
+
+push({
+  line:7, ctx:'main · 执行分鱼（第 3 次）',
+  vars:{
+    n:'3121', i:'3', x:'1596', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 3 &lt;= 5 → 真',
+    divCheck:'1995 % 5 = 0',
+    divRes:'真（能平分）',
+    sellCalc:'x = 4 * 1995 / 5 = 7980 / 5 = 1596',
+    note:'第 3 次留下 1596 条'
+  },
+  hit:[7], skip:[],
+  title:'x = 4 * 1995 / 5 = 1596  →  x = 1596',
+  desc:'· 4 × 1995 / 5 = 7980 / 5 = <b>1596</b><br>· x 更新为 <b>1596</b>'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 递增（i = 4）',
+  vars:{
+    n:'3121', i:'4', x:'1596', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 4 &lt;= 5 → 真',
+    note:'继续第 4 次分鱼'
+  },
+  hit:[5], skip:[],
+  title:'i++ → i = 4：4 &lt;= 5 → 真',
+  desc:'i 递增到 <b>4</b>，继续第 4 次分鱼。'
+});
+
+push({
+  line:6, ctx:'main · 整除判断（第 4 次分鱼）',
+  vars:{
+    n:'3121', i:'4', x:'1596', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 4 &lt;= 5 → 真',
+    divCheck:'(1596-1) % 5 = 1595 % 5',
+    divRes:'1595 % 5 = 0 → 真（能平分）',
+    note:'能整除'
+  },
+  hit:[6], skip:[],
+  title:'(1596-1) % 5 = 1595 % 5 = 0 → 真',
+  desc:'· x = 1596，扔掉 1 条剩 <b>1595</b> 条<br>· 1595 % 5 = <b>0</b> → 能平分。'
+});
+
+push({
+  line:7, ctx:'main · 执行分鱼（第 4 次）',
+  vars:{
+    n:'3121', i:'4', x:'1276', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 4 &lt;= 5 → 真',
+    divCheck:'1595 % 5 = 0',
+    divRes:'真（能平分）',
+    sellCalc:'x = 4 * 1595 / 5 = 6380 / 5 = 1276',
+    note:'第 4 次留下 1276 条'
+  },
+  hit:[7], skip:[],
+  title:'x = 4 * 1595 / 5 = 1276  →  x = 1276',
+  desc:'· 4 × 1595 / 5 = 6380 / 5 = <b>1276</b><br>· x 更新为 <b>1276</b>'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 递增（i = 5）',
+  vars:{
+    n:'3121', i:'5', x:'1276', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 5 &lt;= 5 → 真',
+    note:'最后一次分鱼'
+  },
+  hit:[5], skip:[],
+  title:'i++ → i = 5：5 &lt;= 5 → 真（最后一次）',
+  desc:'i 递增到 <b>5</b>，条件 <code>5 &lt;= 5</code> 成立，这是第 5 次、也是最后一次分鱼。'
+});
+
+push({
+  line:6, ctx:'main · 整除判断（第 5 次分鱼）★',
+  vars:{
+    n:'3121', i:'5', x:'1276', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 5 &lt;= 5 → 真',
+    divCheck:'(1276-1) % 5 = 1275 % 5',
+    divRes:'1275 % 5 = 0 → 真（能平分）',
+    note:'★ 第 5 次也能整除'
+  },
+  hit:[6], skip:[],
+  title:'★ (1276-1) % 5 = 1275 % 5 = 0 → 真',
+  desc:'· x = 1276，扔掉 1 条剩 <b>1275</b> 条<br>· 1275 % 5 = <b>0</b> → 能平分。<br><b>第 5 次也成功了！这是最关键的检查。</b>'
+});
+
+push({
+  line:7, ctx:'main · 执行分鱼（第 5 次）★',
+  vars:{
+    n:'3121', i:'5', x:'1020', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 5 &lt;= 5 → 真',
+    divCheck:'1275 % 5 = 0',
+    divRes:'真（能平分）',
+    sellCalc:'x = 4 * 1275 / 5 = 5100 / 5 = 1020',
+    note:'★ 第 5 次留下 1020 条'
+  },
+  hit:[7], skip:[],
+  title:'★ x = 4 * 1275 / 5 = 1020  →  x = 1020',
+  desc:'· 4 × 1275 / 5 = 5100 / 5 = <b>1020</b><br>· x 更新为 <b>1020</b><br><b>5 次分鱼全部成功完成！</b>'
+});
+
+push({
+  line:5, ctx:'main · 内层 for 条件（假）——内层循环正常退出 ★',
+  vars:{
+    n:'3121', i:'6', x:'1020', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'flag = 1 &amp;&amp; 6 &lt;= 5 → 假 → 退出内层循环',
+    note:'★ 内层循环正常跑完 5 次'
+  },
+  hit:[5], skip:[6,7,8,9,10,11],
+  title:'★ i = 6：6 &lt;= 5 → 假，内层循环正常退出',
+  desc:'i 递增到 <b>6</b>，条件 <code>6 &lt;= 5</code> 为假，<b>内层循环正常退出</b>。<br><span class="tip"><b>关键：</b>这次和前面失败的 n 不一样——前面的 n 都是在内层循环里被 <code>flag = 0; break;</code> 强制退出的，而这次是<b>完整地跑完了 5 次分鱼（i = 1、2、3、4、5）后自然结束</b>。<br>而且 flag 一直是 <b>1</b>，没有被置 0！</span>'
+});
+
+push({
+  line:13, ctx:'main · 判断内层循环是否成功 ★★★',
+  vars:{
+    n:'3121', i:'6', x:'1020', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'已正常退出（i = 6）',
+    ifFlag:'if (flag)  →  flag = 1 → 真 ★',
+    note:'★ 内层全部成功，进入 if 体 break 外层'
+  },
+  hit:[13], skip:[],
+  title:'★ if (flag) → flag = 1 → 真！找到答案',
+  desc:'检查 <code>if (flag)</code>：<br>· flag 现在是 <b>1</b>，在 C 语言中 <b>1 表示真</b><br>· 条件为真 → <b>进入 if 体，执行 L14 的 break</b>。<br><b>这意味着 n = 3121 通过了全部 5 次分鱼检查，是正确答案！</b>'
+});
+
+push({
+  line:14, ctx:'main · break 跳出外层循环 ★',
+  vars:{
+    n:'3121', i:'6', x:'1020', flag:'1',
+    condOuter:'flag = 1 → 真',
+    condInner:'已退出',
+    ifFlag:'真，执行 break',
+    note:'★ break 跳出外层，n 保持 3121 不变'
+  },
+  hit:[14], skip:[],
+  title:'★ break;  跳出外层 n 循环，n 保持 3121',
+  desc:'<code>break;</code> 立即<b>跳出外层 n 循环</b>。<br><span class="warn"><b>关键细节：</b>因为 <code>break</code> 是在循环体内部执行的，<b>外层循环的 <code>n++</code> 不会执行</b>，所以 <b>n 保持 3121 不变</b>——这正是后面 printf 要输出的值。</span><br>此时双重循环全部结束。'
+});
+
+/* ---------- 第 19 行：printf ---------- */
+consoleLines.push('The total number of fish is:3121 ');
+push({
+  line:19, ctx:'main · printf 输出结果 ★',
+  vars:{
+    n:'3121', i:'6', x:'1020', flag:'1',
+    condOuter:'已退出',
+    condInner:'已退出',
+    ifFlag:'真（已 break）',
+    printfCnt:'1',
+    found:'1',
+    note:'屏幕上出现唯一的输出行'
+  },
+  hit:[19], skip:[],
+  title:'printf("The total number of fish is:%d \\n", n)  →  输出 The total number of fish is:3121',
+  desc:'<code>printf("The total number of fish is:%d \\n", n);</code> 输出结果。<br>· <code>%d</code> 被实参 <b>n = 3121</b> 替换；<br>· <code>\\n</code> 换行；<br>· 屏幕上出现 <b>The total number of fish is:3121 </b><br><b>这就是本题的答案：渔夫一开始有 3121 条鱼。</b><br><b>整个程序只调用 1 次 printf。</b><span class="tip"><b>验证：</b><br>3121 → 扔 1 剩 3120 → ÷5=624，留 4 份 = <b>2496</b><br>2496 → 扔 1 剩 2495 → ÷5=499，留 4 份 = <b>1996</b><br>1996 → 扔 1 剩 1995 → ÷5=399，留 4 份 = <b>1596</b><br>1596 → 扔 1 剩 1595 → ÷5=319，留 4 份 = <b>1276</b><br>1276 → 扔 1 剩 1275 → ÷5=255，留 4 份 = <b>1020</b><br>5 次分鱼全部成功！</span>'
+});
+
+/* ---------- 第 20 行：return 0 ---------- */
+push({
+  line:20, ctx:'main · return',
+  vars:{
+    n:'3121', i:'6', x:'1020', flag:'1',
+    printfCnt:'1',
+    found:'1',
+    ret:'0',
+    note:'返回 0 表示程序正常结束'
+  },
+  hit:[20], skip:[],
+  title:'return 0;  结束 main 函数',
+  desc:'<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。约定返回 0 表示程序正常结束。'
+});
+
+/* ---------- 第 21 行：} ---------- */
+push({
+  line:21, ctx:'程序结束',
+  vars:{
+    n:'3121', i:'6', x:'1020', flag:'1',
+    printfCnt:'1',
+    found:'1',
+    ret:'0',
+    note:'栈帧销毁，程序退出'
+  },
+  hit:[], skip:[],
+  title:'main 函数体结束 }',
+  desc:'函数收尾，main 的栈帧被销毁，变量 n、i、x、flag 随栈帧一起释放。<br>程序没有输入，共调用 <b>1 次 printf</b>，返回值 0。<span class="tip"><b>本程序要点总结：</b><br>① <b>双重 for 嵌套</b>：外层 n 试探鱼总数（从 6 开始逐个 +1），内层 i 模拟 5 次分鱼；<br>② <b>逗号表达式初始化</b> <code>x=n, i=1</code>：每次外层循环开始，内层都重新把 x 设回 n；<br>③ <b>双条件循环</b> <code>flag &amp;&amp; i&lt;=5</code>：既限制最多分 5 次，又能让内层在失败时立即停止；<br>④ <b>整除判断</b> <code>(x-1)%5==0</code>：能整除就分鱼 x = 4(x-1)/5，否则 flag=0 并 break；<br>⑤ <b>内层循环正常跑完 5 次时 flag 仍为 1</b>：这就是判断"找到答案"的依据；<br>⑥ <b>flag 标记 + 双 break</b>：内层 break 跳出内层，外层 break 跳出外层。<br><b>最终答案：渔夫一开始有 3121 条鱼。</b><br><b>常见错误：</b>① 把 <code>x=n, i=1</code> 写成 <code>x=n; i=1;</code>，语法错（for 的第一个分号里不能有两条语句）；② 忘记在内层重新给 x 赋值；③ 把 <code>flag=0</code> 写成 <code>flag=1</code>，内层失败后不会退出；④ 把外层 <code>if(flag) break;</code> 写成 <code>if(!flag) break;</code>，逻辑会反过来；⑤ 忘记 <code>else flag=1;</code> 的重置，第二轮外层循环直接因为 flag=0 而退出。</span>'
+});
+
+/* =========================================================
+   二、DOM 引用
+   ========================================================= */
+var codeViewport = document.getElementById('codeViewport');
+var codeContent  = document.getElementById('codeContent');
+var codeLines    = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+var varTable     = document.getElementById('varTable');
+var consoleText  = document.getElementById('consoleText');
+var explainText  = document.getElementById('explainText');
+var miniInner    = document.getElementById('miniInner');
+var miniViewport = document.getElementById('miniViewport');
+
+var panelTop     = document.getElementById('panelTop');
+var panelVars    = document.getElementById('panelVars');
+var panelMini    = document.getElementById('panelMini');
+var panelOut     = document.getElementById('panelOut');
+var panelExplain = document.getElementById('panelExplain');
+var ALL_PANELS   = [panelTop, panelVars, panelMini, panelOut, panelExplain];
+
+var btnReset       = document.getElementById('btnReset');
+var btnPrev        = document.getElementById('btnPrev');
+var btnPlay        = document.getElementById('btnPlay');
+var btnNext        = document.getElementById('btnNext');
+var btnFull        = document.getElementById('btnFull');
+var btnToggleMini  = document.getElementById('btnToggleMini');
+var btnToggleAll   = document.getElementById('btnToggleAll');
+var btnResetLayout = document.getElementById('btnResetLayout');
+var speedInput     = document.getElementById('speed');
+var speedLabel     = document.getElementById('speedLabel');
+
+/* =========================================================
+   三、变量面板行定义
+   ========================================================= */
+var VAR_ROWS = [
+  { key:'ctx',       name:'当前执行位置',                          kind:'k-ctx'   },
+  { key:'n',         name:'n    (int) 试探的鱼总数',                kind:'k-main'  },
+  { key:'i',         name:'i    (int) 第几次分鱼 / 内层变量',        kind:'k-main'  },
+  { key:'x',         name:'x    (int) 当前剩余鱼数',                kind:'k-money' },
+  { key:'flag',      name:'flag (int) 标记（1继续 / 0失败）',        kind:'k-val'   },
+  { key:'condOuter', name:'外层条件 flag（非0为真）',                kind:'k-sw'    },
+  { key:'condInner', name:'内层条件 flag && i<=5',                  kind:'k-sw'    },
+  { key:'divCheck',  name:'整除判断 (x-1) % 5',                     kind:'k-sub'   },
+  { key:'divRes',    name:'判断结果',                              kind:'k-val'   },
+  { key:'sellCalc',  name:'分鱼计算 x = 4*(x-1)/5',                 kind:'k-sub'   },
+  { key:'ifFlag',    name:'if (flag) 判断',                        kind:'k-sw'    },
+  { key:'note',      name:'关键规则提示',                          kind:'k-note'  },
+  { key:'printfCnt', name:'printf 调用次数',                       kind:'k-ret'   },
+  { key:'found',     name:'已找到方案数',                           kind:'k-ret'   },
+  { key:'ret',       name:'main 返回值',                           kind:'k-ret'   }
+];
+
+function buildVarTable(){
+  varTable.innerHTML = VAR_ROWS.map(function(r){
+    return '<div class="var-row '+r.kind+'" data-key="'+r.key+'">'+
+             '<span class="var-name">'+r.name+'</span>'+
+             '<span class="var-value dim">—</span>'+
+           '</div>';
+  }).join('');
+}
+
+/* =========================================================
+   四、缩略图生成（真实渲染 21 行缩小版代码，保留缩进与颜色）
+   ========================================================= */
+var miniMaxUnits = 1;
+
+function computeMiniMaxUnits(){
+  var maxU = 0;
+  codeLines.forEach(function(el){
+    var clone = el.querySelector('.src').cloneNode(true);
+    var cmts = clone.querySelectorAll('.cmt');
+    Array.prototype.forEach.call(cmts, function(c){
+      if(c.parentNode) c.parentNode.removeChild(c);
+    });
+    var t = clone.textContent || '';
+    var u = 0;
+    for(var i = 0; i < t.length; i++){
+      u += (t.charCodeAt(i) > 255) ? 2 : 1;
+    }
+    if(u > maxU) maxU = u;
+  });
+  miniMaxUnits = maxU || 1;
+}
+
+function buildMinimap(){
+  var html = '';
+  codeLines.forEach(function(el){
+    var srcHTML = el.querySelector('.src').innerHTML;
+    html += '<div class="mini-line"><span class="mini-src">'+srcHTML+'</span></div>';
+  });
+  miniViewport.insertAdjacentHTML('beforebegin', html);
+  computeMiniMaxUnits();
+}
+buildMinimap();
+var miniLines = Array.prototype.slice.call(miniInner.querySelectorAll('.mini-line'));
+
+/* =========================================================
+   五、渲染逻辑
+   ========================================================= */
+var current = -1;
+var playing = false;
+var timer   = null;
+var speed   = Number(speedInput.value);
+var lastOutSig = '';
+
+function valueOf(step, key){
+  if(!step) return '—';
+  if(key === 'ctx') return step.ctx;
+  var v = step.vars[key];
+  return (v === undefined || v === null) ? '—' : v;
+}
+
+function updateVars(step, prevStep){
+  VAR_ROWS.forEach(function(r){
+    var row = varTable.querySelector('.var-row[data-key="'+r.key+'"]');
+    if(!row) return;
+    var valEl = row.querySelector('.var-value');
+    var val = String(valueOf(step, r.key));
+    var old = String(valueOf(prevStep, r.key));
+    if(valEl.textContent !== val){
+      valEl.textContent = val;
+      valEl.classList.toggle('dim', val === '—');
+      valEl.title = val;
+      valEl.classList.remove('flash');
+      void valEl.offsetWidth;
+      valEl.classList.add('flash');
+      if(prevStep && old !== val){
+        row.classList.add('changed');
+        window.setTimeout(function(){ row.classList.remove('changed'); }, 700);
+      }
+    }
+  });
+}
+
+function updateCode(step){
+  var activeLine = step ? step.line : null;
+  var hitLines   = (step && step.hit)  || [];
+  var skipLines  = (step && step.skip) || [];
+  codeLines.forEach(function(el){
+    var n = Number(el.dataset.line);
+    el.classList.toggle('active', activeLine !== null && n === activeLine);
+    el.classList.toggle('hit',    hitLines.indexOf(n)  !== -1 && n !== activeLine);
+    el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+  });
+  /* 当前执行行如果在视野外，滚动到中间 */
+  if(activeLine !== null){
+    var el = codeLines[activeLine - 1];
+    if(el){
+      var lineH = el.offsetHeight || 1;
+      var top = el.offsetTop;
+      var bottom = top + lineH;
+      var vTop = codeViewport.scrollTop;
+      var vBottom = vTop + codeViewport.clientHeight;
+      if(top < vTop + 20 || bottom > vBottom - 20){
+        var target = top - (codeViewport.clientHeight - lineH) / 2;
+        var maxScroll = Math.max(0, codeContent.scrollHeight - codeViewport.clientHeight);
+        target = Math.max(0, Math.min(maxScroll, target));
+        try{
+          codeViewport.scrollTo({ top: target, behavior:'smooth' });
+        }catch(e){
+          codeViewport.scrollTop = target;
+        }
+      }
+    }
+  }
+}
+
+function updateOutput(){
+  var lines = (current >= 0 && STEPS[current]) ? STEPS[current].out : [];
+  var sig = lines.length + ':' + (lines.length ? lines[lines.length - 1] : '');
+  if(sig === lastOutSig) return;
+  lastOutSig = sig;
+  if(!lines.length){
+    consoleText.innerHTML = '<span style="color:#3d5474">（等待程序输出…）</span>';
+    return;
+  }
+  consoleText.innerHTML = lines.map(function(t){
+    return '<div class="out-line">'+t.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>';
+  }).join('');
+}
+
+function updateExplain(step){
+  if(!step){
+    explainText.innerHTML =
+      '<em>点击「自动播放」或「下一步」，开始逐条执行程序。<br>'+
+      '本程序用 <b>双重 for 循环</b>：外层 n 从 6 开始逐个<b>试探鱼的总数</b>，'+
+      '内层 i 用逗号表达式 <code>x=n, i=1</code> 初始化，模拟 <b>5 次分鱼</b>，'+
+      '每次检查 <code>(x-1)%5==0</code>，能整除就执行 <code>x = 4*(x-1)/5</code>，'+
+      '否则把 flag 置 0 并 <b>break</b>。<br>'+
+      '内层循环正常跑完 5 次后 flag 仍为 1，外层 <code>if (flag) break;</code> 就跳出循环。<br>'+
+      '最终答案：<b>渔夫一开始有 3121 条鱼</b>。</em>';
+    return;
+  }
+  var isHit   = step.hit && step.hit.length > 0;
+  var isBatch = /批量/.test(step.title);
+  var isKey   = step.title.indexOf('★') !== -1;
+  var cls = isKey ? 'ans' : (isBatch ? 'batch' : (isHit ? 'hit' : ''));
+  explainText.innerHTML =
+    '<span class="ex-tag '+cls+'">第 '+step.line+' 行</span>'+
+    '<strong>'+step.title+'</strong> —— '+step.desc;
+}
+
+function updateMiniCurrent(lineNo){
+  miniLines.forEach(function(el, i){
+    el.classList.toggle('cur', lineNo !== null && (i + 1) === lineNo);
+  });
+}
+
+/* =========================================================
+   六、缩略图荧光框（与全屏可见区域严格同步）+ 字体自适应
+   ========================================================= */
+var syncPending = false;
+var miniFontCache = -1;
+
+function getLineHeight(){
+  if(!codeLines.length) return 1;
+  var h = codeContent.scrollHeight / codeLines.length;
+  return h > 0 ? h : (codeLines[0].offsetHeight || 1);
+}
+
+function fitMiniFont(bodyH, bodyW){
+  var avail = bodyW - 10;
+  if(avail <= 0 || bodyH <= 0) return;
+  var thumbLineH = bodyH / codeLines.length;
+  var fsByWidth  = avail / miniMaxUnits / 0.6;
+  var fsByHeight = thumbLineH * 0.82;
+  var fs = Math.min(fsByWidth, fsByHeight);
+  fs = Math.max(4, Math.min(16, fs));
+  fs = Math.round(fs * 100) / 100;
+  if(Math.abs(fs - miniFontCache) < 0.05) return;
+  miniFontCache = fs;
+  miniInner.style.setProperty('--mini-font', fs + 'px');
+}
+
+function updateMinimapViewport(){
+  var lineH = getLineHeight();
+  var bodyH = miniInner.clientHeight;
+  var bodyW = miniInner.clientWidth;
+  if(bodyH <= 0 || bodyW <= 0) return;
+
+  var totalLines = codeLines.length;                 /* 21 */
+  var thumbLineH = bodyH / totalLines;
+
+  fitMiniFont(bodyH, bodyW);
+
+  var scrollTop  = codeViewport.scrollTop;
+  var visibleRows = codeViewport.clientHeight / lineH;
+  if(visibleRows > totalLines) visibleRows = totalLines;
+
+  var top = (scrollTop / lineH) * thumbLineH;
+  var h   = visibleRows * thumbLineH;
+  if(top < 0) top = 0;
+  if(top + h > bodyH) top = Math.max(0, bodyH - h);
+
+  miniViewport.style.top    = top + 'px';
+  miniViewport.style.height = h + 'px';
+  miniViewport.style.left   = '0px';
+  miniViewport.style.right  = '0px';
+}
+
+function requestMiniSync(){
+  if(syncPending) return;
+  syncPending = true;
+  window.requestAnimationFrame(function(){
+    syncPending = false;
+    updateMinimapViewport();
+  });
+}
+
+/* 滚动同步 */
+codeViewport.addEventListener('scroll', requestMiniSync, { passive:true });
+
+/* 尺寸变化同步 */
+if(window.ResizeObserver){
+  var ro = new ResizeObserver(function(){
+    requestMiniSync();
+  });
+  ro.observe(codeViewport);
+  ro.observe(miniInner);
+}
+window.addEventListener('resize', function(){
+  requestMiniSync();
+  clampAllPanels();
+});
+window.addEventListener('orientationchange', function(){ requestMiniSync(); });
+if(document.fonts && document.fonts.ready){
+  document.fonts.ready.then(function(){ requestMiniSync(); });
+}
+window.addEventListener('load', requestMiniSync);
+
+/* 点击缩略图跳转 */
+miniInner.addEventListener('pointerdown', function(e){
+  if(e.target.closest('.resize-handle')) return;
+  var r = miniInner.getBoundingClientRect();
+  var y = e.clientY - r.top;
+  var totalLines = codeLines.length;
+  var thumbLineH = r.height / totalLines;
+  var row = Math.floor(y / thumbLineH);
+  row = Math.max(0, Math.min(totalLines - 1, row));
+
+  var lineH = getLineHeight();
+  var target = row * lineH - (codeViewport.clientHeight - lineH) / 2;
+  var maxScroll = Math.max(0, codeContent.scrollHeight - codeViewport.clientHeight);
+  target = Math.max(0, Math.min(maxScroll, target));
+  try{
+    codeViewport.scrollTo({ top: target, behavior:'smooth' });
+  }catch(err){
+    codeViewport.scrollTop = target;
+  }
+  requestMiniSync();
+});
+
+/* =========================================================
+   七、主渲染
+   ========================================================= */
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+  var prev = current > 0 ? STEPS[current - 1] : null;
+
+  updateCode(step);
+  updateVars(step, prev);
+  updateOutput();
+  updateExplain(step);
+  updateMiniCurrent(step ? step.line : null);
+  requestMiniSync();
+
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+}
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+
+function tick(){
+  if(current >= STEPS.length - 1){ pause(); return; }
+  current += 1;
+  render();
+  if(current >= STEPS.length - 1) pause();
+}
+
+function play(){
+  if(playing) return;
+  if(current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){
+  pause();
+  if(current < STEPS.length - 1){ current += 1; render(); }
+}
+
+function prevStep(){
+  pause();
+  if(current > -1){ current -= 1; render(); }
+}
+
+function resetAll(){
+  pause();
+  current = -1;
+  lastOutSig = '';
+  codeViewport.scrollTop = 0;
+  render();
+}
+
+/* =========================================================
+   八、面板：拖动 / 调整大小 / 置顶 / 关闭 / 重置布局
+   ========================================================= */
+var zTop = 100;
+
+function activatePanel(p){
+  zTop += 1;
+  p.style.zIndex = zTop;
+  ALL_PANELS.forEach(function(x){
+    x.classList.toggle('active', x === p);
+  });
+}
+
+function setPanel(p, left, top, width, height){
+  p.style.left   = (typeof left   === 'number') ? left + 'px'   : left;
+  p.style.top    = (typeof top    === 'number') ? top + 'px'    : top;
+  p.style.width  = (typeof width  === 'number') ? width + 'px'  : width;
+  p.style.height = (typeof height === 'number') ? height + 'px' : height;
+  p.style.right  = 'auto';
+  p.style.bottom = 'auto';
+}
+
+var DEFAULTS = {};
+function computeDefaults(){
+  var W = window.innerWidth, H = window.innerHeight;
+  DEFAULTS = {
+    panelTop:     { left: 16,            top: 16,               width:'auto', height:'auto' },
+    panelVars:    { left: Math.max(16, W - 780), top: 16,        width: 760,  height: Math.min(640, H * 0.58) },
+    panelMini:    { left: 16,            top: Math.max(16, H*0.18), width: 300, height: Math.min(700, H * 0.62) },
+    panelOut:     { left: Math.max(16, W - 780), top: Math.max(16, H - 340), width: 760, height: 320 },
+    panelExplain: { left: Math.max(16, W*0.20), top: Math.max(16, H - 440), width: Math.min(1000, W*0.62), height: 420 }
+  };
+}
+
+function resetLayout(){
+  computeDefaults();
+  setPanel(panelTop,     DEFAULTS.panelTop.left,     DEFAULTS.panelTop.top,     DEFAULTS.panelTop.width,     DEFAULTS.panelTop.height);
+  setPanel(panelVars,    DEFAULTS.panelVars.left,    DEFAULTS.panelVars.top,    DEFAULTS.panelVars.width,    DEFAULTS.panelVars.height);
+  setPanel(panelMini,    DEFAULTS.panelMini.left,    DEFAULTS.panelMini.top,    DEFAULTS.panelMini.width,    DEFAULTS.panelMini.height);
+  setPanel(panelOut,     DEFAULTS.panelOut.left,     DEFAULTS.panelOut.top,     DEFAULTS.panelOut.width,     DEFAULTS.panelOut.height);
+  setPanel(panelExplain, DEFAULTS.panelExplain.left, DEFAULTS.panelExplain.top, DEFAULTS.panelExplain.width, DEFAULTS.panelExplain.height);
+
+  ALL_PANELS.forEach(function(p){
+    p.classList.remove('hidden');
+    p.classList.remove('active');
+  });
+  zTop = 100;
+  panelTop.style.zIndex     = (++zTop);
+  panelVars.style.zIndex    = (++zTop);
+  panelMini.style.zIndex    = (++zTop);
+  panelOut.style.zIndex     = (++zTop);
+  panelExplain.style.zIndex = (++zTop);
+
+  miniFontCache = -1;
+  requestMiniSync();
+}
+
+function clampAllPanels(){
+  ALL_PANELS.forEach(function(p){
+    if(p.classList.contains('hidden')) return;
+    var r = p.getBoundingClientRect();
+    var left = r.left, top = r.top;
+    var maxL = window.innerWidth  - 60;
+    var maxT = window.innerHeight - 40;
+    if(left > maxL){ p.style.left = maxL + 'px'; }
+    if(top  > maxT){ p.style.top  = maxT + 'px'; }
+    if(left + r.width  < 60){ p.style.left = (60 - r.width) + 'px'; }
+    if(top  + r.height < 40){ p.style.top  = '8px'; }
+  });
+}
+
+function startDrag(panel, e){
+  e.preventDefault();
+  var r = panel.getBoundingClientRect();
+  if(getComputedStyle(panel).width === 'auto' || panel.style.width === 'auto' || !panel.style.width){
+    panel.style.width  = r.width + 'px';
+  }
+  if(panel.style.height === 'auto' || !panel.style.height){
+    panel.style.height = r.height + 'px';
+  }
+  var ox = e.clientX - r.left;
+  var oy = e.clientY - r.top;
+
+  function move(ev){
+    var nl = ev.clientX - ox;
+    var nt = ev.clientY - oy;
+    var w = panel.offsetWidth, h = panel.offsetHeight;
+    nl = Math.max(-w + 80, Math.min(window.innerWidth - 80, nl));
+    nt = Math.max(0, Math.min(window.innerHeight - 40, nt));
+    panel.style.left = nl + 'px';
+    panel.style.top  = nt + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+  }
+  function up(){
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    document.removeEventListener('pointercancel', up);
+    requestMiniSync();
+  }
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+  document.addEventListener('pointercancel', up);
+}
+
+function startResize(panel, e){
+  e.preventDefault();
+  e.stopPropagation();
+  var r = panel.getBoundingClientRect();
+  var startW = r.width, startH = r.height;
+  var sx = e.clientX, sy = e.clientY;
+
+  function move(ev){
+    var nw = startW + (ev.clientX - sx);
+    var nh = startH + (ev.clientY - sy);
+    panel.style.width  = nw + 'px';
+    panel.style.height = nh + 'px';
+    panel.style.right  = 'auto';
+    panel.style.bottom = 'auto';
+    requestMiniSync();
+  }
+  function up(){
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    document.removeEventListener('pointercancel', up);
+    requestMiniSync();
+  }
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+  document.addEventListener('pointercancel', up);
+}
+
+/* 绑定面板交互 */
+ALL_PANELS.forEach(function(p){
+  p.addEventListener('pointerdown', function(){ activatePanel(p); }, true);
+  p.addEventListener('focusin', function(){ activatePanel(p); });
+
+  var head = p.querySelector('.panel-head');
+  head.addEventListener('pointerdown', function(e){
+    if(e.target.closest('button')) return;
+    startDrag(p, e);
+  });
+
+  var rh = p.querySelector('.resize-handle');
+  if(rh){
+    rh.addEventListener('pointerdown', function(e){
+      startResize(p, e);
+    });
+  }
+
+  var closeBtn = p.querySelector('.panel-close');
+  if(closeBtn){
+    closeBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      p.classList.add('hidden');
+    });
+  }
+});
+
+document.querySelectorAll('[data-close]').forEach(function(btn){
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var el = document.getElementById(btn.getAttribute('data-close'));
+    if(el) el.classList.add('hidden');
+  });
+});
+
+/* =========================================================
+   九、按钮与快捷键
+   ========================================================= */
+btnPlay.addEventListener('click', function(){ playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if(playing){
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+btnFull.addEventListener('click', function(){
+  if(!document.fullscreenElement){
+    if(document.documentElement.requestFullscreen){
+      document.documentElement.requestFullscreen().catch(function(){});
+    }
+  }else{
+    if(document.exitFullscreen) document.exitFullscreen();
+  }
+});
+
+btnToggleMini.addEventListener('click', function(){
+  panelMini.classList.toggle('hidden');
+  if(!panelMini.classList.contains('hidden')){
+    activatePanel(panelMini);
+    miniFontCache = -1;
+  }
+  requestMiniSync();
+});
+
+var allHidden = false;
+btnToggleAll.addEventListener('click', function(){
+  allHidden = !allHidden;
+  ALL_PANELS.forEach(function(p){
+    p.classList.toggle('hidden', allHidden);
+  });
+  if(!allHidden){
+    panelTop.classList.remove('hidden');
+    miniFontCache = -1;
+    requestMiniSync();
+  }
+});
+
+btnResetLayout.addEventListener('click', function(){
+  resetLayout();
+});
+
+document.addEventListener('keydown', function(e){
+  if(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  if(e.code === 'Space'){ e.preventDefault(); playing ? pause() : play(); }
+  else if(e.code === 'ArrowRight'){ e.preventDefault(); nextStep(); }
+  else if(e.code === 'ArrowLeft'){ e.preventDefault(); prevStep(); }
+  else if(e.code === 'KeyR'){ e.preventDefault(); resetAll(); }
+  else if(e.code === 'KeyF'){
+    e.preventDefault();
+    if(!document.fullscreenElement){
+      if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function(){});
+    }else{
+      if(document.exitFullscreen) document.exitFullscreen();
+    }
+  }
+  else if(e.code === 'KeyM'){
+    e.preventDefault();
+    panelMini.classList.toggle('hidden');
+    if(!panelMini.classList.contains('hidden')){
+      activatePanel(panelMini);
+      miniFontCache = -1;
+    }
+    requestMiniSync();
+  }
+  else if(e.code === 'KeyH'){
+    e.preventDefault();
+    var anyVisible = ALL_PANELS.some(function(p){ return !p.classList.contains('hidden'); });
+    ALL_PANELS.forEach(function(p){ p.classList.toggle('hidden', anyVisible); });
+    if(!anyVisible){ panelTop.classList.remove('hidden'); }
+    miniFontCache = -1;
+    requestMiniSync();
+  }
+});
+
+/* =========================================================
+   十、初始化
+   ========================================================= */
+buildVarTable();
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+resetLayout();
+render();
+requestMiniSync();
+window.setTimeout(requestMiniSync, 120);
+window.setTimeout(requestMiniSync, 600);
+
+})();
+</script>
+</body>
+</html>

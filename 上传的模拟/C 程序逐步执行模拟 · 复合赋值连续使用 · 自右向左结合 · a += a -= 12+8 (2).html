@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 复合赋值连续使用 · 自右向左结合 · a += a -= 12+8</title>
+<style>
+  :root{
+    --bg:#0d1117;
+    --border:#1e2f49;
+    --text:#dce8f8;
+    --muted:#8aa0bf;
+    --accent:#38bdf8;
+    --green:#4ade80;
+    --amber:#fbbf24;
+    --pink:#f472b6;
+    --purple:#c084fc;
+    --teal:#2dd4bf;
+    --orange:#fb923c;
+    --red:#f87171;
+
+    /* 大屏字号硬指标 */
+    --code-font: clamp(80px, 5vw, 120px);
+    --out-font: clamp(72px, 4.5vw, 110px);
+    --var-font: clamp(40px, 2.4vw, 60px);
+    --explain-font: clamp(48px, 2.4vw, 60px);
+    --btn-font: clamp(40px, 2.2vw, 60px);
+    --title-font: clamp(56px, 3vw, 80px);
+    --panel-title: clamp(28px, 1.6vw, 40px);
+    --mm-font: 12px;
+  }
+
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;margin:0;overflow:hidden;}
+  body{
+    background:var(--bg);
+    color:var(--text);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  }
+
+  /* ============================================================
+     一、全屏代码舞台
+     ============================================================ */
+  .code-stage{
+    position:fixed; inset:0;
+    background:#0d1117;
+    z-index:1;
+  }
+  .code-scroll{
+    position:absolute; inset:0;
+    overflow:auto;
+    padding:1.2rem 6rem 5rem 0.8rem;
+    scroll-behavior:smooth;
+    scrollbar-width:thin; scrollbar-color:#334155 #0d1117;
+  }
+  .code-scroll::-webkit-scrollbar{width:14px;height:14px;}
+  .code-scroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+  .code-scroll::-webkit-scrollbar-track{background:#0d1117;}
+  .code-scroll::-webkit-scrollbar-corner{background:#0d1117;}
+
+  .code-line{
+    display:flex;
+    align-items:flex-start;
+    gap:1.2rem;
+    width:max-content;
+    min-width:100%;
+    padding:.08em 2rem .08em .5rem;
+    border-left:12px solid transparent;
+    white-space:pre;              /* 关键：不折行 */
+    line-height:1.35;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:var(--code-font);
+    transition:background .25s,border-color .25s,opacity .25s;
+  }
+  .code-line .ln{
+    flex:0 0 auto;
+    min-width:3ch;
+    text-align:right;
+    color:#3f5a7d;
+    font-size:0.78em;
+    line-height:1.73;
+    user-select:none;
+    font-variant-numeric:tabular-nums;
+  }
+  .code-line .src{flex:0 0 auto;white-space:pre;}
+  .code-line.done{opacity:.34;}
+  .code-line.active{
+    background:linear-gradient(90deg,rgba(56,189,248,.22),rgba(56,189,248,.02) 70%,transparent);
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 2px rgba(56,189,248,.22);
+  }
+  .code-line.active .ln{color:var(--accent);font-weight:700;}
+  .code-line.active .src{color:#ffffff;}
+
+  /* 复合赋值行强调 */
+  .code-line.compound.active{
+    background:linear-gradient(90deg,rgba(251,146,60,.24),rgba(251,146,60,.02) 70%,transparent);
+    border-left-color:var(--orange);
+    box-shadow:inset 0 0 0 2px rgba(251,146,60,.28);
+  }
+  .code-line.compound.active .ln{color:var(--orange);}
+
+  /* 语法着色 */
+  .pp{color:var(--purple);font-weight:600;}
+  .str{color:var(--green);}
+  .cmt{color:#5b6f8c;font-style:italic;}
+  .fn{color:var(--accent);}
+  .kw{color:var(--pink);font-weight:600;}
+  .num{color:var(--amber);}
+  .op{color:var(--orange);font-weight:700;}
+  .compound{color:var(--orange);font-weight:900;}
+  .neg{color:var(--pink);font-weight:700;}
+
+  /* ============================================================
+     二、悬浮面板
+     ============================================================ */
+  .panel{
+    position:absolute;
+    display:flex;
+    flex-direction:column;
+    background:rgba(13,20,33,.82);
+    -webkit-backdrop-filter:blur(12px);
+    backdrop-filter:blur(12px);
+    border:1px solid rgba(56,189,248,.32);
+    border-radius:16px;
+    box-shadow:0 14px 44px rgba(0,0,0,.6);
+    overflow:hidden;
+    z-index:100;
+    transition:border-color .2s, box-shadow .2s, background .2s;
+  }
+  .panel:hover{background:rgba(15,24,40,.95);}
+  .panel.active{
+    border-color:rgba(56,189,248,.98);
+    box-shadow:0 0 0 3px rgba(56,189,248,.38), 0 20px 60px rgba(0,0,0,.75);
+  }
+  .panel.closed{display:none !important;}
+  body.hide-all .panel{display:none !important;}
+
+  .panel-head{
+    flex:0 0 auto;
+    display:flex;align-items:center;gap:.7rem;
+    padding:.45rem .7rem;
+    background:linear-gradient(180deg,rgba(30,48,76,.95),rgba(18,30,50,.95));
+    border-bottom:1px solid rgba(56,189,248,.22);
+    cursor:grab;
+    touch-action:none;
+    user-select:none;
+  }
+  .panel-head:active{cursor:grabbing;}
+  .panel-title{
+    font-size:var(--panel-title);
+    font-weight:700;
+    letter-spacing:.05em;
+    color:#cfe4ff;
+    white-space:nowrap;
+  }
+  .panel-head .right{
+    font-size:calc(var(--panel-title) * .78);
+    color:#7f97b8;
+    white-space:nowrap;
+    margin-left:.4rem;
+  }
+  .ph-actions{display:flex;gap:.45rem;margin-left:auto;}
+  .pbtn{
+    font:inherit;
+    font-size:calc(var(--panel-title) * 1.1);
+    font-weight:700;
+    line-height:1;
+    width:2.1em;height:2.1em;
+    min-width:44px;min-height:44px;
+    display:flex;align-items:center;justify-content:center;
+    border-radius:10px;
+    border:1px solid rgba(56,189,248,.4);
+    background:rgba(24,39,65,.9);
+    color:#dce8f8;
+    cursor:pointer;
+    transition:background .15s,border-color .15s;
+  }
+  .pbtn:hover{background:rgba(40,66,104,.95);border-color:var(--accent);}
+  .pbtn.close:hover{background:#b91c1c;border-color:#ef4444;color:#fff;}
+
+  .panel-body{
+    flex:1 1 auto;
+    min-height:0;
+    overflow:auto;
+    padding:.5rem .8rem .7rem;
+    scrollbar-width:thin;
+    scrollbar-color:#334155 transparent;
+  }
+  .panel-body::-webkit-scrollbar{width:12px;height:12px;}
+  .panel-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+  .panel-body::-webkit-scrollbar-track{background:transparent;}
+
+  .panel.collapsed .panel-body,
+  .panel.collapsed .resize-handle{display:none;}
+  .panel.collapsed{height:auto !important;}
+
+  .resize-handle{
+    position:absolute;
+    right:0;bottom:0;
+    width:44px;height:44px;
+    cursor:nwse-resize;
+    touch-action:none;
+    z-index:5;
+  }
+  .resize-handle::after{
+    content:"";
+    position:absolute;right:7px;bottom:7px;
+    width:20px;height:20px;
+    border-right:4px solid var(--accent);
+    border-bottom:4px solid var(--accent);
+    border-radius:0 0 5px 0;
+    opacity:.85;
+  }
+  .resize-handle:hover::after{opacity:1;border-color:#7dd3fc;}
+
+  /* ---------------- 顶部控制栏 ---------------- */
+  #panelTop .panel-body{
+    display:flex;align-items:center;gap:1rem;
+    padding:.6rem .9rem;
+    overflow-x:auto;overflow-y:hidden;
+    flex-wrap:nowrap;
+  }
+  .ctl{
+    font:inherit;
+    font-size:var(--btn-font);
+    padding:.5em .9em;
+    min-height:72px;
+    border-radius:14px;
+    border:1px solid rgba(56,189,248,.35);
+    background:rgba(24,39,65,.92);
+    color:#e6f1ff;
+    cursor:pointer;
+    white-space:nowrap;
+    transition:background .15s,border-color .15s,transform .08s;
+  }
+  .ctl:hover:not(:disabled){background:rgba(40,66,104,.98);border-color:var(--accent);}
+  .ctl:active:not(:disabled){transform:translateY(2px);}
+  .ctl:disabled{opacity:.32;cursor:not-allowed;}
+  .ctl.primary{
+    background:linear-gradient(180deg,#0ea5e9,#0284c7);
+    border-color:#7dd3fc;color:#04121f;font-weight:800;
+  }
+  .ctl.primary.playing{
+    background:linear-gradient(180deg,#f59e0b,#d97706);
+    border-color:#fbbf24;color:#1a1200;
+  }
+  .speed{
+    display:flex;align-items:center;gap:.7rem;
+    font-size:calc(var(--btn-font) * .78);
+    color:var(--muted);
+    white-space:nowrap;
+    padding:0 .4rem;
+  }
+  .speed input{
+    width:11rem;height:2.4rem;
+    accent-color:var(--accent);
+    cursor:pointer;
+  }
+  .speed b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:3.4em;display:inline-block;}
+
+  /* ---------------- 变量 / 状态表 ---------------- */
+  .var-row{
+    display:flex;align-items:center;justify-content:space-between;gap:1rem;
+    padding:.3em .7em;
+    margin-bottom:.16em;
+    border-radius:10px;
+    background:rgba(9,18,32,.75);
+    border:1px solid rgba(30,47,73,.9);
+    transition:background .3s,border-color .3s;
+  }
+  .var-row.k-ctx{background:rgba(18,40,68,.9);border-color:rgba(38,69,107,.95);}
+  .var-row.k-main{border-left:8px solid rgba(34,211,238,.6);}
+  .var-row.k-sub{border-left:8px solid rgba(56,189,248,.95);}
+  .var-row.k-op{border-left:8px solid rgba(192,132,252,.95);}
+  .var-row.k-old{border-left:8px solid rgba(45,212,191,.95);}
+  .var-row.k-new{border-left:8px solid rgba(251,191,36,.95);}
+  .var-row.k-res{border-left:8px solid rgba(244,114,182,.95);}
+  .var-row.k-note{border-left:8px solid rgba(45,212,191,.85);}
+  .var-row.k-ret{border-left:8px solid rgba(251,191,36,.5);}
+  .var-row.changed{border-color:rgba(56,189,248,.95);background:rgba(56,189,248,.16);}
+  .var-name{
+    color:var(--muted);
+    font-size:var(--var-font);
+    white-space:nowrap;
+    line-height:1.2;
+  }
+  .var-value{
+    font-family:ui-monospace,"Cascadia Mono",Consolas,monospace;
+    font-size:var(--var-font);
+    font-weight:700;
+    color:var(--accent);
+    font-variant-numeric:tabular-nums;
+    white-space:nowrap;
+    text-align:right;
+    line-height:1.2;
+  }
+  .var-value.dim{color:#5f7796;font-weight:500;}
+  .var-row.k-sub  .var-value{color:var(--accent);}
+  .var-row.k-op   .var-value{color:var(--purple);}
+  .var-row.k-old  .var-value{color:var(--teal);}
+  .var-row.k-new  .var-value{color:var(--amber);}
+  .var-row.k-res  .var-value{color:var(--pink);}
+  .var-row.k-note .var-value{color:var(--teal);font-weight:600;font-size:calc(var(--var-font) * .92);}
+  @keyframes flash{
+    0%{transform:scale(1);}
+    35%{transform:scale(1.24);color:#fff;text-shadow:0 0 18px var(--accent);}
+    100%{transform:scale(1);}
+  }
+  .var-value.flash{animation:flash .55s ease-out;}
+
+  /* ---------------- 输出面板 ---------------- */
+  .console{
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:var(--out-font);
+    line-height:1.7;
+    color:#e8f2ff;
+    min-height:1em;
+  }
+  .console:empty::before{content:"（等待程序输出…）";color:#3d5474;font-size:calc(var(--out-font) * .6);}
+  .out-line{white-space:pre;animation:slideIn .4s ease-out;}
+  .seg-out{color:#e8f2ff;}
+  .seg-num{color:var(--amber);font-weight:700;}
+  .seg-neg{color:var(--pink);font-weight:700;}
+  .seg-lbl{color:var(--teal);}
+  @keyframes slideIn{
+    from{opacity:0;transform:translateX(-1rem);}
+    to{opacity:1;transform:none;}
+  }
+
+  /* ---------------- 说明条 ---------------- */
+  #panelExplain .panel-body{
+    font-size:var(--explain-font);
+    line-height:1.5;
+    color:#c8dbf3;
+  }
+  .ex-head{display:flex;align-items:baseline;gap:.8rem;flex-wrap:wrap;margin-bottom:.35em;}
+  .ex-line{
+    display:inline-block;
+    padding:.05em .5em;
+    border-radius:.4em;
+    background:rgba(56,189,248,.2);
+    color:var(--accent);
+    font-weight:800;
+    font-size:calc(var(--explain-font) * .78);
+    white-space:nowrap;
+  }
+  .ex-line.compound{background:rgba(251,146,60,.22);color:var(--orange);}
+  .ex-head strong{color:#ffffff;}
+  .ex-desc{color:#c8dbf3;}
+  .ex-desc code{
+    font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.18);
+    border-radius:.3em;
+    padding:0 .3em;
+    color:#e2e8f0;
+  }
+  .ex-desc b{color:#ffffff;}
+  .ex-desc .hi{color:var(--amber);font-weight:700;}
+  .ex-desc .hi2{color:var(--orange);font-weight:700;}
+  .ex-desc .warn{
+    display:block;margin-top:.4em;padding:.45em .65em;border-radius:.4em;
+    background:rgba(251,191,36,.13);border-left:6px solid var(--amber);color:#ffe6b0;
+  }
+
+  /* ---------------- 缩略图 ---------------- */
+  #panelMinimap .panel-body{
+    padding:.4rem .45rem;
+    background:rgba(13,17,23,.55);
+    position:relative;
+    overflow:auto;
+  }
+  .mm-line{
+    display:flex;gap:.4em;
+    font-family:ui-monospace,Consolas,monospace;
+    font-size:var(--mm-font);
+    line-height:1.6;
+    white-space:pre;
+    color:#7f93ad;
+    padding:0 2px;
+    border-left:2px solid transparent;
+    cursor:pointer;
+    opacity:.62;
+    transition:opacity .2s,background .2s;
+  }
+  .mm-line:hover{background:rgba(56,189,248,.16);opacity:1;}
+  .mm-line .mm-ln{color:#3f5a7d;min-width:1.8em;text-align:right;flex:0 0 auto;}
+  .mm-line.done{opacity:.35;}
+  .mm-line.active{
+    background:rgba(56,189,248,.28);
+    border-left-color:var(--accent);
+    color:#ffffff;
+    opacity:1;
+  }
+  .mm-line.compound.active{
+    background:rgba(251,146,60,.28);
+    border-left-color:var(--orange);
+  }
+  .mm-line .pp{color:#c084fc;}
+  .mm-line .str{color:#4ade80;}
+  .mm-line .cmt{color:#5b6f8c;}
+  .mm-line .fn{color:#38bdf8;}
+  .mm-line .kw{color:#f472b6;}
+  .mm-line .num{color:#fbbf24;}
+  .mm-line .op{color:#fb923c;}
+  .mm-line .compound{color:#fb923c;font-weight:900;}
+
+  #mmView{
+    position:absolute;
+    left:0;right:0;
+    background:rgba(56,189,248,.12);
+    border-top:1px solid rgba(56,189,248,.45);
+    border-bottom:1px solid rgba(56,189,248,.45);
+    pointer-events:none;
+    transition:top .12s linear;
+  }
+
+  /* 窄屏兜底 */
+  @media (max-width:900px){
+    :root{
+      --code-font: clamp(56px, 8vw, 90px);
+      --out-font: clamp(48px, 7vw, 80px);
+      --var-font: clamp(30px, 5vw, 46px);
+      --explain-font: clamp(32px, 5vw, 48px);
+      --btn-font: clamp(28px, 4.4vw, 44px);
+      --panel-title: clamp(22px, 3.4vw, 32px);
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     全屏代码舞台（7 行，每行「代码 + 行尾注释」只占一行，绝不折行）
+     ============================================================ -->
+<div class="code-stage">
+  <div class="code-scroll" id="codeScroll">
+
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span></span></div>
+
+    <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">int</span> a = <span class="num">5</span>;                         <span class="cmt">// 定义并初始化 a</span></span></div>
+
+    <div class="code-line compound" data-line="4"><span class="ln">4</span><span class="src">    a <span class="compound">+=</span> a <span class="compound">-=</span> <span class="num">12</span> <span class="op">+</span> <span class="num">8</span>;                  <span class="cmt">// 自右向左，先算 a-=20，再 a+=-15</span></span></div>
+
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    <span class="fn">printf</span>(<span class="str">"a=%d\n"</span>, a);                <span class="cmt">// 输出 -30</span></span></div>
+
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回 0，程序结束</span></span></div>
+
+    <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">}</span></div>
+
+  </div>
+</div>
+
+<!-- ============================================================
+     悬浮面板 1：顶部控制栏
+     ============================================================ -->
+<section class="panel" id="panelTop">
+  <header class="panel-head" data-drag>
+    <span class="panel-title">控制栏</span>
+    <span class="right" id="stepCounter">步骤 — / —</span>
+    <span class="ph-actions">
+      <button class="pbtn" data-act="collapse" title="折叠">–</button>
+      <button class="pbtn close" data-act="close" title="关闭">×</button>
+    </span>
+  </header>
+  <div class="panel-body">
+    <button id="btnReset" class="ctl">⟲ 重置</button>
+    <button id="btnPrev" class="ctl">◀ 上一步</button>
+    <button id="btnPlay" class="ctl primary">▶ 播放</button>
+    <button id="btnNext" class="ctl">下一步 ▶</button>
+    <label class="speed">速度
+      <input type="range" id="speed" min="400" max="2400" step="100" value="1500">
+      <b id="speedLabel">1.5s</b>
+    </label>
+    <button id="btnFull" class="ctl">⛶ 全屏</button>
+    <button id="btnMm" class="ctl">▤ 缩略图</button>
+    <button id="btnPanels" class="ctl">▣ 面板</button>
+    <button id="btnLayout" class="ctl">⟳ 重置布局</button>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</section>
+
+<!-- ============================================================
+     悬浮面板 2：变量 · 子表达式 · 旧值→新值 · 状态表
+     ============================================================ -->
+<section class="panel" id="panelVars">
+  <header class="panel-head" data-drag>
+    <span class="panel-title">变量 / 子表达式 / 旧值 → 新值</span>
+    <span class="ph-actions">
+      <button class="pbtn" data-act="collapse" title="折叠">–</button>
+      <button class="pbtn close" data-act="close" title="关闭">×</button>
+    </span>
+  </header>
+  <div class="panel-body">
+    <div id="varTable"></div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</section>
+
+<!-- ============================================================
+     悬浮面板 3：程序输出
+     ============================================================ -->
+<section class="panel" id="panelOut">
+  <header class="panel-head" data-drag>
+    <span class="panel-title">程序运行结果（屏幕输出）</span>
+    <span class="ph-actions">
+      <button class="pbtn" data-act="collapse" title="折叠">–</button>
+      <button class="pbtn close" data-act="close" title="关闭">×</button>
+    </span>
+  </header>
+  <div class="panel-body">
+    <div class="console" id="consoleBody"></div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</section>
+
+<!-- ============================================================
+     悬浮面板 4：当前语句说明条
+     ============================================================ -->
+<section class="panel" id="panelExplain">
+  <header class="panel-head" data-drag>
+    <span class="panel-title">当前语句说明</span>
+    <span class="ph-actions">
+      <button class="pbtn" data-act="collapse" title="折叠">–</button>
+      <button class="pbtn close" data-act="close" title="关闭">×</button>
+    </span>
+  </header>
+  <div class="panel-body" id="explainBody"></div>
+  <div class="resize-handle" data-resize></div>
+</section>
+
+<!-- ============================================================
+     悬浮面板 5：代码缩略图（VSCode minimap，7 行）
+     ============================================================ -->
+<section class="panel" id="panelMinimap">
+  <header class="panel-head" data-drag>
+    <span class="panel-title">缩略图</span>
+    <span class="ph-actions">
+      <button class="pbtn" data-act="collapse" title="折叠">–</button>
+      <button class="pbtn close" data-act="close" title="关闭">×</button>
+    </span>
+  </header>
+  <div class="panel-body" id="mmBody">
+    <div class="mm-line" data-line="1"><span class="mm-ln">1</span><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span></div>
+    <div class="mm-line" data-line="2"><span class="mm-ln">2</span><span class="kw">int</span> <span class="fn">main</span>() {</div>
+    <div class="mm-line" data-line="3"><span class="mm-ln">3</span>    <span class="kw">int</span> a = <span class="num">5</span>;</div>
+    <div class="mm-line" data-line="4"><span class="mm-ln">4</span>    a <span class="compound">+=</span> a <span class="compound">-=</span> <span class="num">12</span> <span class="op">+</span> <span class="num">8</span>;</div>
+    <div class="mm-line" data-line="5"><span class="mm-ln">5</span>    <span class="fn">printf</span>(<span class="str">"a=%d\n"</span>, a);</div>
+    <div class="mm-line" data-line="6"><span class="mm-ln">6</span>    <span class="kw">return</span> <span class="num">0</span>;</div>
+    <div class="mm-line" data-line="7"><span class="mm-ln">7</span>}</div>
+    <div id="mmView"></div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</section>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+     1. 状态构造函数
+     ========================================================= */
+  function V(o) {
+    var v = {
+      a:        '—',   /* a 的当前值                     */
+      subExpr:  '—',   /* 当前正在求值的子表达式         */
+      op:       '—',   /* 当前运算                       */
+      oldA:     '—',   /* 该次运算前读到的 a             */
+      newA:     '—',   /* 该次运算后写回的 a             */
+      innerRes: '—',   /* 内层 a -= 20 的表达式值        */
+      outerRes: '—',   /* 外层 a += ... 的表达式值       */
+      note:     '—',   /* 关键规则提示                   */
+      prints:   0,     /* printf 调用次数                */
+      ret:      '—'    /* main 返回值                    */
+    };
+    for (var k in o) { if (Object.prototype.hasOwnProperty.call(o, k)) v[k] = o[k]; }
+    return v;
+  }
+
+  /* =========================================================
+     2. 逐步执行轨迹
+        —— 已逐项核对：a=5；
+        12+8=20；右结合 → a += (a -= 20)；
+        内层 a -= 20：读 5 → 5-20=-15 → 写回 a=-15，内层值 -15；
+        外层 a += (-15)：读 -15 → -15+(-15)=-30 → 写回 a=-30；
+        输出一行 a=-30；printf 调用 1 次；返回值 0；
+        属于未定义行为，教学中必须提醒。
+     ========================================================= */
+  var STEPS = [
+    {   /* 0 */
+      line: 1, ctx: '预处理阶段',
+      vars: V({}),
+      out: null,
+      title: '预处理指令 #include &lt;stdio.h&gt;',
+      desc: '预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容引入源文件，使 printf 获得正确的函数声明。这一行不产生任何屏幕输出。'
+    },
+    {   /* 1 */
+      line: 2, ctx: 'main',
+      vars: V({}),
+      out: null,
+      title: '程序入口 int main() {',
+      desc: '操作系统把控制权交给 main，程序正式开始执行。系统为 main 建立栈帧，接下来定义的整型变量 a 就存放在这个栈帧里。'
+    },
+    {   /* 2 */
+      line: 3, ctx: 'main · 定义并初始化',
+      vars: V({ a: '5' }),
+      out: null,
+      title: 'int a = 5;  只有一个变量 a',
+      desc: '定义整型变量 a，占 <b>4 个字节</b>，初值 <span class="hi">5</span>。接下来的第 4 行只操作这一个变量——<b>它同时出现在两个赋值运算符的左右两侧</b>，这正是这条语句绕人的地方。'
+    },
+    {   /* 3 */
+      line: 4, ctx: 'main · 分析表达式结构',
+      vars: V({ a: '5',
+                subExpr: 'a += a -= 12 + 8',
+                op: '（分析中…）',
+                note: '算术 +  >  赋值 += / -=  ；= 右结合' }),
+      out: null,
+      title: 'a += a -= 12 + 8;  先看优先级与结合性',
+      desc: '这条语句里出现了三种运算符：算术 <code>+</code>、复合赋值 <code>+=</code>、复合赋值 <code>-=</code>。<br>· <b>优先级</b>：算术 <code>+</code> 高于赋值类运算符，所以 <code>12 + 8</code> 会最先算出来；<br>· <b>结合性</b>：<code>+=</code> 和 <code>-=</code> 优先级相同，且都是<b>右结合</b>，所以表达式等价于 <code>a += (a -= (12 + 8))</code>；<br>· 也就是说，先算最里层的 <code>a -= 20</code>，再拿它的结果去算外层的 <code>a += ...</code>。'
+    },
+    {   /* 4 */
+      line: 4, ctx: 'main · 先算 12 + 8',
+      vars: V({ a: '5',
+                subExpr: '12 + 8',
+                op: '算右侧常量',
+                note: '12 + 8 = 20' }),
+      out: null,
+      title: '12 + 8 = 20，右端常量先被算出',
+      desc: '<code>+</code> 的优先级最高，先把 <code>12 + 8</code> 算出来等于 <span class="hi">20</span>。此时原表达式化简为 <code>a += a -= 20</code>。'
+    },
+    {   /* 5 */
+      line: 4, ctx: 'main · 确定结合方向',
+      vars: V({ a: '5',
+                subExpr: 'a += (a -= 20)',
+                op: '= 右结合',
+                note: '先算最内层的 a -= 20' }),
+      out: null,
+      title: '右结合 → 表达式等价于 a += (a -= 20)',
+      desc: '赋值运算符是<b>右结合</b>的，所以 <code>a += a -= 20</code> 解析为 <code>a += (a -= 20)</code>，而不是 <code>(a += a) -= 20</code>。这意味着<b>内层的 <code>a -= 20</code> 先执行</b>，执行完之后它的结果会作为外层 <code>a +=</code> 的右操作数。'
+    },
+    {   /* 6 */
+      line: 4, ctx: 'main · 计算内层 a -= 20',
+      vars: V({ a: '5',
+                subExpr: 'a -= 20',
+                op: '读 a = 5，5 - 20',
+                oldA: '5',
+                newA: '（计算中…）',
+                note: '先读 a 当前值做减法' }),
+      out: null,
+      title: '内层 a -= 20：读取 a = 5，计算 5 - 20',
+      desc: '内层 <code>a -= 20</code> 等价于 <code>a = a - 20</code>。<b>第一步</b>是读取 a 当前的值 <span class="hi">5</span>，与 20 相减：<code>5 - 20 = -15</code>。这一步只是<b>读</b>，a 里还是 5。'
+    },
+    {   /* 7 */
+      line: 4, ctx: 'main · 写回 a = -15',
+      vars: V({ a: '-15',
+                subExpr: 'a -= 20 完成',
+                op: '写回 a',
+                oldA: '5',
+                newA: '-15',
+                innerRes: '-15',
+                note: 'a 变成 -15，该子表达式值也是 -15' }),
+      out: null,
+      title: '内层完成：a 由 5 变成 -15',
+      desc: '把 <span class="hi">-15</span> 写回 a，a 的值从 <span class="hi2">5</span> 变成 <span class="hi">-15</span>。由于赋值表达式的值就是被赋的值，整个 <code>(a -= 20)</code> 子表达式的值也是 <b>-15</b>，它将作为外层 <code>a +=</code> 的右操作数。'
+    },
+    {   /* 8 */
+      line: 4, ctx: 'main · 计算外层 a += (-15)',
+      vars: V({ a: '-15',
+                subExpr: 'a += (-15)',
+                op: '读 a = -15，-15 + (-15)',
+                oldA: '-15',
+                newA: '（计算中…）',
+                innerRes: '-15',
+                note: '外层右操作数是内层的结果 -15' }),
+      out: null,
+      title: '外层 a += (-15)：读取 a = -15，计算 -15 + (-15)',
+      desc: '外层 <code>a += ...</code> 等价于 <code>a = a + (...)</code>。右操作数就是上一步内层的返回值 <b>-15</b>；左操作数读取的是 a <b>当前</b>的值——注意此时 a 已经被内层改成了 <b>-15</b>。计算：<code>-15 + (-15) = -30</code>。'
+    },
+    {   /* 9 */
+      line: 4, ctx: 'main · 写回 a = -30',
+      vars: V({ a: '-30',
+                subExpr: 'a += (-15) 完成',
+                op: '写回 a',
+                oldA: '-15',
+                newA: '-30',
+                innerRes: '-15',
+                outerRes: '-30',
+                note: 'a 最终为 -30' }),
+      out: null,
+      title: '外层完成：a 由 -15 变成 -30',
+      desc: '把 <span class="hi">-30</span> 写回 a，整条语句执行完毕，a 的最终值是 <b>-30</b>。梳理关键点：<br>① <code>12+8</code> 先算出 20；<br>② 右结合使内层 <code>a -= 20</code> 先执行，a 变 -15，该子表达式的值也是 -15；<br>③ 外层 <code>a += (-15)</code> 再执行，但此时读到的 a 已经是 -15，所以是 <code>-15 + (-15) = -30</code>；<br>④ 如果误以为外层读到的还是 5，就会错算成 <code>5 + (-15) = -10</code>。' +
+            '<span class="warn"><b>重要提醒：</b>严格来说，<code>a += a -= 12 + 8;</code> 在 <b>C 标准里属于“未定义行为”（undefined behavior）</b>——它在两个序列点之间对同一个变量 a <b>修改了两次</b>，而且读取与写入的顺序没有规定。本模拟按“内层先算完再算外层”的常见教材解释展示结果 -30；但换一个编译器、换一个优化等级，结果可能不同。写代码时应把这类语句拆成两条独立语句，例如先 <code>a -= 20;</code> 再 <code>a += a;</code>，保证可移植、可预测。</span>'
+    },
+    {   /* 10 */
+      line: 5, ctx: 'main · printf 输出',
+      vars: V({ a: '-30',
+                subExpr: '—', op: '—',
+                oldA: '—', newA: '—',
+                innerRes: '-15', outerRes: '-30',
+                note: 'a 已确定为 -30',
+                prints: 1 }),
+      out: [[{ t: 'a=', c: 'out' }, { t: '-30', c: 'neg' }]],
+      title: 'printf("a=%d\\n", a);  输出 a=-30',
+      desc: '<code>%d</code> 按十进制打印 a 的值 <b>-30</b>，屏幕上出现 <b>a=-30</b>，末尾 <code>\\n</code> 换行。格式串 <code>"a=%d\\n"</code> 是字符串文字，不会被重新计算，只是把 <code>%d</code> 替换成 a 的值。'
+    },
+    {   /* 11 */
+      line: 6, ctx: 'main',
+      vars: V({ a: '-30',
+                subExpr: '—', op: '—', oldA: '—', newA: '—',
+                innerRes: '—', outerRes: '—', note: '—',
+                prints: 1, ret: '0' }),
+      out: null,
+      title: 'return 0;',
+      desc: '结束 main 函数并把整数 0 交还操作系统。约定返回 0 表示程序正常结束，非 0 通常表示出错。这条语句不产生屏幕输出。'
+    },
+    {   /* 12 */
+      line: 7, ctx: '程序结束',
+      vars: V({ a: '-30',
+                subExpr: '—', op: '—', oldA: '—', newA: '—',
+                innerRes: '—', outerRes: '—', note: '—',
+                prints: 1, ret: '0' }),
+      out: null,
+      title: 'main 函数体结束 }',
+      desc: '函数体收尾，main 的栈帧被销毁，变量 a 随栈帧释放（值虽然还显示为 -30，但存储空间已回收），控制权交还操作系统。程序共调用 1 次 printf、输出 1 行，返回值 0。'
+    }
+  ];
+
+  /* =========================================================
+     3. DOM 引用
+     ========================================================= */
+  var codeScroll  = document.getElementById('codeScroll');
+  var codeLines   = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+  var varTable    = document.getElementById('varTable');
+  var consoleBody = document.getElementById('consoleBody');
+  var explainBody = document.getElementById('explainBody');
+  var stepCounter = document.getElementById('stepCounter');
+  var btnPlay     = document.getElementById('btnPlay');
+  var btnPrev     = document.getElementById('btnPrev');
+  var btnNext     = document.getElementById('btnNext');
+  var btnReset    = document.getElementById('btnReset');
+  var btnFull     = document.getElementById('btnFull');
+  var btnMm       = document.getElementById('btnMm');
+  var btnPanels   = document.getElementById('btnPanels');
+  var btnLayout   = document.getElementById('btnLayout');
+  var speedInput  = document.getElementById('speed');
+  var speedLabel  = document.getElementById('speedLabel');
+  var mmView      = document.getElementById('mmView');
+  var mmLines     = Array.prototype.slice.call(document.querySelectorAll('.mm-line'));
+
+  /* =========================================================
+     4. 变量表行定义
+     ========================================================= */
+  var VAR_ROWS = [
+    { key:'ctx',      name:'当前执行位置',                    kind:'k-ctx'  },
+    { key:'a',        name:'a  (int) 的当前值',               kind:'k-main' },
+    { key:'subExpr',  name:'当前求值的子表达式',              kind:'k-sub'  },
+    { key:'op',       name:'当前运算',                        kind:'k-op'   },
+    { key:'oldA',     name:'本次运算读到的 a（旧值）',        kind:'k-old'  },
+    { key:'newA',     name:'本次运算写回的 a（新值）',        kind:'k-new'  },
+    { key:'innerRes', name:'内层 a -= 20 的表达式值',         kind:'k-res'  },
+    { key:'outerRes', name:'外层 a += ... 的表达式值',        kind:'k-res'  },
+    { key:'note',     name:'关键规则提示',                    kind:'k-note' },
+    { key:'prints',   name:'printf 调用次数',                 kind:'k-ctx'  },
+    { key:'ret',      name:'main 返回值',                     kind:'k-ret'  }
+  ];
+
+  /* =========================================================
+     5. 运行状态
+     ========================================================= */
+  var current    = -1;
+  var playing    = false;
+  var timer      = null;
+  var speed      = Number(speedInput.value);
+  var lastOutSig = '';
+
+  /* =========================================================
+     6. 构建变量表骨架
+     ========================================================= */
+  function buildVarTable() {
+    varTable.innerHTML = VAR_ROWS.map(function (r) {
+      return '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+               '<span class="var-name">' + r.name + '</span>' +
+               '<span class="var-value dim">—</span>' +
+             '</div>';
+    }).join('');
+  }
+
+  function valueOf(step, key) {
+    if (!step) return '—';
+    if (key === 'ctx') return step.ctx;
+    var v = step.vars[key];
+    return (v === undefined || v === null) ? '—' : v;
+  }
+
+  function updateVars(step, prevStep) {
+    VAR_ROWS.forEach(function (r) {
+      var row = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+      if (!row) return;
+      var valEl = row.querySelector('.var-value');
+      var val = String(valueOf(step, r.key));
+      var old = String(valueOf(prevStep, r.key));
+
+      if (valEl.textContent !== val) {
+        valEl.textContent = val;
+        valEl.classList.toggle('dim', val === '—');
+        valEl.title = val;
+        valEl.classList.remove('flash');
+        void valEl.offsetWidth;                 /* 强制重排，重放动画 */
+        valEl.classList.add('flash');
+        if (prevStep && old !== val) {
+          row.classList.add('changed');
+          window.setTimeout(function () { row.classList.remove('changed'); }, 700);
+        }
+      }
+    });
+  }
+
+  /* =========================================================
+     7. 代码高亮 + 自动滚动居中
+     ========================================================= */
+  function centerActiveLine() {
+    var el = codeScroll.querySelector('.code-line.active');
+    if (!el) return;
+    window.requestAnimationFrame(function () {
+      var er = el.getBoundingClientRect();
+      var cr = codeScroll.getBoundingClientRect();
+      var delta = (er.top + er.height / 2) - (cr.top + cr.height / 2);
+      if (Math.abs(delta) > 4) {
+        codeScroll.scrollTo({
+          top: Math.max(0, codeScroll.scrollTop + delta),
+          behavior: 'smooth'
+        });
+      }
+    });
+  }
+
+  function updateCode(step) {
+    var activeLine = step ? step.line : null;
+    codeLines.forEach(function (el) {
+      var n = Number(el.dataset.line);
+      el.classList.toggle('active', activeLine !== null && n === activeLine);
+      el.classList.toggle('done',   activeLine !== null && n <  activeLine);
+    });
+    centerActiveLine();
+  }
+
+  /* 点击缩略图某一行 → 代码区平滑滚动过去 */
+  function scrollToLine(n) {
+    var el = codeScroll.querySelector('.code-line[data-line="' + n + '"]');
+    if (!el) return;
+    var er = el.getBoundingClientRect();
+    var cr = codeScroll.getBoundingClientRect();
+    codeScroll.scrollTo({
+      top: codeScroll.scrollTop + (er.top - cr.top) - 40,
+      behavior: 'smooth'
+    });
+  }
+
+  /* =========================================================
+     8. 输出区（按快照重建）
+     ========================================================= */
+  function resolveOut(upto) {
+    for (var i = upto; i >= 0; i--) {
+      if (STEPS[i] && STEPS[i].out) return STEPS[i].out;
+    }
+    return null;
+  }
+
+  function updateOutput(upto) {
+    var lines = resolveOut(upto);
+    var sig   = lines ? JSON.stringify(lines) : '';
+
+    if (sig === lastOutSig) return;             /* 内容未变则跳过 */
+    lastOutSig = sig;
+
+    consoleBody.innerHTML = '';
+    if (!lines) return;
+
+    lines.forEach(function (segs) {
+      var div = document.createElement('div');
+      div.className = 'out-line';
+      segs.forEach(function (seg) {
+        var span = document.createElement('span');
+        span.className = 'seg-' + (seg.c || 'out');
+        span.textContent = seg.t;
+        div.appendChild(span);
+      });
+      consoleBody.appendChild(div);
+    });
+
+    consoleBody.scrollTop = consoleBody.scrollHeight;
+  }
+
+  /* =========================================================
+     9. 说明条 / 缩略图高亮
+     ========================================================= */
+  function updateExplain(step) {
+    if (step) {
+      var isCompound = (step.line === 4);
+      explainBody.innerHTML =
+        '<div class="ex-head">' +
+          '<span class="ex-line' + (isCompound ? ' compound' : '') + '">第 ' + step.line + ' 行</span>' +
+          '<strong>' + step.title + '</strong>' +
+        '</div>' +
+        '<div class="ex-desc">' + step.desc + '</div>';
+    } else {
+      explainBody.innerHTML =
+        '<div class="ex-desc">点击「▶ 播放」或「下一步 ▶」，开始逐条执行程序。' +
+        '（快捷键：空格=播放/暂停，←/→=上一步/下一步，R=重置，F=全屏，M=缩略图，H=面板）</div>';
+    }
+  }
+
+  function updateMinimap(step) {
+    var activeLine = step ? step.line : null;
+    mmLines.forEach(function (el) {
+      var n = Number(el.dataset.line);
+      el.classList.toggle('active', activeLine !== null && n === activeLine);
+      el.classList.toggle('done',   activeLine !== null && n <  activeLine);
+    });
+  }
+
+  function updateMmView() {
+    var sh = codeScroll.scrollHeight || 1;
+    var ch = codeScroll.clientHeight || 1;
+    var top = (codeScroll.scrollTop / sh) * 100;
+    var hgt = (ch / sh) * 100;
+    mmView.style.top = Math.min(100, Math.max(0, top)) + '%';
+    mmView.style.height = Math.min(100, Math.max(2, hgt)) + '%';
+  }
+
+  /* =========================================================
+     10. 总渲染
+     ========================================================= */
+  function render() {
+    var step = current >= 0 ? STEPS[current] : null;
+    var prev = current > 0 ? STEPS[current - 1] : null;
+
+    updateCode(step);
+    updateVars(step, prev);
+    updateOutput(current);
+    updateExplain(step);
+    updateMinimap(step);
+
+    stepCounter.textContent = '步骤 ' + (current + 1) + ' / ' + STEPS.length;
+
+    btnPrev.disabled = current < 0;
+    btnNext.disabled = current >= STEPS.length - 1;
+  }
+
+  /* =========================================================
+     11. 播放控制
+     ========================================================= */
+  function updatePlayBtn() {
+    btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+    btnPlay.classList.toggle('playing', playing);
+  }
+
+  function tick() {
+    if (current >= STEPS.length - 1) { pause(); return; }
+    current += 1;
+    render();
+    if (current >= STEPS.length - 1) pause();   /* 最后一步自动停止 */
+  }
+
+  function play() {
+    if (playing) return;
+    if (current >= STEPS.length - 1) { current = -1; render(); }
+    playing = true;
+    updatePlayBtn();
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+    tick();                                     /* 立即走第一步 */
+  }
+
+  function pause() {
+    playing = false;
+    window.clearInterval(timer);
+    timer = null;
+    updatePlayBtn();
+  }
+
+  function nextStep() {
+    pause();
+    if (current < STEPS.length - 1) { current += 1; render(); }
+  }
+
+  function prevStep() {
+    pause();
+    if (current > -1) { current -= 1; render(); }
+  }
+
+  function resetAll() {
+    pause();
+    current = -1;
+    lastOutSig = '';
+    consoleBody.innerHTML = '';
+    render();
+  }
+
+  /* =========================================================
+     12. 面板系统：置顶 / 拖动 / 缩放 / 关闭 / 折叠 / 重置布局
+     ========================================================= */
+  var panels      = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+  var zTop        = 100;
+  var activePanel = null;
+
+  /* ---- 点击置顶 ---- */
+  function bringToFront(panel) {
+    if (activePanel && activePanel !== panel) activePanel.classList.remove('active');
+    zTop += 1;
+    panel.style.zIndex = zTop;
+    panel.classList.add('active');
+    activePanel = panel;
+  }
+
+  /* ---- 拖动 ---- */
+  function makeDraggable(panel, handle) {
+    handle.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('button') || e.target.closest('input')) return;
+      e.preventDefault();
+      bringToFront(panel);
+
+      var r  = panel.getBoundingClientRect();
+      var sx = e.clientX, sy = e.clientY;
+      var sl = r.left,    st = r.top;
+
+      panel.style.left   = sl + 'px';
+      panel.style.top    = st + 'px';
+      panel.style.right  = 'auto';
+      panel.style.bottom = 'auto';
+
+      try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+
+      function mv(ev) {
+        panel.style.left = (sl + ev.clientX - sx) + 'px';
+        panel.style.top  = (st + ev.clientY - sy) + 'px';
+      }
+      function up() {
+        handle.removeEventListener('pointermove', mv);
+        handle.removeEventListener('pointerup', up);
+        handle.removeEventListener('pointercancel', up);
+        try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
+      }
+      handle.addEventListener('pointermove', mv);
+      handle.addEventListener('pointerup', up);
+      handle.addEventListener('pointercancel', up);
+    });
+  }
+
+  /* ---- 缩放：不设最小 / 最大限制 ---- */
+  function makeResizable(panel, handle) {
+    handle.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      bringToFront(panel);
+
+      var r  = panel.getBoundingClientRect();
+      var sx = e.clientX, sy = e.clientY;
+      var sw = r.width,   sh = r.height;
+
+      panel.style.width     = sw + 'px';
+      panel.style.height    = sh + 'px';
+      panel.style.maxWidth  = 'none';
+      panel.style.maxHeight = 'none';
+      panel.style.right     = 'auto';
+      panel.style.bottom    = 'auto';
+
+      try { handle.setPointerCapture(e.pointerId); } catch (err) {}
+
+      function mv(ev) {
+        var nw = sw + (ev.clientX - sx);
+        var nh = sh + (ev.clientY - sy);
+        panel.style.width  = Math.max(0, nw) + 'px';
+        panel.style.height = Math.max(0, nh) + 'px';
+      }
+      function up() {
+        handle.removeEventListener('pointermove', mv);
+        handle.removeEventListener('pointerup', up);
+        handle.removeEventListener('pointercancel', up);
+        try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
+      }
+      handle.addEventListener('pointermove', mv);
+      handle.addEventListener('pointerup', up);
+      handle.addEventListener('pointercancel', up);
+    });
+  }
+
+  /* ---- 初始化所有面板 ---- */
+  panels.forEach(function (p) {
+    /* 捕获阶段：任何点击/触摸/按钮都先置顶 */
+    p.addEventListener('pointerdown', function () { bringToFront(p); }, true);
+    p.addEventListener('focusin',     function () { bringToFront(p); }, true);
+
+    var head = p.querySelector('[data-drag]');
+    if (head) makeDraggable(p, head);
+
+    var rh = p.querySelector('[data-resize]');
+    if (rh) makeResizable(p, rh);
+
+    var closeBtn = p.querySelector('[data-act="close"]');
+    if (closeBtn) closeBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      p.classList.add('closed');
+    });
+
+    var colBtn = p.querySelector('[data-act="collapse"]');
+    if (colBtn) colBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      p.classList.toggle('collapsed');
+    });
+  });
+
+  /* ---- 面板定位辅助 ---- */
+  function resetPanel(id, pos, width, height) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('closed', 'collapsed');
+    el.style.left   = (pos.left   != null) ? pos.left   + 'px' : 'auto';
+    el.style.top    = (pos.top    != null) ? pos.top    + 'px' : 'auto';
+    el.style.right  = (pos.right  != null) ? pos.right  + 'px' : 'auto';
+    el.style.bottom = (pos.bottom != null) ? pos.bottom + 'px' : 'auto';
+    el.style.width     = width  ? width  + 'px' : '';
+    el.style.height    = height ? height + 'px' : '';
+    el.style.maxWidth  = '';
+    el.style.maxHeight = '';
+  }
+
+  /* ---- 默认布局 ---- */
+  function applyDefaultLayout() {
+    var w = window.innerWidth;
+    var h = window.innerHeight;
+
+    resetPanel('panelTop',     { left: 20, top: 16 }, Math.min(1560, w - 40), null);
+    resetPanel('panelVars',    { left: 20, top: 140 }, Math.min(1180, w - 320), Math.min(640, Math.max(280, h - 380)));
+    resetPanel('panelMinimap', { right: 20, top: 140 }, 250, Math.min(480, h - 200));
+    resetPanel('panelExplain', { left: 20, bottom: 20 }, Math.min(1180, w - 720), null);
+    resetPanel('panelOut',     { right: 20, bottom: 20 }, 680, 280);
+
+    /* 默认层级：控制栏 → 变量 → 缩略图 → 说明 → 输出 */
+    zTop = 100;
+    ['panelTop', 'panelVars', 'panelMinimap', 'panelExplain', 'panelOut'].forEach(function (id, i) {
+      var el = document.getElementById(id);
+      if (el) el.style.zIndex = 100 + i;
+    });
+    zTop = 110;
+
+    if (activePanel) activePanel.classList.remove('active');
+    activePanel = null;
+    panels.forEach(function (p) { p.classList.remove('active'); });
+  }
+
+  /* =========================================================
+     13. 全局快捷键
+     ========================================================= */
+  function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+      var el = document.documentElement;
+      if (el.requestFullscreen) el.requestFullscreen();
+      else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+      else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
+  }
+
+  function toggleAllPanels() {
+    var body = document.body;
+    if (body.classList.contains('hide-all')) {
+      body.classList.remove('hide-all');
+      panels.forEach(function (p) { p.classList.remove('closed'); });
+      panels.forEach(function (p) { bringToFront(p); });
+    } else {
+      body.classList.add('hide-all');
+    }
+  }
+
+  function toggleMinimap() {
+    var p = document.getElementById('panelMinimap');
+    document.body.classList.remove('hide-all');
+    if (p.classList.contains('closed')) {
+      p.classList.remove('closed');
+      bringToFront(p);
+    } else {
+      p.classList.add('closed');
+    }
+  }
+
+  document.addEventListener('keydown', function (e) {
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
+    switch (e.code) {
+      case 'Space':      e.preventDefault(); playing ? pause() : play(); break;
+      case 'ArrowRight': e.preventDefault(); nextStep(); break;
+      case 'ArrowLeft':  e.preventDefault(); prevStep(); break;
+      case 'KeyR':       e.preventDefault(); resetAll(); break;
+      case 'KeyF':       e.preventDefault(); toggleFullscreen(); break;
+      case 'KeyM':       e.preventDefault(); toggleMinimap(); break;
+      case 'KeyH':       e.preventDefault(); toggleAllPanels(); break;
+    }
+  });
+
+  /* =========================================================
+     14. 事件绑定
+     ========================================================= */
+  btnPlay.addEventListener('click', function () { playing ? pause() : play(); });
+  btnNext.addEventListener('click', nextStep);
+  btnPrev.addEventListener('click', prevStep);
+  btnReset.addEventListener('click', resetAll);
+  btnFull.addEventListener('click', toggleFullscreen);
+  btnMm.addEventListener('click', toggleMinimap);
+  btnPanels.addEventListener('click', toggleAllPanels);
+  btnLayout.addEventListener('click', function () {
+    document.body.classList.remove('hide-all');
+    applyDefaultLayout();
+  });
+
+  speedInput.addEventListener('input', function () {
+    speed = Number(speedInput.value);
+    speedLabel.textContent = (speed / 1000).toFixed(1) + 's';
+    if (playing) {
+      window.clearInterval(timer);
+      timer = window.setInterval(tick, speed);
+    }
+  });
+
+  /* 缩略图点击跳转 */
+  mmLines.forEach(function (el) {
+    el.addEventListener('click', function () { scrollToLine(Number(el.dataset.line)); });
+  });
+
+  /* 代码区滚动 → 同步缩略图视口框 */
+  codeScroll.addEventListener('scroll', updateMmView, { passive: true });
+  window.addEventListener('resize', updateMmView);
+
+  /* =========================================================
+     15. 初始化
+     ========================================================= */
+  buildVarTable();
+  speedLabel.textContent = (speed / 1000).toFixed(1) + 's';
+  applyDefaultLayout();
+  render();
+  updateMmView();
+  window.setTimeout(function () { panels.forEach(bringToFront); }, 0);
+
+})();
+</script>
+</body>
+</html>

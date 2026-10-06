@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>C 程序逐步执行模拟 · 登鹳雀楼 · 可拖动大屏版</title>
+<style>
+/* ============================================================
+   全屏代码 + 可拖动透明面板 + 真·缩略图 + 面板可关闭
+   ============================================================
+   关键设计：
+   1) 代码区全屏不透明（#0d1117），任何时候都不会被永久遮挡。
+   2) 所有悬浮面板（顶栏 / 变量 / 输出 / 说明 / 缩略图）：
+      - 半透明毛玻璃
+      - 支持鼠标 + 触控拖动（拖动把手）
+      - 支持一键关闭（× 按钮 ≥48px）
+      - 支持 H 键整体切换显示/隐藏
+      - 位置记忆到 localStorage
+   3) 缩略图真正渲染缩小版代码文本（8px 等宽字体 + 语法色）
+   4) 字号（1920×1080 实测）：
+      代码 ≈84px、输出 ≈77px、变量 ≈42px、
+      说明 ≈48px、按钮 ≈40px
+   ============================================================ */
+
+:root{
+  /* ---- 字号：clamp(min, vw, max)，1920 下均满足硬指标 ---- */
+  --code-font:    clamp(80px, 4.4vw, 200px);   /* 1080p≈84px  */
+  --out-font:     clamp(72px, 4.0vw, 180px);   /* 1080p≈77px  */
+  --var-font:     clamp(40px, 2.2vw, 100px);   /* 1080p≈42px  */
+  --varval-font:  clamp(44px, 2.4vw, 110px);   /* 1080p≈46px  */
+  --explain-font: clamp(48px, 2.5vw, 120px);   /* 1080p≈48px  */
+  --btn-font:     clamp(40px, 2.1vw,  96px);   /* 1080p≈40px  */
+  --head-font:    clamp(28px, 1.5vw,  64px);   /* 面板标题    */
+
+  /* ---- 颜色 ---- */
+  --bg-code:  #0d1117;
+  --text:     #e6eefb;
+  --muted:    #93a8c6;
+  --accent:   #38bdf8;
+  --accent-2: #7dd3fc;
+  --panel-bg: rgba(13, 20, 35, 0.82);
+  --panel-bd: rgba(56, 189, 248, 0.35);
+}
+
+*,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
+html,body{ height:100%; }
+
+body{
+  background: var(--bg-code);
+  color: var(--text);
+  font-family:"Microsoft YaHei","PingFang SC","Source Han Sans SC","Segoe UI",system-ui,sans-serif;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  user-select: none;   /* 默认禁止选中，避免拖动时误选 */
+}
+/* 代码区允许选中 */
+.code-scroll, .console, .ex-text{ user-select: text; }
+
+/* ==================================================
+   全屏代码层
+   ================================================== */
+.code-layer{
+  position: fixed;
+  inset: 0;
+  background: var(--bg-code);
+  z-index: 1;
+}
+
+.code-scroll{
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 上下留出顶栏 / 说明条的空间，右侧为缩略图留缓冲 */
+  padding: 130px 240px 180px 60px;
+  font-family: ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size: var(--code-font);
+  line-height: 1.42;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+.code-scroll::-webkit-scrollbar{ width:14px; }
+.code-scroll::-webkit-scrollbar-thumb{ background:#2c3f5e; border-radius:14px; }
+.code-scroll::-webkit-scrollbar-track{ background:transparent; }
+
+.code-line{
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4em;
+  padding: 0.02em 0.6em 0.02em 0.2em;
+  border-left: 0.22em solid transparent;
+  white-space: pre;
+  border-radius: 0.1em;
+  transition: background .28s, border-color .28s, opacity .28s;
+}
+.code-line .ln{
+  flex: 0 0 auto;
+  width: 1.6em;
+  font-size: 0.62em;
+  line-height: inherit;
+  text-align: right;
+  color: #4a6488;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.code-line .src{ flex: 1 1 auto; }
+
+.code-line.done{ opacity: .34; }
+
+.code-line.active{
+  background: linear-gradient(90deg, rgba(56,189,248,.26), rgba(56,189,248,.02));
+  border-left-color: #38bdf8;
+  animation: pulseGlow 2.2s ease-in-out infinite;
+}
+@keyframes pulseGlow{
+  0%,100%{ box-shadow: inset 0 0 0 3px rgba(56,189,248,.40); }
+  50%    { box-shadow: inset 0 0 0 3px rgba(56,189,248,.66), 0 0 36px rgba(56,189,248,.32); }
+}
+.code-line.active .ln{ color: #7dd3fc; font-weight: 800; }
+.code-line.active .src{ color: #ffffff; text-shadow: 0 0 22px rgba(56,189,248,.55); }
+
+/* 语法高亮 */
+.pp { color:#c084fc; font-weight:700; }   /* 预处理指令 */
+.str{ color:#4ade80; }                     /* 字符串     */
+.esc{ color:#fbbf24; font-weight:800; }    /* \n 转义符  */
+.fn { color:#38bdf8; font-weight:700; }    /* 函数名     */
+.kw { color:#f472b6; font-weight:700; }    /* 关键字     */
+
+/* ==================================================
+   悬浮面板通用
+   ================================================== */
+.float-panel{
+  position: fixed;
+  z-index: 60;
+  background: var(--panel-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 3px solid var(--panel-bd);
+  border-radius: 14px;
+  box-shadow:
+    0 24px 70px rgba(0,0,0,.78),
+    inset 0 0 0 1px rgba(56,189,248,.10);
+  transition: opacity .28s ease, visibility .28s ease;
+  /* 面板尺寸随内容自适应 */
+  max-width: 92vw;
+  max-height: 92vh;
+}
+.float-panel.dragging{
+  box-shadow:
+    0 32px 90px rgba(0,0,0,.92),
+    0 0 0 4px rgba(56,189,248,.35),
+    inset 0 0 0 1px rgba(56,189,248,.20);
+  transition: none;
+  opacity: 1 !important;
+}
+.float-panel.panel-hidden{
+  opacity: 0 !important;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .28s ease, visibility 0s .28s;
+}
+
+/* 拖动把手 */
+.drag-handle{
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+}
+.drag-handle:active{ cursor: grabbing; }
+.drag-handle .grip{
+  display: inline-block;
+  font-size: 1.1em;
+  line-height: 1;
+  color: rgba(148,163,184,.85);
+  letter-spacing: -0.15em;
+  padding: 0 .15em 0 0;
+}
+
+/* 面板标题栏 */
+.panel-head{
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5em;
+  padding: .28em .5em .28em .7em;
+  font-size: var(--head-font);
+  font-weight: 800;
+  letter-spacing: .04em;
+  color: var(--accent-2);
+  background: rgba(22,35,58,.9);
+  border-bottom: 2px solid rgba(56,189,248,.22);
+  white-space: nowrap;
+  border-radius: 11px 11px 0 0;
+}
+.panel-head .head-text{
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: .35em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 关闭按钮（触控友好，≥48px） */
+.close-btn{
+  flex: 0 0 auto;
+  width:  clamp(48px, 1.8vw, 72px);
+  height: clamp(48px, 1.8vw, 72px);
+  border-radius: 50%;
+  border: 3px solid rgba(148,163,184,.55);
+  background: rgba(15,23,42,.8);
+  color: #cbd5e1;
+  font-size: clamp(22px, 0.9vw, 38px);
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s, border-color .15s, color .15s, transform .1s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.close-btn:hover{
+  background: rgba(239,68,68,.35);
+  border-color: rgba(239,68,68,.9);
+  color: #fff;
+}
+.close-btn:active{ transform: scale(.9); }
+
+/* ==================================================
+   顶部控制栏
+   ================================================== */
+.topbar{
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: .45em;
+  padding: .22em .55em;
+  font-size: var(--btn-font);
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+  opacity: .95;
+  transition: opacity .5s ease;
+}
+.topbar::-webkit-scrollbar{ height: 0; }
+.topbar:hover,
+.topbar.dragging{ opacity: 1 !important; }
+.topbar.idle:not(:hover){ opacity: .32; }
+
+.btn{
+  font-family: inherit;
+  font-size: var(--btn-font);
+  font-weight: 800;
+  line-height: 1.1;
+  min-height: 1.7em;
+  padding: .16em .68em;
+  border-radius: .55em;
+  border: 3px solid rgba(56,189,248,.35);
+  background: rgba(27,43,71,.92);
+  color: #e3edfa;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, transform .08s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:hover:not(:disabled){ background:#24395e; border-color: rgba(56,189,248,.75); }
+.btn:active:not(:disabled){ transform: translateY(2px); }
+.btn:disabled{ opacity:.32; cursor:not-allowed; }
+.btn.primary{
+  background: linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color: #7dd3fc;
+  color: #04121f;
+}
+.btn.primary.playing{
+  background: linear-gradient(180deg,#f59e0b,#d97706);
+  border-color: #fbbf24;
+  color: #1a1200;
+}
+.btn.toggle-off{ opacity: .48; }
+
+/* 速度滑块 */
+.speed{
+  display: flex;
+  align-items: center;
+  gap: .3em;
+  font-size: var(--btn-font);
+  font-weight: 800;
+  color: var(--muted);
+  white-space: nowrap;
+  padding-left: .25em;
+}
+.speed input[type=range]{
+  -webkit-appearance: none;
+  appearance: none;
+  width: 4.2em;
+  height: 1.7em;
+  background: transparent;
+  cursor: pointer;
+}
+.speed input[type=range]::-webkit-slider-runnable-track{
+  height: .30em;
+  border-radius: .18em;
+  background: #22314b;
+  border: 2px solid rgba(56,189,248,.4);
+}
+.speed input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance: none;
+  appearance: none;
+  width: .88em;
+  height: .88em;
+  margin-top: -.30em;
+  border-radius: 50%;
+  background: #38bdf8;
+  border: 4px solid #0a1120;
+  box-shadow: 0 0 0 3px #38bdf8;
+}
+.speed input[type=range]::-moz-range-track{
+  height: .30em; border-radius: .18em; background: #22314b;
+}
+.speed input[type=range]::-moz-range-thumb{
+  width: .88em; height: .88em; border-radius: 50%;
+  background: #38bdf8; border: 4px solid #0a1120;
+}
+.speed b{
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  min-width: 2.4em;
+  display: inline-block;
+  text-align: right;
+}
+
+/* ==================================================
+   变量面板（尺寸随内容自适应）
+   ================================================== */
+.vars-panel{
+  top: 160px;
+  left: 24px;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 340px;
+  max-width: 26vw;
+  max-height: 60vh;
+}
+.var-table{
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: .35em .45em;
+  display: flex;
+  flex-direction: column;
+  gap: .2em;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+.var-table::-webkit-scrollbar{ width:10px; }
+.var-table::-webkit-scrollbar-thumb{ background:#2c3f5e; border-radius:10px; }
+
+.var-row{
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .6em;
+  padding: .16em .5em;
+  border-radius: .35em;
+  background: rgba(13,23,40,.85);
+  border: 2px solid rgba(30,41,59,1);
+  transition: background .28s, border-color .28s;
+}
+.var-row.changed{
+  border-color: rgba(56,189,248,.9);
+  background: rgba(56,189,248,.15);
+}
+.var-name{
+  font-size: var(--var-font);
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.var-value{
+  font-family: ui-monospace,Consolas,"Courier New",monospace;
+  font-size: var(--varval-font);
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+@keyframes flashVal{
+  0%  { transform: scale(1); }
+  35% { transform: scale(1.28); color:#fff; text-shadow: 0 0 24px #38bdf8; }
+  100%{ transform: scale(1); }
+}
+.var-value.flash{ animation: flashVal .55s ease-out; }
+
+/* ==================================================
+   输出面板（尺寸随内容自适应）
+   ================================================== */
+.out-panel{
+  bottom: 200px;
+  left: 24px;
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-width: 380px;
+  max-width: 45vw;
+  max-height: 45vh;
+}
+.console{
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin: .3em .35em .35em;
+  padding: .3em .55em;
+  background: rgba(4,10,20,.7);
+  border: 2px solid rgba(56,189,248,.18);
+  border-radius: .4em;
+  font-family: ui-monospace,Consolas,"Courier New",monospace;
+  font-size: var(--out-font);
+  line-height: 1.5;
+  white-space: pre;
+  color: #eef6ff;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+.console::-webkit-scrollbar{ width:12px; }
+.console::-webkit-scrollbar-thumb{ background:#2c3f5e; border-radius:12px; }
+.console:empty::before{
+  content: "（等待程序输出…）";
+  color: #3d5474;
+}
+@keyframes outIn{
+  from{ opacity:0; transform: translateX(-.7em); }
+  to  { opacity:1; transform: none; }
+}
+.out-line{ animation: outIn .42s ease-out; }
+
+/* ==================================================
+   说明面板（尺寸随内容自适应）
+   ================================================== */
+.explain-panel{
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  max-width: min(1200px, 88vw);
+  max-height: 30vh;
+}
+.explain-body{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: .5em;
+  padding: .3em .7em .4em;
+  font-size: var(--explain-font);
+  line-height: 1.42;
+  color: #c8d8ee;
+  overflow: hidden;
+}
+.ex-line{
+  flex: 0 0 auto;
+  align-self: center;
+  padding: .06em .55em;
+  border-radius: .3em;
+  background: rgba(56,189,248,.22);
+  border: 3px solid rgba(56,189,248,.65);
+  color: var(--accent);
+  font-weight: 800;
+  white-space: nowrap;
+}
+.ex-text{
+  flex: 1 1 auto;
+  min-width: 0;
+  max-height: 4.8em;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+.ex-text::-webkit-scrollbar{ width:8px; }
+.ex-text::-webkit-scrollbar-thumb{ background:#2c3f5e; border-radius:8px; }
+.ex-text strong{ color:#f2f8ff; }
+.ex-text em{ color:#93a8c6; font-style:normal; }
+
+/* ==================================================
+   缩略图（真·缩小代码文本）
+   ================================================== */
+.minimap{
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  width: 200px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  border-width: 2px;
+}
+.minimap .panel-head{
+  font-size: 16px;
+  padding: .25em .4em .25em .55em;
+  border-radius: 9px 9px 0 0;
+}
+.minimap .close-btn{
+  width: 34px;
+  height: 34px;
+  font-size: 18px;
+  border-width: 2px;
+}
+
+.minimap-body{
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 6px 6px 8px;
+  background: rgba(13,17,23,.72);
+  border-radius: 0 0 9px 9px;
+  font-family: ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size: 8px;
+  line-height: 1.55;
+  cursor: pointer;
+}
+.mini-line{
+  display: block;
+  white-space: pre;
+  overflow: hidden;
+  padding: 0 2px;
+  border-radius: 2px;
+  color: #93a8c6;
+  transition: background .2s, opacity .2s, color .2s;
+}
+.mini-line.done{ opacity: .35; }
+.mini-line.active{
+  background: rgba(56,189,248,.35);
+  color: #eaf6ff;
+  font-weight: 700;
+}
+/* 缩略图语法色（更简化的版本） */
+.mini-line .mp { color:#c084fc; font-weight:700; }
+.mini-line .ms { color:#4ade80; }
+.mini-line .mf { color:#38bdf8; font-weight:700; }
+.mini-line .mk { color:#f472b6; font-weight:700; }
+.mini-line .me { color:#fbbf24; font-weight:800; }
+
+.minimap-viewport{
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 0;
+  height: 100%;
+  background: rgba(56,189,248,.10);
+  border: 1.5px solid rgba(56,189,248,.55);
+  border-radius: 5px;
+  pointer-events: none;
+  transition: top .1s linear, height .1s linear;
+}
+
+/* ==================================================
+   全部隐藏时的提示
+   ================================================== */
+.hint{
+  position: fixed;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  z-index: 90;
+  font-size: clamp(20px, 1.2vw, 34px);
+  font-weight: 700;
+  color: rgba(148,163,184,.9);
+  background: rgba(13,17,23,.8);
+  padding: .35em 1em;
+  border-radius: .55em;
+  border: 2px solid rgba(56,189,248,.3);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .3s;
+}
+.hint.show{ opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ============ 全屏代码层 ============ -->
+<div class="code-layer">
+  <div class="code-scroll" id="codeScroll">
+
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span></span></div>
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">main</span>() {</span></div>
+    <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="fn">printf</span>(<span class="str">" 登鹳雀楼 <span class="esc">\n</span>"</span>);</span></div>
+    <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="fn">printf</span>(<span class="str">"王之焕 <span class="esc">\n</span>"</span>);</span></div>
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    <span class="fn">printf</span>(<span class="str">"白日依山尽, <span class="esc">\n</span>"</span>);</span></div>
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    <span class="fn">printf</span>(<span class="str">"黄河入海流. <span class="esc">\n</span>"</span>);</span></div>
+    <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">    <span class="fn">printf</span>(<span class="str">"欲穷千里目, <span class="esc">\n</span>"</span>);</span></div>
+    <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">    <span class="fn">printf</span>(<span class="str">"更上一层楼. <span class="esc">\n</span>"</span>);</span></div>
+    <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">}</span></div>
+
+  </div>
+</div>
+
+<!-- ============ 顶部控制栏（可拖动、可关闭） ============ -->
+<header class="float-panel topbar" id="topbar">
+  <span class="drag-handle grip" id="topbarHandle" title="拖动移动工具栏">⋮⋮</span>
+  <button id="btnReset" class="btn" type="button">⟲ 重置</button>
+  <button id="btnPrev"  class="btn" type="button">◀ 上一步</button>
+  <button id="btnPlay"  class="btn primary" type="button">▶ 自动播放</button>
+  <button id="btnNext"  class="btn" type="button">下一步 ▶</button>
+  <button id="btnFull"  class="btn" type="button">⛶ 全屏</button>
+  <button id="btnPanels" class="btn" type="button">☰ 面板</button>
+  <button id="btnMinimap" class="btn" type="button">▤ 缩略图</button>
+  <button id="btnLayout" class="btn" type="button">↺ 重置布局</button>
+  <label class="speed">速度
+    <input type="range" id="speed" min="600" max="3600" step="100" value="1800">
+    <b id="speedLabel">1.8s</b>
+  </label>
+  <button class="close-btn" data-close="topbar" title="关闭工具栏（按 H 可重新显示）">×</button>
+</header>
+
+<!-- ============ 变量面板（可拖动、可关闭） ============ -->
+<aside class="float-panel vars-panel" id="varsPanel">
+  <div class="panel-head drag-handle" id="varsHandle">
+    <span class="head-text"><span class="grip">⋮⋮</span> 变量 / 运行状态</span>
+    <button class="close-btn" data-close="varsPanel" title="关闭面板（H 键可重新显示）">×</button>
+  </div>
+  <div class="var-table" id="varTable"></div>
+</aside>
+
+<!-- ============ 输出面板（可拖动、可关闭） ============ -->
+<aside class="float-panel out-panel" id="outPanel">
+  <div class="panel-head drag-handle" id="outHandle">
+    <span class="head-text"><span class="grip">⋮⋮</span> 程序运行结果</span>
+    <button class="close-btn" data-close="outPanel" title="关闭面板（H 键可重新显示）">×</button>
+  </div>
+  <div class="console" id="consoleBody"></div>
+</aside>
+
+<!-- ============ 说明面板（可拖动、可关闭） ============ -->
+<footer class="float-panel explain-panel" id="explainPanel">
+  <div class="panel-head drag-handle" id="explainHandle">
+    <span class="head-text"><span class="grip">⋮⋮</span> 当前语句说明</span>
+    <button class="close-btn" data-close="explainPanel" title="关闭面板（H 键可重新显示）">×</button>
+  </div>
+  <div class="explain-body">
+    <span class="ex-line" id="exLine">准备就绪</span>
+    <div class="ex-text" id="exText"><em>点击「自动播放」或「下一步」开始逐条执行。快捷键：空格 播放/暂停，← → 上一步/下一步，R 重置，F 全屏，H 面板，M 缩略图。</em></div>
+  </div>
+</footer>
+
+<!-- ============ 缩略图（真·缩小代码文本，可拖动、可关闭） ============ -->
+<aside class="float-panel minimap" id="minimap">
+  <div class="panel-head drag-handle" id="minimapHandle">
+    <span class="head-text"><span class="grip">⋮⋮</span> 缩略图</span>
+    <button class="close-btn" data-close="minimap" title="关闭缩略图（M 键可重新显示）">×</button>
+  </div>
+  <div class="minimap-body" id="minimapBody">
+    <span class="mini-line" data-line="1"><span class="mp">#include</span> <span class="ms">&lt;stdio.h&gt;</span></span>
+    <span class="mini-line" data-line="2"><span class="mk">main</span>() {</span>
+    <span class="mini-line" data-line="3">    <span class="mf">printf</span>(<span class="ms">" 登鹳雀楼 <span class="me">\n</span>"</span>);</span>
+    <span class="mini-line" data-line="4">    <span class="mf">printf</span>(<span class="ms">"王之焕 <span class="me">\n</span>"</span>);</span>
+    <span class="mini-line" data-line="5">    <span class="mf">printf</span>(<span class="ms">"白日依山尽, <span class="me">\n</span>"</span>);</span>
+    <span class="mini-line" data-line="6">    <span class="mf">printf</span>(<span class="ms">"黄河入海流. <span class="me">\n</span>"</span>);</span>
+    <span class="mini-line" data-line="7">    <span class="mf">printf</span>(<span class="ms">"欲穷千里目, <span class="me">\n</span>"</span>);</span>
+    <span class="mini-line" data-line="8">    <span class="mf">printf</span>(<span class="ms">"更上一层楼. <span class="me">\n</span>"</span>);</span>
+    <span class="mini-line" data-line="9">}</span>
+    <div class="minimap-viewport" id="minimapViewport"></div>
+  </div>
+</aside>
+
+<!-- 全部隐藏时的提示 -->
+<div class="hint" id="hint">按 H 键重新显示面板 · 按 M 键切换缩略图</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ==================================================
+     1. 逐步执行数据（保持原逻辑不变）
+     ================================================== */
+  var rawSteps = [
+    { line: 1, title: '预处理：#include <stdio.h>',
+      desc: '预处理器把标准输入输出头文件 stdio.h 的内容引入源文件，让后面用到的 printf 有正确的函数声明。预处理指令本身不产生任何屏幕输出。',
+      out: null },
+    { line: 2, title: '程序入口：main() {',
+      desc: '操作系统调用 main 函数，程序正式开始执行。本程序没有定义变量，只需按顺序自上而下执行函数体中的语句。',
+      out: null },
+    { line: 3, title: '第 1 次调用 printf',
+      desc: '把字符串 " 登鹳雀楼 \\n" 原样写到屏幕上；\\n 是换行符，输出后光标移到下一行行首。注意字符串前后各有一个空格。',
+      out: ' 登鹳雀楼 ' },
+    { line: 4, title: '第 2 次调用 printf',
+      desc: '输出作者名 "王之焕 " 再换行。原代码写作“王之焕”，通行版本常作“王之涣”，此处按原代码保留。printf 返回本次输出的字符个数（此处为 5），但程序没有接收返回值。',
+      out: '王之焕 ' },
+    { line: 5, title: '第 3 次调用 printf',
+      desc: '输出第一句诗 "白日依山尽, "，再由 \\n 换行。屏幕上的输出内容在不断增加。',
+      out: '白日依山尽, ' },
+    { line: 6, title: '第 4 次调用 printf',
+      desc: '输出第二句诗 "黄河入海流. " 并换行。',
+      out: '黄河入海流. ' },
+    { line: 7, title: '第 5 次调用 printf',
+      desc: '输出第三句诗 "欲穷千里目, " 并换行。',
+      out: '欲穷千里目, ' },
+    { line: 8, title: '第 6 次调用 printf',
+      desc: '输出第四句诗 "更上一层楼. " 并换行，全诗输出完毕。',
+      out: '更上一层楼. ' },
+    { line: 9, title: 'main 函数结束',
+      desc: '函数体执行完毕，程序正常退出，main 隐式返回 0（表示执行成功），控制权交还操作系统。',
+      out: null }
+  ];
+
+  /* 累计状态 */
+  var pc = 0, oc = 0, ch = 0;
+  var steps = rawSteps.map(function (s) {
+    if (s.out !== null && s.out !== undefined) {
+      pc += 1; oc += 1; ch += s.out.length + 1;   /* +1 = \n */
+    }
+    return Object.assign({}, s, {
+      printfCount: pc, outCount: oc, chars: ch,
+      ret: (s.line === 9 ? 0 : null)
+    });
+  });
+
+  /* ==================================================
+     2. DOM 引用
+     ================================================== */
+  var codeScroll       = document.getElementById('codeScroll');
+  var codeLines        = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+  var varTable         = document.getElementById('varTable');
+  var consoleBody      = document.getElementById('consoleBody');
+  var exLine           = document.getElementById('exLine');
+  var exText           = document.getElementById('exText');
+  var topbar           = document.getElementById('topbar');
+  var varsPanel        = document.getElementById('varsPanel');
+  var outPanel         = document.getElementById('outPanel');
+  var explainPanel     = document.getElementById('explainPanel');
+  var minimap          = document.getElementById('minimap');
+  var minimapBody      = document.getElementById('minimapBody');
+  var minimapViewport  = document.getElementById('minimapViewport');
+  var hint             = document.getElementById('hint');
+
+  var btnPlay    = document.getElementById('btnPlay');
+  var btnPrev    = document.getElementById('btnPrev');
+  var btnNext    = document.getElementById('btnNext');
+  var btnReset   = document.getElementById('btnReset');
+  var btnFull    = document.getElementById('btnFull');
+  var btnPanels  = document.getElementById('btnPanels');
+  var btnMinimap = document.getElementById('btnMinimap');
+  var btnLayout  = document.getElementById('btnLayout');
+  var speedInput = document.getElementById('speed');
+  var speedLabel = document.getElementById('speedLabel');
+
+  /* ==================================================
+     3. 状态
+     ================================================== */
+  var current = -1;
+  var playing = false;
+  var timer   = null;
+  var speed   = Number(speedInput.value);
+
+  var STORAGE_KEY = 'c-sim-layout-v3';
+
+  /* ==================================================
+     4. 变量表
+     ================================================== */
+  var VAR_ROWS = [
+    { key: 'line',   name: '当前行号',    get: function (s) { return s ? s.line : '—'; } },
+    { key: 'printf', name: 'printf 次数', get: function (s) { return s ? s.printfCount : 0; } },
+    { key: 'lines',  name: '输出行数',    get: function (s) { return s ? s.outCount : 0; } },
+    { key: 'chars',  name: '输出字符',    get: function (s) { return s ? s.chars : 0; } },
+    { key: 'ret',    name: '返回值',      get: function (s) { return (s && s.ret !== null) ? s.ret : '—'; } }
+  ];
+
+  function buildVarTable() {
+    varTable.innerHTML = VAR_ROWS.map(function (r) {
+      return '<div class="var-row" data-key="' + r.key + '">' +
+               '<span class="var-name">' + r.name + '</span>' +
+               '<span class="var-value">—</span>' +
+             '</div>';
+    }).join('');
+  }
+
+  function updateVars(step) {
+    VAR_ROWS.forEach(function (r) {
+      var row = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+      if (!row) return;
+      var valEl = row.querySelector('.var-value');
+      var val = String(r.get(step));
+      if (valEl.textContent !== val) {
+        valEl.textContent = val;
+        valEl.classList.remove('flash');
+        void valEl.offsetWidth;
+        valEl.classList.add('flash');
+        row.classList.add('changed');
+        window.setTimeout(function () { row.classList.remove('changed'); }, 650);
+      }
+    });
+  }
+
+  /* ==================================================
+     5. 代码高亮 + 智能自动滚动
+     ================================================== */
+  function scrollActiveIntoView(el) {
+    if (!el) return;
+    requestAnimationFrame(function () {
+      var cr = codeScroll.getBoundingClientRect();
+      var er = el.getBoundingClientRect();
+      /* 已完整可见（留 90px 缓冲），不滚动 */
+      if (er.top >= cr.top + 90 && er.bottom <= cr.bottom - 90) return;
+      var target = el.offsetTop - (codeScroll.clientHeight - el.offsetHeight) / 2;
+      codeScroll.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+    });
+  }
+
+  function updateCode(line) {
+    codeLines.forEach(function (el) {
+      var n = Number(el.dataset.line);
+      el.classList.toggle('active', line !== null && n === line);
+      el.classList.toggle('done', line !== null && n < line);
+    });
+    scrollActiveIntoView(document.querySelector('.code-line.active'));
+    updateMinimap(line);
+  }
+
+  /* ==================================================
+     6. 缩略图更新
+     ================================================== */
+  var miniLines = Array.prototype.slice.call(minimapBody.querySelectorAll('.mini-line'));
+
+  function updateMinimap(line) {
+    miniLines.forEach(function (el) {
+      var n = Number(el.dataset.line);
+      el.classList.toggle('active', line !== null && n === line);
+      el.classList.toggle('done', line !== null && n < line);
+    });
+    updateMinimapViewport();
+  }
+
+  function updateMinimapViewport() {
+    if (minimap.classList.contains('panel-hidden')) return;
+    var sh = codeScroll.scrollHeight;
+    var ch = codeScroll.clientHeight;
+    var st = codeScroll.scrollTop;
+    var mh = minimapBody.clientHeight;
+
+    if (sh <= ch || mh <= 0) {
+      minimapViewport.style.top = '0px';
+      minimapViewport.style.height = mh + 'px';
+      return;
+    }
+    var ratio = ch / sh;
+    var vpH = Math.max(24, ratio * mh);
+    var vpTop = (st / sh) * mh;
+    vpTop = Math.max(0, Math.min(mh - vpH, vpTop));
+    minimapViewport.style.top = vpTop + 'px';
+    minimapViewport.style.height = vpH + 'px';
+  }
+
+  /* 缩略图点击跳转 */
+  minimapBody.addEventListener('click', function (e) {
+    var rect = minimapBody.getBoundingClientRect();
+    var ratio = (e.clientY - rect.top) / rect.height;
+    ratio = Math.max(0, Math.min(1, ratio));
+    var target = ratio * codeScroll.scrollHeight - codeScroll.clientHeight / 2;
+    codeScroll.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+  });
+
+  /* 代码滚动 / 窗口变化时更新缩略图视口 */
+  codeScroll.addEventListener('scroll', updateMinimapViewport, { passive: true });
+  window.addEventListener('resize', function () {
+    updateMinimapViewport();
+    keepPanelsInView();
+  });
+
+  /* ==================================================
+     7. 输出区
+     ================================================== */
+  function updateOutput(upto) {
+    var lines = [];
+    for (var k = 0; k <= upto; k++) {
+      var s = steps[k];
+      if (s && s.out !== null && s.out !== undefined) lines.push(s.out);
+    }
+    if (consoleBody.children.length > lines.length) {
+      consoleBody.innerHTML = '';
+    }
+    while (consoleBody.children.length < lines.length) {
+      var i = consoleBody.children.length;
+      var d = document.createElement('div');
+      d.className = 'out-line';
+      d.textContent = lines[i];
+      consoleBody.appendChild(d);
+    }
+    consoleBody.scrollTop = consoleBody.scrollHeight;
+  }
+
+  /* ==================================================
+     8. 总渲染
+     ================================================== */
+  function render() {
+    var step = current >= 0 ? steps[current] : null;
+
+    updateCode(step ? step.line : null);
+    updateVars(step);
+    updateOutput(current);
+
+    if (step) {
+      exLine.textContent = '第 ' + step.line + ' 行';
+      exText.innerHTML = '<strong>' + step.title + '</strong> · ' + step.desc;
+    } else {
+      exLine.textContent = '准备就绪';
+      exText.innerHTML = '<em>点击「自动播放」或「下一步」开始逐条执行。快捷键：空格 播放/暂停，← → 上一步/下一步，R 重置，F 全屏，H 面板，M 缩略图。</em>';
+    }
+
+    btnPrev.disabled = current < 0;
+    btnNext.disabled = current >= steps.length - 1;
+
+    requestAnimationFrame(updateMinimapViewport);
+  }
+
+  /* ==================================================
+     9. 播放控制
+     ================================================== */
+  function updatePlayBtn() {
+    btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+    btnPlay.classList.toggle('playing', playing);
+  }
+
+  function tick() {
+    if (current >= steps.length - 1) { pause(); return; }
+    current += 1;
+    render();
+    if (current >= steps.length - 1) pause();
+  }
+
+  function play() {
+    if (playing) return;
+    if (current >= steps.length - 1) { current = -1; render(); }
+    playing = true;
+    updatePlayBtn();
+    clearInterval(timer);
+    timer = setInterval(tick, speed);
+    tick();
+  }
+
+  function pause() {
+    playing = false;
+    clearInterval(timer);
+    timer = null;
+    updatePlayBtn();
+  }
+
+  function togglePlay() { playing ? pause() : play(); }
+
+  function nextStep() {
+    pause();
+    if (current < steps.length - 1) { current += 1; render(); }
+  }
+
+  function prevStep() {
+    pause();
+    if (current > -1) { current -= 1; render(); }
+  }
+
+  function resetAll() {
+    pause();
+    current = -1;
+    consoleBody.innerHTML = '';
+    render();
+  }
+
+  /* ==================================================
+     10. 全屏
+     ================================================== */
+  function isFullscreen() {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement);
+  }
+  function updateFullBtn() {
+    btnFull.textContent = isFullscreen() ? '⛶ 退出全屏' : '⛶ 全屏';
+  }
+  function toggleFullscreen() {
+    var el = document.documentElement;
+    if (!isFullscreen()) {
+      var req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+      if (req) req.call(el);
+    } else {
+      var exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+      if (exit) exit.call(document);
+    }
+  }
+  document.addEventListener('fullscreenchange', updateFullBtn);
+  document.addEventListener('webkitfullscreenchange', updateFullBtn);
+
+  /* ==================================================
+     11. 拖动系统（指针事件 = 鼠标 + 触控）
+     ================================================== */
+  function makeDraggable(panel, handleId) {
+    var handle = document.getElementById(handleId);
+    if (!handle) return;
+
+    var isDragging = false;
+    var startX = 0, startY = 0;
+    var startLeft = 0, startTop = 0;
+    var panelW = 0, panelH = 0;
+    var vw = 0, vh = 0;
+
+    handle.addEventListener('pointerdown', function (e) {
+      /* 忽略来自按钮 / 输入框的点击 */
+      if (e.target.closest('button, input, a, label')) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+      var rect = panel.getBoundingClientRect();
+      panelW = rect.width;
+      panelH = rect.height;
+      vw = window.innerWidth;
+      vh = window.innerHeight;
+
+      /* 统一为 left/top 定位（从 right/bottom/transform 切换过来） */
+      panel.style.left = rect.left + 'px';
+      panel.style.top = rect.top + 'px';
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.transform = 'none';
+
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = rect.left;
+      startTop = rect.top;
+      isDragging = true;
+      panel.classList.add('dragging');
+
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault();
+    });
+
+    handle.addEventListener('pointermove', function (e) {
+      if (!isDragging) return;
+      var dx = e.clientX - startX;
+      var dy = e.clientY - startY;
+      var newLeft = startLeft + dx;
+      var newTop  = startTop + dy;
+      /* 限制在视口内 */
+      newLeft = Math.max(0, Math.min(vw - panelW, newLeft));
+      newTop  = Math.max(0, Math.min(vh - panelH, newTop));
+      panel.style.left = newLeft + 'px';
+      panel.style.top  = newTop + 'px';
+    });
+
+    function endDrag(e) {
+      if (!isDragging) return;
+      isDragging = false;
+      panel.classList.remove('dragging');
+      try {
+        if (e && e.pointerId !== undefined &&
+            handle.hasPointerCapture && handle.hasPointerCapture(e.pointerId)) {
+          handle.releasePointerCapture(e.pointerId);
+        }
+      } catch (_) {}
+      saveLayout();
+    }
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+    handle.addEventListener('lostpointercapture', endDrag);
+  }
+
+  /* 面板列表（供拖动 / 保存 / 恢复 / 重置使用） */
+  var PANELS = [
+    { el: topbar,       handle: 'topbarHandle'  },
+    { el: varsPanel,    handle: 'varsHandle'    },
+    { el: outPanel,     handle: 'outHandle'     },
+    { el: explainPanel, handle: 'explainHandle' },
+    { el: minimap,      handle: 'minimapHandle' }
+  ];
+  PANELS.forEach(function (p) { makeDraggable(p.el, p.handle); });
+
+  /* ---- localStorage 持久化 ---- */
+  function saveLayout() {
+    var data = {};
+    PANELS.forEach(function (p) {
+      if (!p.el.id) return;
+      data[p.el.id] = { left: p.el.style.left, top: p.el.style.top };
+    });
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (_) {}
+  }
+
+  function restoreLayout() {
+    try {
+      var data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      PANELS.forEach(function (p) {
+        var saved = data[p.el.id];
+        if (!saved || !saved.left || !saved.top) return;
+        p.el.style.left = saved.left;
+        p.el.style.top  = saved.top;
+        p.el.style.right = 'auto';
+        p.el.style.bottom = 'auto';
+        p.el.style.transform = 'none';
+      });
+    } catch (_) {}
+    keepPanelsInView();
+  }
+
+  function resetLayout() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+    PANELS.forEach(function (p) {
+      p.el.style.left = '';
+      p.el.style.top = '';
+      p.el.style.right = '';
+      p.el.style.bottom = '';
+      p.el.style.transform = '';
+    });
+    requestAnimationFrame(function () {
+      keepPanelsInView();
+      updateMinimapViewport();
+    });
+  }
+
+  /* 窗口缩放后，把面板拉回视口内 */
+  function keepPanelsInView() {
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    PANELS.forEach(function (p) {
+      if (!p.el.style.left) return;
+      var rect = p.el.getBoundingClientRect();
+      var left = Math.max(0, Math.min(vw - rect.width, rect.left));
+      var top  = Math.max(0, Math.min(vh - rect.height, rect.top));
+      p.el.style.left = left + 'px';
+      p.el.style.top  = top + 'px';
+    });
+  }
+
+  /* ==================================================
+     12. 面板显示 / 隐藏
+     ================================================== */
+  function hidePanel(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('panel-hidden');
+    updatePanelToggleState();
+    updateHint();
+  }
+
+  function showPanel(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('panel-hidden');
+    updatePanelToggleState();
+    updateHint();
+  }
+
+  /* H 键：切换四个主面板（不含缩略图） */
+  function toggleAllPanels() {
+    var mainPanels = [topbar, varsPanel, outPanel, explainPanel];
+    var anyVisible = mainPanels.some(function (p) {
+      return !p.classList.contains('panel-hidden');
+    });
+    mainPanels.forEach(function (p) {
+      p.classList.toggle('panel-hidden', anyVisible);
+    });
+    updatePanelToggleState();
+    updateHint();
+    if (!anyVisible) {
+      /* 从全部隐藏切到全部显示时，需要重新计算缩略图视口 */
+      requestAnimationFrame(updateMinimapViewport);
+    }
+  }
+
+  /* M 键：切换缩略图 */
+  function toggleMinimap() {
+    minimap.classList.toggle('panel-hidden');
+    updatePanelToggleState();
+    updateHint();
+    if (!minimap.classList.contains('panel-hidden')) {
+      requestAnimationFrame(updateMinimapViewport);
+    }
+  }
+
+  /* 更新面板按钮的“开/关”视觉状态 */
+  function updatePanelToggleState() {
+    var mainPanels = [topbar, varsPanel, outPanel, explainPanel];
+    var anyVisible = mainPanels.some(function (p) {
+      return !p.classList.contains('panel-hidden');
+    });
+    btnPanels.classList.toggle('toggle-off', !anyVisible);
+    btnPanels.textContent = anyVisible ? '☰ 面板' : '☰ 面板已隐藏';
+
+    var mmVisible = !minimap.classList.contains('panel-hidden');
+    btnMinimap.classList.toggle('toggle-off', !mmVisible);
+    btnMinimap.textContent = mmVisible ? '▤ 缩略图' : '▤ 缩略图已隐藏';
+  }
+
+  /* 全部关闭时的提示 */
+  function updateHint() {
+    var mainPanels = [topbar, varsPanel, outPanel, explainPanel];
+    var anyVisible = mainPanels.some(function (p) {
+      return !p.classList.contains('panel-hidden');
+    });
+    var mmVisible = !minimap.classList.contains('panel-hidden');
+    var allHidden = !anyVisible && !mmVisible;
+    hint.classList.toggle('show', allHidden);
+  }
+
+  /* 关闭按钮统一绑定 */
+  document.querySelectorAll('[data-close]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      hidePanel(btn.getAttribute('data-close'));
+    });
+  });
+
+  /* ==================================================
+     13. 顶栏空闲自动变淡
+     ================================================== */
+  var idleTimer = null;
+  function resetIdle() {
+    topbar.classList.remove('idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function () {
+      if (!topbar.classList.contains('dragging')) {
+        topbar.classList.add('idle');
+      }
+    }, 4000);
+  }
+  ['mousemove','mousedown','touchstart','keydown','wheel'].forEach(function (ev) {
+    document.addEventListener(ev, resetIdle, { passive: true });
+  });
+  resetIdle();
+
+  /* ==================================================
+     14. 按钮事件绑定
+     ================================================== */
+  btnPlay.addEventListener('click', togglePlay);
+  btnNext.addEventListener('click', nextStep);
+  btnPrev.addEventListener('click', prevStep);
+  btnReset.addEventListener('click', resetAll);
+  btnFull.addEventListener('click', toggleFullscreen);
+  btnPanels.addEventListener('click', toggleAllPanels);
+  btnMinimap.addEventListener('click', toggleMinimap);
+  btnLayout.addEventListener('click', resetLayout);
+
+  speedInput.addEventListener('input', function () {
+    speed = Number(speedInput.value);
+    speedLabel.textContent = (speed / 1000).toFixed(1) + 's';
+    if (playing) {
+      clearInterval(timer);
+      timer = setInterval(tick, speed);
+    }
+  });
+
+  /* ==================================================
+     15. 全局键盘快捷键（绑定 document，任何面板状态都有效）
+     ================================================== */
+  document.addEventListener('keydown', function (e) {
+    var tag = (e.target && e.target.tagName ? e.target.tagName : '').toUpperCase();
+    /* 输入框聚焦时不响应（除 Esc） */
+    if (tag === 'INPUT' && e.code !== 'Escape') return;
+
+    switch (e.code) {
+      case 'Space':     e.preventDefault(); togglePlay(); break;
+      case 'ArrowRight':
+      case 'PageDown':  e.preventDefault(); nextStep(); break;
+      case 'ArrowLeft':
+      case 'PageUp':    e.preventDefault(); prevStep(); break;
+      case 'KeyR':      e.preventDefault(); resetAll(); break;
+      case 'KeyF':      e.preventDefault(); toggleFullscreen(); break;
+      case 'KeyH':      e.preventDefault(); toggleAllPanels(); break;
+      case 'KeyM':      e.preventDefault(); toggleMinimap(); break;
+    }
+  });
+
+  /* ==================================================
+     16. 初始化
+     ================================================== */
+  buildVarTable();
+  speedLabel.textContent = (speed / 1000).toFixed(1) + 's';
+  updateFullBtn();
+  restoreLayout();
+  updatePanelToggleState();
+  updateHint();
+  render();
+
+  /* 让缩略图视口在字体 / 布局稳定后重算一次 */
+  window.addEventListener('load', function () {
+    requestAnimationFrame(function () {
+      updateMinimapViewport();
+      keepPanelsInView();
+      if (window.console && console.log) {
+        var cs = getComputedStyle(document.documentElement);
+        var codeV = cs.getPropertyValue('--code-font').trim();
+        var outV  = cs.getPropertyValue('--out-font').trim();
+        console.log('[大屏自检] --code-font=' + codeV + ' ; --out-font=' + outV);
+        console.log('[大屏自检] 代码区默认无遮挡；所有面板可拖动、可关闭；快捷键全局有效。');
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

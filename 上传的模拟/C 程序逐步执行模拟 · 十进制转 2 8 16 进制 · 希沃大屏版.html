@@ -1,0 +1,1459 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 十进制转 2/8/16 进制 · 希沃大屏版</title>
+<style>
+  /* ============ 全局变量（大屏字号硬指标） ============ */
+  :root{
+    --code-font: clamp(80px, 5vw, 120px);
+    --out-font: clamp(72px, 4.5vw, 110px);
+    --var-font: clamp(40px, 2.4vw, 60px);
+    --explain-font: clamp(48px, 2.8vw, 72px);
+    --btn-font: clamp(40px, 2.2vw, 60px);
+    --title-font: clamp(56px, 3vw, 80px);
+    --hd-font: clamp(24px, 1.5vw, 36px);
+
+    --bg:#0d1117;
+    --border:rgba(56,189,248,.35);
+    --text:#e6edf3;
+    --muted:#8b98a9;
+    --accent:#38bdf8;
+    --green:#4ade80;
+    --amber:#fbbf24;
+    --pink:#f472b6;
+    --teal:#2dd4bf;
+    --red:#f87171;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    height:100%;margin:0;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    -webkit-tap-highlight-color:transparent;
+  }
+
+  /* ============ 全屏代码区（视觉主体，永远不被永久遮挡） ============ */
+  #codeScroll{
+    position:fixed; inset:0; z-index:1;
+    overflow:auto; background:var(--bg);
+    scrollbar-width:thin; scrollbar-color:#30363d transparent;
+  }
+  #codeScroll::-webkit-scrollbar{width:16px;height:16px;}
+  #codeScroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:16px;}
+  #codeScroll::-webkit-scrollbar-track{background:transparent;}
+
+  #codeInner{ display:block; min-width:max-content; }
+
+  .code-line{
+    display:flex; align-items:flex-start; gap:.35em;
+    padding:.12em 4rem .12em .35em;
+    border-left:.085em solid transparent;
+    white-space:pre;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:var(--code-font);
+    line-height:1.38;
+    transition:background .25s,border-color .25s,opacity .25s,box-shadow .25s;
+  }
+  .code-line .ln{
+    flex:0 0 auto; width:2.6ch; text-align:right;
+    color:#4b5f7a; user-select:none; font-variant-numeric:tabular-nums;
+    font-size:.72em; line-height:1.92em;
+  }
+  .code-line .src{ flex:1 1 auto; }
+
+  /* 语法高亮 */
+  .pp{color:#c586c0;font-weight:700;}
+  .str{color:#ce9178;}
+  .cmt{color:#6a9955;font-style:italic;}
+  .fn{color:#dcdcaa;font-weight:700;}
+  .kw{color:#569cd6;font-weight:700;}
+  .num{color:#b5cea8;}
+  .op{color:#ff9e64;font-weight:700;}
+
+  /* 当前执行行 */
+  .code-line.active{
+    background:linear-gradient(90deg,rgba(56,189,248,.28),rgba(56,189,248,.06) 70%,transparent);
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 2px rgba(56,189,248,.35),0 0 40px rgba(56,189,248,.18);
+  }
+  .code-line.active .src{color:#ffffff;}
+  .code-line.active .ln{color:var(--accent);font-weight:700;}
+
+  /* 关键教学行高亮 */
+  .code-line.key-out{ background:rgba(74,222,128,.10); border-left-color:rgba(74,222,128,.6); }
+  .code-line.key-in{ background:rgba(45,212,191,.10); border-left-color:rgba(45,212,191,.6); }
+  .code-line.key-mv{ background:rgba(244,114,182,.10); border-left-color:rgba(244,114,182,.6); }
+  .code-line.key-fill{ background:rgba(251,191,36,.10); border-left-color:rgba(251,191,36,.6); }
+
+  .code-line.skip{ opacity:.22; }
+
+  /* ============ 悬浮窗通用 ============ */
+  .win{
+    position:fixed; z-index:100;
+    background:rgba(13,17,23,.80);
+    backdrop-filter:blur(14px) saturate(150%);
+    -webkit-backdrop-filter:blur(14px) saturate(150%);
+    border:2px solid var(--border);
+    border-radius:20px;
+    box-shadow:0 20px 60px rgba(0,0,0,.7);
+    display:flex; flex-direction:column;
+    overflow:hidden; color:var(--text);
+    transition:opacity .18s, box-shadow .18s, border-color .18s;
+  }
+  .win.active{
+    border-color:var(--accent);
+    box-shadow:0 0 0 4px rgba(56,189,248,.30),0 24px 70px rgba(0,0,0,.78);
+  }
+  .win.hidden{ display:none; }
+  .win.collapsed .win-bd{ display:none; }
+
+  .win-hd{
+    flex:0 0 auto; display:flex; align-items:center; gap:14px;
+    padding:10px 14px; cursor:move; touch-action:none; user-select:none;
+    background:linear-gradient(180deg,rgba(56,189,248,.20),rgba(56,189,248,.03));
+    border-bottom:1px solid rgba(56,189,248,.25);
+    font-size:var(--hd-font); font-weight:700; letter-spacing:.04em;
+    color:#cfe8ff; white-space:nowrap;
+  }
+  .win-hd .sp{ flex:1 1 auto; }
+  .win-hd .tag{ font-size:.72em; color:#7f9ec2; font-weight:500; }
+  .win-btn{
+    flex:0 0 auto; width:52px; height:52px; border-radius:14px;
+    border:1px solid rgba(148,163,184,.4); background:rgba(30,41,59,.85);
+    color:#e6edf3; font-size:28px; line-height:1; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:background .15s,border-color .15s,transform .1s;
+  }
+  .win-btn:hover{ background:#22334d; border-color:var(--accent); }
+  .win-btn:active{ transform:translateY(2px); }
+  .win-btn.close:hover{ background:#7f1d1d; border-color:#f87171; color:#fff; }
+
+  .win-bd{
+    flex:1 1 auto; min-height:0; min-width:0;
+    overflow:auto; padding:12px 14px;
+    scrollbar-width:thin; scrollbar-color:#334155 transparent;
+  }
+  .win-bd::-webkit-scrollbar{width:12px;height:12px;}
+  .win-bd::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:12px;}
+
+  .win-rs{
+    position:absolute; right:0; bottom:0; width:52px; height:52px;
+    cursor:nwse-resize; touch-action:none; z-index:5;
+    background:
+      linear-gradient(135deg,transparent 46%,rgba(56,189,248,.85) 46%,rgba(56,189,248,.85) 54%,transparent 54%),
+      linear-gradient(135deg,transparent 66%,rgba(56,189,248,.5) 66%,rgba(56,189,248,.5) 73%,transparent 73%);
+  }
+
+  /* ============ 顶部控制栏 ============ */
+  #winToolbar{
+    background:rgba(13,17,23,.75);
+    backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+    opacity:.88; transition:opacity .2s;
+  }
+  #winToolbar:hover{ opacity:1; }
+  #winToolbar .win-bd{
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:12px 14px;
+  }
+  .tbtn{
+    font:inherit; font-size:var(--btn-font); font-weight:700;
+    min-height:76px; padding:10px 22px; border-radius:16px;
+    border:1px solid rgba(148,163,184,.4);
+    background:linear-gradient(180deg,#1b2b45,#132033);
+    color:#e6edf3; cursor:pointer; white-space:nowrap;
+    transition:background .15s,border-color .15s,transform .1s;
+  }
+  .tbtn:hover:not(:disabled){ background:linear-gradient(180deg,#254063,#1a2c46); border-color:var(--accent); }
+  .tbtn:active:not(:disabled){ transform:translateY(2px); }
+  .tbtn:disabled{ opacity:.32; cursor:not-allowed; }
+  .tbtn.primary{
+    background:linear-gradient(180deg,#0ea5e9,#0284c7);
+    border-color:#7dd3fc; color:#04121f;
+  }
+  .tbtn.primary.playing{
+    background:linear-gradient(180deg,#f59e0b,#d97706);
+    border-color:#fbbf24; color:#1a1200;
+  }
+  .speed-wrap{
+    display:flex; align-items:center; gap:14px;
+    font-size:var(--btn-font); color:#9fb4cf; white-space:nowrap;
+  }
+  .speed-wrap input[type=range]{
+    width:220px; height:44px; accent-color:var(--accent); cursor:pointer;
+  }
+  .speed-wrap b{ color:var(--accent); font-variant-numeric:tabular-nums; min-width:3em; }
+
+  /* ============ 变量 / 数组 / 状态面板 ============ */
+  .arr-title{
+    font-size:var(--var-font); color:#9fb4cf; margin-bottom:10px; line-height:1.4;
+  }
+  .arr-title b{ color:var(--accent); }
+  .arr-title i{ color:var(--pink); font-style:normal; font-weight:700; }
+  .arr-grid{
+    display:grid; grid-template-columns:repeat(8,minmax(0,1fr));
+    gap:8px; margin-bottom:14px;
+  }
+  .arr-cell{
+    text-align:center; border-radius:12px; padding:8px 2px 10px;
+    background:#0d1728; border:3px solid #1b293f;
+    transition:background .3s,border-color .3s,box-shadow .3s,transform .3s;
+    overflow:hidden; min-width:0;
+  }
+  .arr-cell .idx{
+    display:block; font-size:.62em; color:#5f7796; line-height:1.3;
+    font-variant-numeric:tabular-nums;
+  }
+  .arr-cell .val{
+    display:block; font-family:ui-monospace,Consolas,monospace;
+    font-weight:800; font-size:1.4em; color:var(--accent);
+    font-variant-numeric:tabular-nums; line-height:1.3;
+  }
+  .arr-cell.empty .val{ color:#3c5170; font-weight:500; }
+  .arr-cell.is-hl{
+    border-color:var(--accent); background:rgba(56,189,248,.18);
+    box-shadow:0 0 0 4px rgba(56,189,248,.35),0 0 26px rgba(56,189,248,.45);
+    transform:translateY(-4px);
+  }
+  .arr-cell.is-hl .val{ color:#ffffff; }
+  .arr-cell.is-mv{
+    border-color:var(--pink); background:rgba(244,114,182,.22);
+    box-shadow:0 0 0 4px rgba(244,114,182,.45),0 0 32px rgba(244,114,182,.55);
+    transform:translateY(-6px);
+  }
+  .arr-cell.is-mv .val{ color:#ffe4f0; }
+  @keyframes cellFlash{0%{transform:scale(1);}40%{transform:scale(1.4);color:#fff;}100%{transform:scale(1);}}
+  .arr-cell .val.flash{animation:cellFlash .5s ease-out;}
+
+  .var-table{ display:flex; flex-direction:column; gap:5px; }
+  .var-row{
+    display:flex; justify-content:space-between; align-items:center; gap:16px;
+    padding:5px 14px; border-radius:12px;
+    background:#0d1728; border:2px solid #1b293f;
+    font-size:var(--var-font);
+    transition:background .3s,border-color .3s;
+  }
+  .var-row.k-ctx{ background:#122844; border-color:#26456b; }
+  .var-row.k-main{ border-left:8px solid rgba(34,211,238,.7); }
+  .var-row.k-val{ border-left:8px solid rgba(244,114,182,.9); }
+  .var-row.k-sw{ border-left:8px solid rgba(45,212,191,.9); }
+  .var-row.k-note{ border-left:8px solid rgba(45,212,191,.75); }
+  .var-row.k-cnt{ border-left:8px solid rgba(251,191,36,.9); }
+  .var-row.k-ret{ border-left:8px solid rgba(251,191,36,.5); }
+  .var-row.changed{ border-color:rgba(56,189,248,.9); background:rgba(56,189,248,.16); }
+  .var-name{ color:#93a7bf; white-space:nowrap; font-size:.72em; }
+  .var-value{
+    font-family:ui-monospace,Consolas,monospace; font-weight:800;
+    color:var(--accent); font-variant-numeric:tabular-nums;
+    white-space:nowrap; text-align:right;
+  }
+  .var-value.dim{ color:#5f7796; font-weight:500; }
+  .var-row.k-ctx .var-value{ color:var(--green); }
+  .var-row.k-val .var-value{ color:var(--pink); }
+  .var-row.k-sw .var-value{ color:var(--teal); }
+  .var-row.k-note .var-value{ color:var(--teal); font-weight:600; font-size:.68em; }
+  .var-row.k-cnt .var-value{ color:var(--amber); }
+  .var-row.k-ret .var-value{ color:var(--amber); }
+  @keyframes flash{0%{transform:scale(1);}35%{transform:scale(1.28);color:#fff;text-shadow:0 0 18px var(--accent);}100%{transform:scale(1);}}
+  .var-value.flash{animation:flash .55s ease-out;}
+
+  /* ============ 输出面板 ============ */
+  #consoleBody{
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:var(--out-font);
+    line-height:1.5; color:#fcd34d; font-weight:800;
+    white-space:pre; min-height:1.4em;
+    word-break:keep-all;
+  }
+  #consoleBody:empty::before{content:"（等待程序输出…）";color:#3d5474;font-weight:500;}
+  .out-line{ animation:slideIn .35s ease-out; }
+  @keyframes slideIn{from{opacity:0;transform:translateX(-24px);}to{opacity:1;transform:none;}}
+
+  /* ============ 说明条 ============ */
+  #winExplain .win-bd{
+    font-size:var(--explain-font); line-height:1.5; color:#c8d8ec;
+  }
+  #winExplain .ex-line{
+    display:inline-block; margin-right:.5em; padding:.06em .55em;
+    border-radius:.4em; background:rgba(56,189,248,.22);
+    color:var(--accent); font-weight:800; font-size:.82em; vertical-align:middle;
+  }
+  #winExplain .ex-line.mv{ background:rgba(244,114,182,.25); color:var(--pink); }
+  #winExplain .ex-line.ans{ background:rgba(251,191,36,.25); color:var(--amber); }
+  #winExplain strong{ color:#ffffff; }
+  #winExplain code{
+    font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.18); border-radius:.3em;
+    padding:0 .3em; color:#e2e8f0;
+  }
+  #winExplain .tip{
+    display:block; margin-top:.5em; padding:.45em .7em; border-radius:.5em;
+    background:rgba(45,212,191,.12); border-left:8px solid var(--teal); color:#bff5ec;
+    font-size:.88em;
+  }
+  #winExplain .warn{
+    display:block; margin-top:.5em; padding:.45em .7em; border-radius:.5em;
+    background:rgba(251,191,36,.14); border-left:8px solid var(--amber); color:#ffe6b0;
+    font-size:.88em;
+  }
+
+  /* ============ 缩略图 ============ */
+  #winMini .win-bd{ padding:0; overflow:hidden; }
+  .mini-body{ position:relative; width:100%; height:100%; overflow:hidden; }
+  .mini-lines{
+    position:absolute; inset:0; display:flex; flex-direction:column;
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:10px; line-height:1.2;
+  }
+  .mini-row{
+    flex:1 1 0; overflow:hidden;
+    display:flex; gap:.3em; white-space:pre;
+    padding-left:2px; opacity:.85;
+  }
+  .mini-row .ln{ flex:0 0 auto; width:2.6ch; text-align:right; color:#3f5a7d; }
+  .mini-row .src{ flex:1 1 auto; overflow:hidden; }
+  .mini-row.cur{ background:rgba(56,189,248,.32); }
+  .mini-viewport{
+    position:absolute; left:0; right:0; top:0; height:40px;
+    background:rgba(56,189,248,.14);
+    border-top:2px solid rgba(56,189,248,.9);
+    border-bottom:2px solid rgba(56,189,248,.9);
+    pointer-events:none; box-shadow:0 0 20px rgba(56,189,248,.35) inset;
+  }
+
+  @media (max-width:1100px){
+    :root{
+      --code-font: clamp(40px, 6vw, 80px);
+      --out-font: clamp(40px, 5vw, 72px);
+      --var-font: clamp(22px, 3vw, 40px);
+      --explain-font: clamp(24px, 3.2vw, 48px);
+      --btn-font: clamp(22px, 2.6vw, 40px);
+      --hd-font: clamp(18px, 2vw, 28px);
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 全屏代码区（25 行） ================= -->
+<div id="codeScroll">
+  <div id="codeInner">
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span></span></div>
+    <div class="code-line key-out" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">int</span> a[<span class="num">16</span>], i, x, t;                <span class="cmt">// 定义数组和变量</span></span></div>
+    <div class="code-line key-out" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">int</span> b[<span class="num">3</span>] <span class="op">=</span> {<span class="num">2</span>,<span class="num">8</span>,<span class="num">16</span>}, j;            <span class="cmt">// 定义进制数组</span></span></div>
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    <span class="fn">printf</span>(<span class="str">"请输入十进制数: "</span>);          <span class="cmt">// 提示输入</span></span></div>
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    <span class="fn">scanf</span>(<span class="str">"%d"</span>, <span class="op">&amp;</span>x);                    <span class="cmt">// 输入十进制数</span></span></div>
+    <div class="code-line key-out" data-line="7"><span class="ln">7</span><span class="src">    <span class="kw">for</span>(j<span class="op">=</span><span class="num">0</span>; j<span class="op">&lt;</span><span class="num">3</span>; j<span class="op">++</span>) {               <span class="cmt">// 遍历三种进制</span></span></div>
+    <div class="code-line key-fill" data-line="8"><span class="ln">8</span><span class="src">        t <span class="op">=</span> x;                         <span class="cmt">// 用t保存原始值</span></span></div>
+    <div class="code-line key-in" data-line="9"><span class="ln">9</span><span class="src">        <span class="kw">for</span>(i<span class="op">=</span><span class="num">0</span>; t; ) {                <span class="cmt">// 当t不为0时循环</span></span></div>
+    <div class="code-line key-mv" data-line="10"><span class="ln">10</span><span class="src">            a[i] <span class="op">=</span> t <span class="op">%</span> b[j];           <span class="cmt">// 计算余数存入数组</span></span></div>
+    <div class="code-line key-mv" data-line="11"><span class="ln">11</span><span class="src">            t <span class="op">/=</span> b[j];                 <span class="cmt">// t除以进制</span></span></div>
+    <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">            i<span class="op">++</span>;                       <span class="cmt">// 下标加1</span></span></div>
+    <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">        }</span></div>
+    <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">        <span class="fn">printf</span>(<span class="str">"%d进制是: "</span>, b[j]);     <span class="cmt">// 输出进制名称</span></span></div>
+    <div class="code-line key-in" data-line="15"><span class="ln">15</span><span class="src">        <span class="kw">for</span>(<span class="op">--</span>i; i<span class="op">&gt;=</span><span class="num">0</span>; i<span class="op">--</span>) {          <span class="cmt">// 逆序输出</span></span></div>
+    <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">            <span class="kw">if</span>(a[i]<span class="op">&gt;=</span><span class="num">10</span> <span class="op">&amp;&amp;</span> a[i]<span class="op">&lt;=</span><span class="num">15</span>) { <span class="cmt">// 如果余数在10~15之间</span></span></div>
+    <div class="code-line key-fill" data-line="17"><span class="ln">17</span><span class="src">                <span class="fn">printf</span>(<span class="str">"%c"</span>, a[i]<span class="op">+</span><span class="num">87</span>); <span class="cmt">// 输出a~f</span></span></div>
+    <div class="code-line" data-line="18"><span class="ln">18</span><span class="src">            } <span class="kw">else</span> {                   <span class="cmt">// 否则</span></span></div>
+    <div class="code-line" data-line="19"><span class="ln">19</span><span class="src">                <span class="fn">printf</span>(<span class="str">"%d"</span>, a[i]);    <span class="cmt">// 输出数字</span></span></div>
+    <div class="code-line" data-line="20"><span class="ln">20</span><span class="src">            }</span></div>
+    <div class="code-line" data-line="21"><span class="ln">21</span><span class="src">        }</span></div>
+    <div class="code-line" data-line="22"><span class="ln">22</span><span class="src">        <span class="fn">putchar</span>(<span class="str">'\n'</span>);                  <span class="cmt">// 换行</span></span></div>
+    <div class="code-line" data-line="23"><span class="ln">23</span><span class="src">    }</span></div>
+    <div class="code-line" data-line="24"><span class="ln">24</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回0，程序结束</span></span></div>
+    <div class="code-line" data-line="25"><span class="ln">25</span><span class="src">}</span></div>
+  </div>
+</div>
+
+<!-- ================= 顶部控制栏 ================= -->
+<section class="win" id="winToolbar">
+  <header class="win-hd">
+    <span>控制台</span>
+    <span class="tag" id="stepCounter">步骤 — / —</span>
+    <span class="sp"></span>
+    <button class="win-btn" data-act="collapse" title="折叠">—</button>
+    <button class="win-btn close" data-act="close" title="关闭">×</button>
+  </header>
+  <div class="win-bd">
+    <button class="tbtn" id="btnReset">⟲ 重置</button>
+    <button class="tbtn" id="btnPrev">◀ 上一步</button>
+    <button class="tbtn primary" id="btnPlay">▶ 自动播放</button>
+    <button class="tbtn" id="btnNext">下一步 ▶</button>
+    <label class="speed-wrap">速度
+      <input type="range" id="speed" min="120" max="1600" step="20" value="520">
+      <b id="speedLabel">0.52s</b>
+    </label>
+    <button class="tbtn" id="btnFull">⛶ 全屏</button>
+    <button class="tbtn" id="btnPanels">▣ 面板</button>
+    <button class="tbtn" id="btnMini">▤ 缩略图</button>
+    <button class="tbtn" id="btnLayout">⤢ 重置布局</button>
+  </div>
+  <div class="win-rs"></div>
+</section>
+
+<!-- ================= 变量 / 数组 / 状态面板 ================= -->
+<section class="win" id="winVars">
+  <header class="win-hd">
+    <span>数组 · 变量 · 循环条件 · 状态</span>
+    <span class="sp"></span>
+    <button class="win-btn" data-act="collapse">—</button>
+    <button class="win-btn close" data-act="close">×</button>
+  </header>
+  <div class="win-bd">
+    <div class="arr-title">
+      数组 a[16]（下标 0~15，<b>?</b> = 未写入）　正在读取 <b>蓝色</b>　正在写入 <i>粉色</i>
+    </div>
+    <div class="arr-grid" id="arrGrid"></div>
+    <div class="var-table" id="varTable"></div>
+  </div>
+  <div class="win-rs"></div>
+</section>
+
+<!-- ================= 程序输出面板 ================= -->
+<section class="win" id="winOut">
+  <header class="win-hd">
+    <span>程序运行结果（屏幕输出）</span>
+    <span class="sp"></span>
+    <button class="win-btn" data-act="collapse">—</button>
+    <button class="win-btn close" data-act="close">×</button>
+  </header>
+  <div class="win-bd">
+    <div id="consoleBody"></div>
+  </div>
+  <div class="win-rs"></div>
+</section>
+
+<!-- ================= 当前语句说明条 ================= -->
+<section class="win" id="winExplain">
+  <header class="win-hd">
+    <span>当前语句说明</span>
+    <span class="sp"></span>
+    <button class="win-btn" data-act="collapse">—</button>
+    <button class="win-btn close" data-act="close">×</button>
+  </header>
+  <div class="win-bd" id="explainBody"></div>
+  <div class="win-rs"></div>
+</section>
+
+<!-- ================= 代码缩略图 ================= -->
+<section class="win" id="winMini">
+  <header class="win-hd">
+    <span>缩略图</span>
+    <span class="sp"></span>
+    <button class="win-btn" data-act="collapse">—</button>
+    <button class="win-btn close" data-act="close">×</button>
+  </header>
+  <div class="win-bd">
+    <div class="mini-body">
+      <div class="mini-lines" id="miniLines"></div>
+      <div class="mini-viewport" id="miniViewport"></div>
+    </div>
+  </div>
+  <div class="win-rs"></div>
+</section>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =====================================================================
+     第一部分：程序模型 —— 十进制转 2/8/16 进制
+     x = 255，输出：
+       请输入十进制数: 255
+       2进制是: 11111111
+       8进制是: 377
+       16进制是: ff
+     ===================================================================== */
+  var X = 255;
+  var B = [2, 8, 16];
+  var N = 16;
+  var A = [];
+  for (var q = 0; q < N; q++) { A.push(null); }
+
+  var STEPS = [];
+  var outText = '';
+  var counts = { printf:0, scanf:0, putchar:0, mod:0, div:0, inc:0, outDigit:0, newline:0 };
+  var cur = { i:'未初始化', x:'未初始化', t:'未初始化', j:'未初始化', bj:'—' };
+
+  function V(v) { return (v === null || v === undefined) ? '?' : String(v); }
+  function snap() { return A.map(V); }
+
+  function push(o) {
+    if (o.setI  !== undefined) cur.i  = String(o.setI);
+    if (o.setJ  !== undefined) cur.j  = String(o.setJ);
+    if (o.setX  !== undefined) cur.x  = String(o.setX);
+    if (o.setT  !== undefined) cur.t  = String(o.setT);
+    if (o.setBj !== undefined) cur.bj = String(o.setBj);
+
+    STEPS.push({
+      line: o.line,
+      ctx:  o.ctx,
+      vars: {
+        x:           cur.x,
+        j:           cur.j,
+        bj:          cur.bj,
+        t:           cur.t,
+        i:           cur.i,
+        condOuter:   o.condOuter || '—',
+        condInner:   o.condInner || '—',
+        expr:        o.expr      || '—',
+        exprVal:     o.exprVal   || '—',
+        note:        o.note      || '—',
+        printfCount: String(counts.printf),
+        scanfCount:  String(counts.scanf),
+        putcharCount:String(counts.putchar),
+        modCount:    String(counts.mod),
+        divCount:    String(counts.div),
+        incCount:    String(counts.inc),
+        outDigitCount:String(counts.outDigit),
+        newlineCount:String(counts.newline),
+        ret:         o.ret       || '—'
+      },
+      arr:  snap(),
+      hl:   o.hl   || [],
+      mv:   o.mv   || [],
+      out:  outText,
+      skip: o.skip || [],
+      title: o.title,
+      desc:  o.desc
+    });
+  }
+
+  /* ---------- 第 1 行 ---------- */
+  push({
+    line: 1, ctx: '预处理阶段',
+    note: '预处理指令，编译之前就已处理完毕',
+    title: '预处理指令 #include &lt;stdio.h&gt;',
+    desc: '预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容引入源文件，使 <code>printf</code>、<code>scanf</code>、<code>putchar</code> 都有了函数声明。<br>这一行不是 C 语句，<b>在编译之前就被处理完了</b>，不占运行时间，也不产生任何屏幕输出。'
+  });
+
+  /* ---------- 第 2 行 ---------- */
+  push({
+    line: 2, ctx: 'main · 程序入口',
+    note: 'main 是程序入口',
+    title: 'int main() {   程序从这里开始',
+    desc: '操作系统把控制权交给 <code>main</code>，程序正式开始。系统为 main 建立<b>栈帧</b>，接下来声明的局部变量 i、x、t、j 都存放在这个栈帧里。'
+  });
+
+  /* ---------- 第 3 行 ---------- */
+  push({
+    line: 3, ctx: 'main · 声明数组与变量',
+    note: 'a[0]~a[15] 全部未初始化，里面是栈上的随机残留值',
+    title: 'int a[16], i, x, t;   声明数组和 3 个变量',
+    desc: '一条语句声明了 <b>4 个东西</b>：<br>· <b>a[16]</b>：整型数组，用来存放每次取出的<b>余数</b>（也就是目标进制的每一位），合法下标 <b>0~15</b>；<br>· <b>x</b>：待转换的十进制数；<br>· <b>t</b>：x 的副本，转换过程中会被不断除小；<br>· <b>i</b>：既当数组下标，也是“已经取出了多少位”的计数器。<span class="tip"><b>为什么数组开 16 个？</b><br>255 转二进制只有 8 位、八进制 3 位、十六进制 2 位，<b>16 个位置绰绰有余</b>。数组开大一点是“留余量”的稳妥做法。</span><span class="warn"><b>注意：</b>这里没有给初值，此刻 a[0]~a[15] 里是<b>不确定的垃圾值</b>，只有被赋值过的位置才有意义。</span>'
+  });
+
+  /* ---------- 第 4 行 ---------- */
+  push({
+    line: 4, ctx: 'main · 声明进制数组',
+    note: 'b[0]=2、b[1]=8、b[2]=16，分别代表 2/8/16 进制',
+    title: 'int b[3] = {2,8,16}, j;   定义进制数组和下标变量',
+    desc: '声明 <b>b[3]</b> 并初始化：<b>b[0]=2、b[1]=8、b[2]=16</b>，代表本次要转换的三种进制。<br>· <b>j</b> 是它的下标变量，同时也是<b>外层 for 的循环变量</b>——用同一个 j 把“取进制”和“循环”绑在一起：<br>　<code>b[j]</code> 就是本轮要用的进制，j=0 用 2，j=1 用 8，j=2 用 16。<br>· 此时 j 还没赋值，是<b>未初始化</b>的。'
+  });
+
+  /* ---------- 第 5 行 ---------- */
+  outText += '请输入十进制数: ';
+  counts.printf++;
+  push({
+    line: 5, ctx: 'printf 输出提示语',
+    note: '提示语没有 \\n，光标停在冒号后面等输入',
+    expr: 'printf("请输入十进制数: ")',
+    exprVal: '输出"请输入十进制数: "（不换行）',
+    title: 'printf("请输入十进制数: ");   →   屏幕显示 "请输入十进制数: "',
+    desc: '把提示语输出到屏幕。格式串里<b>没有 <code>\\n</code></b>，所以光标停在冒号后面，用户在同一个位置输入，看起来自然。<br>如果这里加了 <code>\\n</code>，输入就会跑到下一行去，交互体验很别扭。'
+  });
+
+  /* ---------- 第 6 行 ---------- */
+  outText += X + '\n';
+  counts.scanf++;
+  push({
+    line: 6, setX: X,
+    ctx: 'scanf 读入十进制数：x = ' + X,
+    note: '模拟键盘输入 ' + X + '，回车后 x 被赋值为 ' + X,
+    expr: 'scanf("%d", &x)',
+    exprVal: '从键盘读入 ' + X + ' → x = ' + X,
+    title: 'scanf("%d", &x);   →   读到 ' + X + '，x = ' + X,
+    desc: '<code>scanf("%d", &x)</code> 从键盘读取一个十进制整数，写进变量 x。<br>· <b>为什么要写 &amp;x？</b>scanf 必须知道“把值存到哪里”，所以传的是<b>变量的地址</b>；<br>· 本模拟中<b>输入 ' + X + '</b>，回车确认后 x = <b>' + X + '</b>；<br>· 屏幕上显示的 <code>' + X + '</code> 是<b>键盘回显</b>，不是程序打印的，但看起来就是紧跟在提示语后面。'
+  });
+
+  /* ================= 外层循环 j = 0,1,2 ================= */
+  for (var j = 0; j < 3; j++) {
+    var base = B[j];
+
+    /* ---- 第 7 行 ---- */
+    push({
+      line: 7, setJ: j, setBj: 'b[' + j + '] = ' + base,
+      ctx: '外层 for：j = ' + j + '（第 ' + (j + 1) + ' 种进制：' + base + ' 进制）',
+      condOuter: 'j = ' + j + ' < 3 → 真',
+      expr: 'for(j=0; j<3; j++)',
+      exprVal: (j === 0)
+        ? '先执行 j=0，再判断 0<3 成立 → 进入循环体'
+        : 'j++ 后 j=' + j + '，' + j + '<3 成立 → 继续循环',
+      note: '本轮把 ' + X + ' 转换成 ' + base + ' 进制',
+      hl: [],
+      title: 'for(j=0; j&lt;3; j++)   第 ' + (j + 1) + ' 轮：j = ' + j + '，b[' + j + '] = ' + base,
+      desc: '<code>for</code> 的执行顺序：① 初始化 <code>j=0</code>；② 判断 <code>j&lt;3</code>；③ 循环体；④ <code>j++</code> 回到 ②。<br>· 当前 j = <b>' + j + '</b>，' + j + ' &lt; 3 成立 → 进入循环体；<br>· 本轮使用 <b>b[' + j + '] = ' + base + '</b>，把 x 转换成 <b>' + base + ' 进制</b>；<br>· 三种进制共用同一个数组 a、同一个变量 t，靠 <code>b[j]</code> 的不同取值区分目标进制。<span class="tip"><b>一次写代码，跑三遍：</b><br>外层循环把“进制”<b>参数化</b>了。循环体里只写一遍转换逻辑，<code>b[j]</code> 换成 2、8、16 就自动得到三种结果——这就是“用数据驱动逻辑”。</span>'
+    });
+
+    /* ---- 第 8 行 ---- */
+    push({
+      line: 8, setT: X,
+      ctx: 't = x　用 t 保存原始值',
+      condOuter: 'j = ' + j + ' < 3 → 真',
+      expr: 't = x',
+      exprVal: 't = ' + X + '（x 保持 ' + X + ' 不变，t 用来做除法）',
+      note: 'x 必须保持不变，因为后面还有两轮要用它',
+      title: 't = x;   →   t = ' + X,
+      desc: '把 x 的值复制一份给 t。<span class="warn"><b>为什么不直接用 x 去做除法？</b><br>因为循环体外面还有 8 进制、16 进制两轮，<b>x 必须始终保持 ' + X + ' 不变</b>。<br>如果直接写 <code>x /= b[j]</code>，第一轮结束时 x 就变成 0 了，后面两轮全部报废。<br>所以用 t 当“消耗品”，除到 0 也无所谓，下一轮重新 <code>t = x</code> 满血复活。</span><span class="tip"><b>这是循环里的经典套路：</b>需要对某个值做破坏性处理时，先复制一份“工作副本”，把原值保护起来。</span>'
+    });
+
+    /* ---- 内层转换循环 ---- */
+    var t = X;
+    var i = 0;
+
+    push({
+      line: 9, setI: 0,
+      ctx: '内层 for：i = 0，t = ' + t + '（非 0）',
+      condOuter: 'j = ' + j + ' < 3 → 真',
+      condInner: 't = ' + t + ' ≠ 0 → 真',
+      expr: 'for(i=0; t; )',
+      exprVal: 'i=0；t=' + t + ' 非 0 → 进入循环体',
+      note: '短 for：只有初始化 i=0 和条件 t，循环变量 i 在循环体里自增',
+      hl: [],
+      title: 'for(i=0; t; )   i = 0，t = ' + t + '，条件为真',
+      desc: '<code>for(i=0; t; )</code> 是个<b>“短 for”</b>：<br>· 第一段 <code>i=0</code>：初始化，把数组下标归零，准备从最低位开始存；<br>· 第二段 <code>t</code>：循环条件，等价于 <code>t != 0</code>；<br>· 第三段<b>空着</b>：因为循环变量 i 的自增写在循环体里（第 12 行 <code>i++</code>）。<br>此时 t = <b>' + t + '</b>，非 0 → 条件为真，进入循环体。<span class="tip"><b>为什么条件可以只写 t？</b><br>C 语言里任何非 0 值都算“真”，0 算“假”。<code>t</code> 就相当于 <code>t != 0</code>，写法更简短。</span>'
+    });
+
+    while (t !== 0) {
+      var rem = t % base;
+      A[i] = rem;
+      counts.mod++;
+
+      /* ---- 第 10 行 ---- */
+      push({
+        line: 10,
+        ctx: 'a[' + i + '] = ' + t + ' % ' + base + ' = ' + rem,
+        condOuter: 'j = ' + j + ' < 3 → 真',
+        condInner: 't = ' + t + ' ≠ 0 → 真',
+        expr: 'a[' + i + '] = t % b[' + j + ']',
+        exprVal: 'a[' + i + '] = ' + t + ' % ' + base + ' = ' + rem,
+        note: '取余数 = 取当前最低位；先取余，再除法！累计取余 ' + counts.mod + ' 次',
+        mv: [i],
+        title: 'a[' + i + '] = t % b[' + j + '];   →   a[' + i + '] = ' + t + ' % ' + base + ' = ' + rem,
+        desc: '<code>t % ' + base + '</code> 求的是 t 除以 ' + base + ' 的<b>余数</b>，正好就是 t 在 ' + base + ' 进制下的<b>最低位</b>。<br>· 算式：' + t + ' % ' + base + ' = <b>' + rem + '</b>；<br>· 把这一位存进 <b>a[' + i + ']</b>，此时 i = ' + i + '。<span class="warn"><b>顺序千万别颠倒：</b><br>一定要<b>先取余数，再除</b>。如果先写 <code>t /= b[j]</code>，t 就已经变小了，余数取到的是“下一位”，结果整体错位。</span>' + ((j > 0) ? '<span class="tip"><b>数组 a 是复用的：</b>a[' + (i + 1) + '] 之后还留着上一轮（' + B[j - 1] + ' 进制）的旧值。<br>但本轮只会写入 a[0]~a[若干位]，输出时也只读这些位置，旧值读不到，所以不影响结果。</span>' : '')
+      });
+
+      /* ---- 第 11 行 ---- */
+      var tOld = t;
+      t = Math.floor(t / base);
+      counts.div++;
+      push({
+        line: 11, setT: t,
+        ctx: 't /= b[' + j + ']：' + tOld + ' ÷ ' + base + ' = ' + t,
+        condOuter: 'j = ' + j + ' < 3 → 真',
+        condInner: 't = ' + tOld + ' ≠ 0 → 真',
+        expr: 't /= b[' + j + ']',
+        exprVal: 't = ' + tOld + ' / ' + base + ' = ' + t,
+        note: '整数除法直接丢弃小数部分；累计除法 ' + counts.div + ' 次',
+        title: 't /= b[' + j + '];   →   t = ' + tOld + ' / ' + base + ' = ' + t,
+        desc: '<code>t /= b[j]</code> 等价于 <code>t = t / b[j]</code>。<br>· 整数除法：结果只保留整数部分，小数被直接扔掉（不是四舍五入）；<br>· ' + tOld + ' / ' + base + ' = ' + (tOld / base) + ' → 取整 → <b>' + t + '</b>；<br>· t 变小了，<b>下一位已经“顶”到最低位</b>，下一轮循环就能取到它。<span class="tip"><b>整个转换过程像剥洋葱：</b><br>每轮“取余”剥掉最低位，再“除以进制”把剩下的部分右移一位，直到剥完（t = 0）为止。</span>'
+      });
+
+      /* ---- 第 12 行 ---- */
+      i++;
+      counts.inc++;
+      push({
+        line: 12, setI: i,
+        ctx: 'i++ → i = ' + i,
+        condOuter: 'j = ' + j + ' < 3 → 真',
+        condInner: 't = ' + t + (t !== 0 ? ' ≠ 0 → 真' : ' = 0 → 假'),
+        expr: 'i++',
+        exprVal: 'i = ' + i + '（下标指向下一个空位）',
+        note: '余数是“从低位到高位”依次存放的',
+        title: 'i++;   →   i = ' + i,
+        desc: '下标加 1，指向数组里的下一个空位。<span class="warn"><b>关键：数组里的数字是“倒着”存的！</b><br>· a[0] 是最低位，a[1] 是次低位……最后写入的那个位置才是<b>最高位</b>；<br>· 所以第 15 行输出时必须<b>从后往前</b>读，才能得到正常的进制写法。</span>'
+      });
+
+      /* ---- 回到第 9 行判断 ---- */
+      push({
+        line: 9, setI: i,
+        ctx: '内层 for 判断：t = ' + t + (t !== 0 ? '（非 0，继续）' : '（为 0，退出）'),
+        condOuter: 'j = ' + j + ' < 3 → 真',
+        condInner: 't = ' + t + (t !== 0 ? ' ≠ 0 → 真' : ' = 0 → 假'),
+        expr: 'for(i=0; t; )',
+        exprVal: t !== 0
+          ? 't=' + t + ' 非 0 → 继续循环，取更高一位'
+          : 't = 0 → 退出内层循环',
+        note: t !== 0
+          ? '还有更高位没取完'
+          : '所有位都取完了，一共取了 ' + i + ' 位',
+        skip: t !== 0 ? [] : [10, 11, 12],
+        hl: [],
+        title: 'for(i=0; t; )   t = ' + t + (t !== 0 ? '，条件为真，继续循环' : '，条件为假，退出内层循环'),
+        desc: t !== 0
+          ? '回到循环头部重新判断条件：t = <b>' + t + '</b> 非 0 → 条件为真，<b>继续</b>取下一位（更高的一位）。<br>此时数组为 <b>[' + A.map(V).join(', ') + ']</b>。'
+          : '回到循环头部判断：t 已经变成 <b>0</b>，条件为假 → <b>退出内层循环</b>。<br>· 循环体一共执行了 <b>' + i + '</b> 次，也就是取出了 <b>' + i + '</b> 位数字，分别存在 <b>a[0] ~ a[' + (i - 1) + ']</b>；<br>· 数组当前为 <b>[' + A.map(V).join(', ') + ']</b>；<br>· 注意这些数字是<b>低位在前、高位在后</b>，所以接下来要倒着输出。'
+      });
+    }
+
+    /* ---- 第 14 行 ---- */
+    outText += base + '进制是: ';
+    counts.printf++;
+    push({
+      line: 14,
+      ctx: 'printf 输出进制名：' + base + '进制是: ',
+      condOuter: 'j = ' + j + ' < 3 → 真',
+      expr: 'printf("%d进制是: ", b[' + j + '])',
+      exprVal: 'b[' + j + '] = ' + base + ' → 输出"' + base + '进制是: "（不换行）',
+      note: '先打印进制名，光标停在冒号后，数字紧接着往右排',
+      title: 'printf("%d进制是: ", b[' + j + ']);   →   输出 "' + base + '进制是: "',
+      desc: '<code>%d</code> 用 <b>b[' + j + '] = ' + base + '</b> 替换，输出 <b>"' + base + '进制是: "</b>。<br>· 格式串里没有 <code>\\n</code>，所以后面的数字会<b>接着同一行</b>往右打印；<br>· 到第 22 行才用 <code>putchar(\'\\n\')</code> 统一换行。'
+    });
+
+    /* ---- 逆序输出循环 ---- */
+    i = i - 1;          /* --i */
+    var firstOut = true;
+    while (i >= 0) {
+      var av = A[i];
+
+      push({
+        line: 15, setI: i,
+        ctx: '逆序输出：i = ' + i + '，a[' + i + '] = ' + av,
+        condOuter: 'j = ' + j + ' < 3 → 真',
+        condInner: 'i = ' + i + ' >= 0 → 真',
+        expr: 'for(--i; i>=0; i--)',
+        exprVal: firstOut
+          ? '--i 后 i=' + i + '，' + i + '>=0 成立 → 进入循环体'
+          : 'i-- 后 i=' + i + '，' + i + '>=0 成立 → 继续循环',
+        note: '从最高位往最低位读，才能得到正确的进制写法',
+        hl: [i],
+        title: 'for(--i; i&gt;=0; i--)   i = ' + i + '，a[' + i + '] = ' + av,
+        desc: '<code>for(--i; i&gt;=0; i--)</code> 三段分别是：<br>· 第一段 <code>--i</code>：<b>先自减 1 再使用</b>。i 刚刚是“取了 ' + (i + 1) + ' 位”的计数，减 1 后指向<b>最后一个被写入的位置</b>，也就是最高位；<br>· 第二段 <code>i&gt;=0</code>：下标不能小于 0；<br>· 第三段 <code>i--</code>：每打印一位，下标往左退一格。<br>此刻 i = <b>' + i + '</b>，要输出的是 <b>a[' + i + '] = ' + av + '</b>。<span class="tip"><b>为什么倒着读？</b><br>第 12 行说过，余数是“从低位到高位”存的，a[0] 是最低位。<br>正常写数是从高位写到低位，所以必须从 i 最大的位置往 0 读，顺序才正确。</span>'
+      });
+      firstOut = false;
+
+      push({
+        line: 16,
+        ctx: 'if 判断：a[' + i + '] = ' + av + ' 是否在 10~15 之间',
+        condOuter: 'j = ' + j + ' < 3 → 真',
+        condInner: 'i = ' + i + ' >= 0 → 真',
+        expr: 'a[' + i + '] >= 10 && a[' + i + '] <= 15',
+        exprVal: (av >= 10 && av <= 15)
+          ? av + ' >= 10 为真，且 ' + av + ' <= 15 为真 → 整体为真'
+          : av + ' 不满足 10~15 这个区间 → 整体为假',
+        note: (av >= 10 && av <= 15)
+          ? '这一位要用字母 a~f 表示，不能直接打印数字'
+          : '这一位是 0~9，直接打印数字即可',
+        hl: [i],
+        skip: (av >= 10 && av <= 15) ? [19] : [17],
+        title: 'if(a[' + i + ']&gt;=10 &amp;&amp; a[' + i + ']&lt;=15)   →   ' + ((av >= 10 && av <= 15) ? '真' : '假'),
+        desc: '判断当前这一位的余数是否落在 <b>10 ~ 15</b> 区间。<br>· 二进制、八进制的余数只可能是 0~7，永远走 else 分支；<br>· <b>十六进制</b>的余数可能是 10~15，这时不能直接用 <code>%d</code> 打印（会打出 10、11……），必须换成字母 a~f。<br>· 当前 a[' + i + '] = <b>' + av + '</b> → 条件为 <b>' + ((av >= 10 && av <= 15) ? '真' : '假') + '</b>。<span class="tip"><code>&amp;&amp;</code> 是<b>逻辑与</b>：两边都为真，整体才为真。</span>'
+      });
+
+      if (av >= 10 && av <= 15) {
+        var code = av + 87;
+        var ch   = String.fromCharCode(code);
+        outText += ch;
+        counts.printf++;
+        counts.outDigit++;
+        push({
+          line: 17,
+          ctx: 'printf("%c", a[' + i + ']+87) → 输出字符 ' + ch,
+          condOuter: 'j = ' + j + ' < 3 → 真',
+          condInner: 'i = ' + i + ' >= 0 → 真',
+          expr: 'printf("%c", a[' + i + ']+87)',
+          exprVal: 'a[' + i + ']+87 = ' + av + '+87 = ' + code + ' → 字符 "' + ch + '"',
+          note: 'ASCII 码 97~102 对应字符 a~f；累计输出 ' + counts.outDigit + ' 位',
+          hl: [i],
+          title: 'printf("%c", a[' + i + ']+87);   →   输出 "' + ch + '"',
+          desc: '<b>十六进制的字母映射规则</b>：10→a、11→b、12→c、13→d、14→e、15→f。<br>· ASCII 表里字符 <code>\'a\'</code> 的编码是 <b>97</b>，所以 <code>10 + 87 = 97 → \'a\'</code>；<br>· 当前 ' + av + ' + 87 = <b>' + code + '</b>，对应字符 <b>\'' + ch + '\'</b>；<br>· <code>%c</code> 表示按<b>字符</b>格式输出这个 ASCII 码对应的字母。<span class="tip"><b>为什么是 87？</b><br>因为 <code>\'a\'</code> 的 ASCII 码是 97，而十六进制里 10 对应 a，偏移量 = 97 - 10 = <b>87</b>。<br>若要输出大写 A~F，用 <code>+55</code>（\'A\' 是 65，65 - 10 = 55）。</span>'
+        });
+      } else {
+        outText += String(av);
+        counts.printf++;
+        counts.outDigit++;
+        push({
+          line: 19,
+          ctx: 'printf("%d", a[' + i + ']) → 输出数字 ' + av,
+          condOuter: 'j = ' + j + ' < 3 → 真',
+          condInner: 'i = ' + i + ' >= 0 → 真',
+          expr: 'printf("%d", a[' + i + '])',
+          exprVal: '输出数字 ' + av,
+          note: '余数在 0~9 之间，直接按十进制数字打印；累计输出 ' + counts.outDigit + ' 位',
+          hl: [i],
+          title: 'printf("%d", a[' + i + ']);   →   输出 "' + av + '"',
+          desc: '<code>%d</code> 用 <b>a[' + i + '] = ' + av + '</b> 替换，输出一个数字字符。<br>· 因为 ' + av + ' 在 0~9 之间，直接用 <code>%d</code> 打印就是它本身，不会出现两位数；<br>· 格式串里没有空格、没有 <code>\\n</code>，所以各位数字会<b>紧挨着</b>排在同一行，拼成完整的进制表示。'
+        });
+      }
+
+      i--;
+    }
+
+    /* ---- 输出循环退出 ---- */
+    push({
+      line: 15, setI: -1,
+      ctx: '逆序输出判断失败：i = -1',
+      condOuter: 'j = ' + j + ' < 3 → 真',
+      condInner: 'i = -1 >= 0 → 假',
+      expr: 'for(--i; i>=0; i--)',
+      exprVal: 'i-- 后 i=-1，-1>=0 不成立 → 退出输出循环',
+      note: '这一种进制的所有位都打印完了',
+      skip: [16, 17, 18, 19, 20, 21],
+      hl: [],
+      title: 'for(--i; i&gt;=0; i--)   i = -1，条件为假 → 退出输出循环',
+      desc: '最后一位 a[0] 打印完后执行 <code>i--</code>，i 由 0 变成 <b>-1</b>；<br>· 判断 <b>-1 &gt;= 0</b> 为<b>假</b> → 退出循环。<br>· 这一轮 <b>' + base + ' 进制</b>的转换和输出全部完成，屏幕上的这一行已经拼好了。'
+    });
+
+    /* ---- 第 22 行 ---- */
+    outText += '\n';
+    counts.putchar++;
+    counts.newline++;
+    push({
+      line: 22,
+      ctx: 'putchar 换行，本轮结束',
+      condOuter: 'j = ' + j + ' < 3 → 真',
+      expr: "putchar('\\n')",
+      exprVal: '输出一个换行符，光标移到下一行开头',
+      note: '本轮结束，回到第 7 行执行 j++；累计换行 ' + counts.newline + ' 次',
+      title: "putchar('\\n');   →   输出一个换行符",
+      desc: "<code>putchar('\\n')</code> 只做一件事：往屏幕输出一个<b>换行符</b>。<br>· 等价于 <code>printf(\"\\n\")</code>，但更快更直接；<br>· 输出完这一行，光标移到下一行行首，下一种进制的结果才不会挤在同一行；<br>· 执行到这里，本轮循环体结束，回到第 7 行执行 <code>j++</code>。"
+    });
+  }
+
+  /* ================= 外层 for 退出 ================= */
+  push({
+    line: 7, setJ: 3,
+    ctx: '外层 for 判断失败：j = 3',
+    condOuter: 'j = 3 < 3 → 假',
+    expr: 'for(j=0; j<3; j++)',
+    exprVal: 'j++ 后 j=3，3<3 不成立 → 退出外层循环',
+    note: '2、8、16 三种进制全部转换完成',
+    skip: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22],
+    hl: [],
+    title: '外层 for 结束：j = 3，3 &lt; 3 为假 → 退出外层循环',
+    desc: 'j=2 那一轮结束后执行 <code>j++</code>，j 由 2 变成 <b>3</b>；<br>· 判断 <b>3 &lt; 3</b> 为<b>假</b> → 外层循环结束，跳到第 23 行 <code>}</code> 之后。<br>· <b>三种进制的转换全部完成</b>。<span class="tip"><b>整个过程回顾（x = ' + X + '）：</b><br>· <b>2 进制</b>：反复 %2、/2，取到 8 位 <code>1 1 1 1 1 1 1 1</code>，倒着输出 → <b>11111111</b><br>· <b>8 进制</b>：反复 %8、/8，取到 3 位 <code>7 7 3</code>，倒着输出 → <b>377</b><br>· <b>16 进制</b>：反复 %16、/16，取到 2 位 <code>15 15</code>，倒着输出并转成字母 → <b>ff</b><br><b>验证：</b>11111111₂ = 255，377₈ = 255，ff₁₆ = 255，全部正确 ✓</span><span class="warn"><b>常见错误：</b><br>① 内层循环条件写成 <code>t&gt;0</code> 也可以，但 <code>t</code> 更简洁；<br>② 忘记 <code>t = x;</code>，第二轮开始 x 已经是 0，全部输出 0；<br>③ 输出循环写成正序 <code>i=0; i&lt;位数; i++</code>，数字会<b>完全颠倒</b>；<br>④ 十六进制忘了 10~15 转字母，会输出 <code>1515</code> 而不是 <code>ff</code>；<br>⑤ 第 10 行和第 11 行写反顺序，余数取错位；<br>⑥ 数组开太小（如 a[8]），改动进制表就可能越界。</span>'
+  });
+
+  /* ================= 第 24 行 ================= */
+  push({
+    line: 24, ret: '0',
+    ctx: 'main · return 返回',
+    expr: 'return 0;',
+    exprVal: '返回 0，程序正常结束',
+    note: 'main 返回 0 表示程序正常结束',
+    title: 'return 0;   结束 main 函数',
+    desc: '<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。约定返回 0 表示程序<b>正常结束</b>。'
+  });
+
+  /* ================= 第 25 行 ================= */
+  push({
+    line: 25, ret: '0',
+    ctx: '程序结束',
+    note: '栈帧销毁，程序退出',
+    title: 'main 函数体结束 }',
+    desc: '函数收尾，main 的栈帧被销毁，局部变量 a、i、x、t、b、j 全部释放。<br>程序共调用 <b>printf 17 次</b>、<b>scanf 1 次</b>、<b>putchar 3 次</b>，返回 0。<span class="tip"><b>本程序要点总结：</b><br>① <b>外层 for</b> <code>for(j=0; j&lt;3; j++)</code>：用 j 同时控制进制下标和循环轮次；<br>② <b>保护原值</b> <code>t = x;</code>：每轮开始都要重新复制，x 全程不变；<br>③ <b>内层 for</b> <code>for(i=0; t; )</code>：短 for，条件就是 t 非 0；<br>④ <b>取余存位</b> <code>a[i] = t % b[j];</code>：先取余，再除；<br>⑤ <b>缩小</b> <code>t /= b[j];</code>：整数除法，丢弃小数；<br>⑥ <b>下标递增</b> <code>i++;</code>：低位存在前面，高位存在后面；<br>⑦ <b>逆序输出</b> <code>for(--i; i&gt;=0; i--)</code>：先减 1 再读，从最高位读到最低位；<br>⑧ <b>字母映射</b> <code>printf("%c", a[i]+87)</code>：10~15 → a~f；<br>⑨ <b>换行</b> <code>putchar(\'\\n\')</code>：每轮结束换行。<br><b>程序输出（4 行）：</b><br><code>' + outText.replace(/\n/g, '<br>') + '</code></span>'
+  });
+
+  /* =====================================================================
+     第二部分：DOM 与渲染
+     ===================================================================== */
+  var codeScroll  = document.getElementById('codeScroll');
+  var codeLines   = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+  var varTable    = document.getElementById('varTable');
+  var arrGrid     = document.getElementById('arrGrid');
+  var consoleBody = document.getElementById('consoleBody');
+  var explainBody = document.getElementById('explainBody');
+  var stepCounter = document.getElementById('stepCounter');
+  var btnPlay     = document.getElementById('btnPlay');
+  var btnPrev     = document.getElementById('btnPrev');
+  var btnNext     = document.getElementById('btnNext');
+  var btnReset    = document.getElementById('btnReset');
+  var btnFull     = document.getElementById('btnFull');
+  var btnPanels   = document.getElementById('btnPanels');
+  var btnMini     = document.getElementById('btnMini');
+  var btnLayout   = document.getElementById('btnLayout');
+  var speedInput  = document.getElementById('speed');
+  var speedLabel  = document.getElementById('speedLabel');
+  var miniLines   = document.getElementById('miniLines');
+  var miniViewport= document.getElementById('miniViewport');
+
+  /* ---------- 构建数组格子（16 个） ---------- */
+  (function buildArr() {
+    var html = '';
+    for (var n = 0; n < N; n++) {
+      html += '<div class="arr-cell empty" data-idx="' + n + '">' +
+                '<span class="idx">a[' + n + ']</span>' +
+                '<span class="val">?</span>' +
+              '</div>';
+    }
+    arrGrid.innerHTML = html;
+  })();
+  var arrCells = Array.prototype.slice.call(arrGrid.querySelectorAll('.arr-cell'));
+
+  /* ---------- 构建变量表 ---------- */
+  var VAR_ROWS = [
+    { key: 'ctx',          name: '当前执行位置',                            kind: 'k-ctx'  },
+    { key: 'x',            name: 'x (int)  待转换的十进制数',                kind: 'k-val'  },
+    { key: 'j',            name: 'j (int)  外层循环 / 进制下标',             kind: 'k-main' },
+    { key: 'bj',           name: 'b[j]  当前进制',                         kind: 'k-val'  },
+    { key: 't',            name: 't (int)  被除的数（每轮缩小）',            kind: 'k-val'  },
+    { key: 'i',            name: 'i (int)  数组下标 / 已取位数',            kind: 'k-main' },
+    { key: 'condOuter',    name: '外层循环条件  j < 3',                    kind: 'k-note' },
+    { key: 'condInner',    name: '内层循环条件  t ≠ 0',                    kind: 'k-sw'   },
+    { key: 'expr',         name: '正在求值的表达式',                         kind: 'k-val'  },
+    { key: 'exprVal',      name: '表达式结果',                              kind: 'k-val'  },
+    { key: 'note',         name: '关键规则提示',                             kind: 'k-note' },
+    { key: 'printfCount',  name: 'printf 调用次数',                        kind: 'k-cnt'  },
+    { key: 'scanfCount',   name: 'scanf 调用次数',                         kind: 'k-cnt'  },
+    { key: 'putcharCount', name: 'putchar 调用次数（换行）',               kind: 'k-cnt'  },
+    { key: 'modCount',     name: '取余次数  t % b[j]',                     kind: 'k-cnt'  },
+    { key: 'divCount',     name: '除法次数  t /= b[j]',                    kind: 'k-cnt'  },
+    { key: 'incCount',     name: 'i++ 次数',                              kind: 'k-cnt'  },
+    { key: 'outDigitCount',name: '已输出位数',                              kind: 'k-cnt'  },
+    { key: 'newlineCount', name: '换行次数',                               kind: 'k-cnt'  },
+    { key: 'ret',          name: 'main 返回值',                            kind: 'k-ret'  }
+  ];
+
+  function buildVarTable() {
+    varTable.innerHTML = VAR_ROWS.map(function (r) {
+      return '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+               '<span class="var-name">' + r.name + '</span>' +
+               '<span class="var-value dim">—</span>' +
+             '</div>';
+    }).join('');
+  }
+
+  function valueOf(step, key) {
+    if (!step) return '—';
+    if (key === 'ctx') return step.ctx;
+    var v = step.vars[key];
+    return (v === undefined || v === null) ? '—' : v;
+  }
+
+  function updateVars(step, prevStep) {
+    VAR_ROWS.forEach(function (r) {
+      var row = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+      if (!row) return;
+      var valEl = row.querySelector('.var-value');
+      var val   = String(valueOf(step, r.key));
+      var old   = String(valueOf(prevStep, r.key));
+
+      if (valEl.textContent !== val) {
+        valEl.textContent = val;
+        valEl.classList.toggle('dim', val === '—');
+        valEl.title = val;
+        valEl.classList.remove('flash');
+        void valEl.offsetWidth;
+        valEl.classList.add('flash');
+        if (prevStep && old !== val) {
+          row.classList.add('changed');
+          window.setTimeout(function () { row.classList.remove('changed'); }, 700);
+        }
+      }
+    });
+  }
+
+  function updateArr(step) {
+    var vals = step ? step.arr : null;
+    var hl   = (step && step.hl) || [];
+    var mv   = (step && step.mv) || [];
+
+    arrCells.forEach(function (cell, idx) {
+      var valEl = cell.querySelector('.val');
+      var v = vals ? vals[idx] : '?';
+      var empty = (v === '?');
+
+      if (valEl.textContent !== v) {
+        valEl.textContent = v;
+        valEl.classList.remove('flash');
+        void valEl.offsetWidth;
+        if (!empty) valEl.classList.add('flash');
+      }
+      cell.classList.toggle('empty', empty);
+      cell.classList.toggle('is-hl', hl.indexOf(idx) !== -1 && mv.indexOf(idx) === -1);
+      cell.classList.toggle('is-mv', mv.indexOf(idx) !== -1);
+    });
+  }
+
+  function updateCode(step) {
+    var activeLine = step ? step.line : null;
+    var skipLines  = (step && step.skip) || [];
+
+    codeLines.forEach(function (el) {
+      var n = Number(el.dataset.line);
+      el.classList.toggle('active', activeLine !== null && n === activeLine);
+      el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+    });
+    miniRowEls.forEach(function (el, idx) {
+      el.classList.toggle('cur', activeLine !== null && (idx + 1) === activeLine);
+    });
+  }
+
+  function centerActiveLine() {
+    var el = codeScroll.querySelector('.code-line.active');
+    if (!el) { requestSync(); return; }
+    var er = el.getBoundingClientRect();
+    var cr = codeScroll.getBoundingClientRect();
+    var delta = (er.top + er.height / 2) - (cr.top + cr.height / 2);
+    if (Math.abs(delta) > 4) {
+      codeScroll.scrollTop = Math.max(0, codeScroll.scrollTop + delta);
+    }
+    requestSync();
+  }
+
+  var lastOutText = null;
+  function updateOutput(step) {
+    var text = step ? step.out : '';
+    if (text === lastOutText) return;
+    lastOutText = text;
+
+    consoleBody.innerHTML = '';
+    if (!text) return;
+
+    /* 按 \n 拆分，逐行显示 */
+    var parts = text.split('\n');
+    if (parts.length && parts[parts.length - 1] === '') parts.pop();
+
+    parts.forEach(function (p) {
+      var d = document.createElement('div');
+      d.className = 'out-line';
+      d.textContent = (p === '') ? '\u00a0' : p;
+      consoleBody.appendChild(d);
+    });
+    consoleBody.scrollTop = consoleBody.scrollHeight;
+  }
+
+  function updateExplain(step) {
+    if (!step) {
+      explainBody.innerHTML =
+        '<em>点击「自动播放」或「下一步」，开始逐条执行程序。<br>' +
+        '本程序把用户输入的十进制数 <code>x</code> 依次转换成 <b>2、8、16 进制</b>并打印：<br>' +
+        '· <b>模拟输入</b>：<code>x = 255</code>；<br>' +
+        '· <b>外层 for</b> <code>for(j=0; j&lt;3; j++)</code> —— 三种进制轮流转换；<br>' +
+        '· <code>t = x;</code> —— 每轮复制一份工作副本，保护 x 不变；<br>' +
+        '· <b>内层 for</b> <code>for(i=0; t; )</code> —— 反复取余、除进制，直到 t 为 0；<br>' +
+        '· <code>a[i] = t % b[j];</code> —— 余数就是当前最低位，从 a[0] 开始存；<br>' +
+        '· <code>for(--i; i&gt;=0; i--)</code> —— <b>逆序输出</b>，才是正确的进制写法；<br>' +
+        '· <code>printf("%c", a[i]+87)</code> —— 10~15 转成字母 a~f。<br>' +
+        '<b>预计输出：</b>2进制是: 11111111 ｜ 8进制是: 377 ｜ 16进制是: ff</em>';
+      stepCounter.textContent = '步骤 — / ' + STEPS.length;
+      return;
+    }
+
+    var lineNo = step.line;
+    var cls = '';
+    if (lineNo === 10 || lineNo === 11) cls = ' mv';
+    else if (lineNo === 14 || lineNo === 17 || lineNo === 19 || lineNo === 22) cls = ' ans';
+
+    explainBody.innerHTML =
+      '<span class="ex-line' + cls + '">第 ' + lineNo + ' 行</span>' +
+      '<strong>' + step.title + '</strong> —— ' + step.desc;
+    stepCounter.textContent = '步骤 ' + (current + 1) + ' / ' + STEPS.length;
+  }
+
+  /* =====================================================================
+     第三部分：缩略图（25 行）与滚动同步
+     ===================================================================== */
+  var miniRowEls = [];
+  (function buildMini() {
+    codeLines.forEach(function (lineEl) {
+      var row = document.createElement('div');
+      row.className = 'mini-row';
+      row.innerHTML = lineEl.innerHTML;
+      miniLines.appendChild(row);
+      miniRowEls.push(row);
+    });
+  })();
+
+  var rafPending = false;
+  function requestSync() {
+    if (rafPending) return;
+    rafPending = true;
+    window.requestAnimationFrame(function () {
+      rafPending = false;
+      syncMinimap();
+    });
+  }
+
+  function fullLineH() {
+    var el = codeLines[0];
+    if (!el) return 1;
+    var h = el.getBoundingClientRect().height;
+    return h > 0 ? h : 1;
+  }
+
+  function syncMinimap() {
+    if (!miniLines || !miniViewport) return;
+    var miniH = miniLines.clientHeight;
+    if (miniH <= 0) return;
+
+    var lh = fullLineH();
+    var miniLineH = miniH / 25;
+
+    var scrollTop = codeScroll.scrollTop;
+    var viewH = codeScroll.clientHeight;
+
+    var top = (scrollTop / lh) * miniLineH;
+    var h = (viewH / lh) * miniLineH;
+
+    miniViewport.style.top = Math.max(0, Math.min(miniH, top)) + 'px';
+    miniViewport.style.height = Math.max(8, Math.min(miniH, h)) + 'px';
+  }
+
+  /* 缩略图字号随高度自适应 */
+  if (window.ResizeObserver) {
+    var ro = new ResizeObserver(function () {
+      var h = miniLines.clientHeight;
+      if (h > 0) {
+        miniLines.style.fontSize = Math.max(4, (h / 25) * 0.56) + 'px';
+      }
+      syncMinimap();
+    });
+    ro.observe(miniLines);
+  }
+
+  codeScroll.addEventListener('scroll', requestSync, { passive: true });
+  window.addEventListener('resize', function () {
+    syncMinimap();
+    clampAllWindows();
+  });
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(requestSync);
+  }
+
+  /* 点击缩略图跳转 */
+  miniLines.addEventListener('pointerdown', function (e) {
+    var r = miniLines.getBoundingClientRect();
+    var ratio = (e.clientY - r.top) / r.height;
+    var lineIdx = ratio * 25;
+    var lh = fullLineH();
+    var target = lineIdx * lh - codeScroll.clientHeight / 2 + lh / 2;
+    codeScroll.scrollTop = Math.max(0, target);
+    requestSync();
+  });
+
+  /* =====================================================================
+     第四部分：悬浮窗系统（拖动 / 调整大小 / 折叠 / 关闭 / 置顶）
+     ===================================================================== */
+  var zTop = 100;
+  var allWins = [];
+
+  function bringToFront(el) {
+    if (el.classList.contains('hidden')) return;
+    zTop += 1;
+    el.style.zIndex = zTop;
+    allWins.forEach(function (w) { w.classList.remove('active'); });
+    el.classList.add('active');
+  }
+
+  function initWindow(el) {
+    allWins.push(el);
+    var hd = el.querySelector('.win-hd');
+    var rs = el.querySelector('.win-rs');
+
+    el.addEventListener('pointerdown', function () { bringToFront(el); }, true);
+    el.addEventListener('touchstart', function () { bringToFront(el); }, { passive: true });
+
+    /* 标题栏拖动 */
+    hd.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('button')) return;
+      bringToFront(el);
+      var r = el.getBoundingClientRect();
+      var ox = e.clientX - r.left;
+      var oy = e.clientY - r.top;
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+      hd.setPointerCapture(e.pointerId);
+
+      function mv(ev) {
+        var nl = ev.clientX - ox;
+        var nt = ev.clientY - oy;
+        el.style.left = nl + 'px';
+        el.style.top = nt + 'px';
+        requestSync();
+      }
+      function up() {
+        hd.removeEventListener('pointermove', mv);
+        hd.removeEventListener('pointerup', up);
+        hd.removeEventListener('pointercancel', up);
+        requestSync();
+      }
+      hd.addEventListener('pointermove', mv);
+      hd.addEventListener('pointerup', up);
+      hd.addEventListener('pointercancel', up);
+      e.preventDefault();
+    });
+
+    /* 右下角调整大小：不设最小/最大限制 */
+    rs.addEventListener('pointerdown', function (e) {
+      bringToFront(el);
+      var r = el.getBoundingClientRect();
+      var ox = e.clientX;
+      var oy = e.clientY;
+      var ow = r.width;
+      var oh = r.height;
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+      rs.setPointerCapture(e.pointerId);
+
+      function mv(ev) {
+        var w = ow + (ev.clientX - ox);
+        var h = oh + (ev.clientY - oy);
+        el.style.width = Math.max(0, w) + 'px';
+        el.style.height = Math.max(0, h) + 'px';
+        requestSync();
+      }
+      function up() {
+        rs.removeEventListener('pointermove', mv);
+        rs.removeEventListener('pointerup', up);
+        rs.removeEventListener('pointercancel', up);
+        requestSync();
+      }
+      rs.addEventListener('pointermove', mv);
+      rs.addEventListener('pointerup', up);
+      rs.addEventListener('pointercancel', up);
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    /* 折叠 / 关闭 */
+    el.querySelectorAll('.win-btn').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var act = btn.dataset.act;
+        if (act === 'collapse') {
+          el.classList.toggle('collapsed');
+          window.setTimeout(requestSync, 30);
+        } else if (act === 'close') {
+          el.classList.add('hidden');
+          window.setTimeout(requestSync, 30);
+        }
+      });
+    });
+  }
+
+  function clampAllWindows() {
+    allWins.forEach(function (el) {
+      if (el.classList.contains('hidden')) return;
+      var r = el.getBoundingClientRect();
+      if (r.left > window.innerWidth - 60) {
+        el.style.left = Math.max(0, window.innerWidth - 120) + 'px';
+      }
+      if (r.top > window.innerHeight - 60) {
+        el.style.top = Math.max(0, window.innerHeight - 120) + 'px';
+      }
+      if (r.left < -r.width + 80) el.style.left = (-r.width + 80) + 'px';
+      if (r.top < 0) el.style.top = '0px';
+    });
+  }
+
+  /* =====================================================================
+     第五部分：默认布局 / 重置布局
+     ===================================================================== */
+  var DEFAULTS = {};
+
+  function computeDefaults() {
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var D = {};
+
+    D.winToolbar = { left: 16, top: 12, width: 'auto', height: 'auto' };
+    D.winVars    = {
+      left: 16, top: 128,
+      width: Math.min(980, Math.max(560, vw * 0.48)),
+      height: Math.min(720, Math.max(400, vh * 0.62))
+    };
+    D.winOut     = {
+      left: 16,
+      top: Math.min(vh - 320, Math.max(760, vh * 0.76)),
+      width: Math.min(980, Math.max(560, vw * 0.48)),
+      height: Math.min(320, Math.max(200, vh * 0.24))
+    };
+    D.winExplain = {
+      left: Math.max(16, vw * 0.5),
+      top: Math.max(120, vh - 210),
+      width: Math.min(980, Math.max(520, vw * 0.46)),
+      height: Math.min(200, Math.max(140, vh * 0.2))
+    };
+    D.winMini    = {
+      left: Math.max(300, vw - 200),
+      top: 128,
+      width: 170,
+      height: Math.min(700, Math.max(380, vh * 0.62))
+    };
+    return D;
+  }
+
+  function applyLayout() {
+    DEFAULTS = computeDefaults();
+    Object.keys(DEFAULTS).forEach(function (id) {
+      var el = document.getElementById(id);
+      var d = DEFAULTS[id];
+      if (!el || !d) return;
+      el.style.left = d.left + 'px';
+      el.style.top = d.top + 'px';
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+      el.style.width = (typeof d.width === 'number') ? (d.width + 'px') : d.width;
+      el.style.height = (typeof d.height === 'number') ? (d.height + 'px') : d.height;
+      el.classList.remove('hidden');
+      el.classList.remove('collapsed');
+    });
+    ['winMini', 'winExplain', 'winOut', 'winVars', 'winToolbar'].forEach(function (id, idx) {
+      var el = document.getElementById(id);
+      if (el) el.style.zIndex = 100 + idx;
+    });
+    zTop = 105;
+    window.setTimeout(function () {
+      syncMinimap();
+      centerActiveLine();
+    }, 40);
+  }
+
+  /* =====================================================================
+     第六部分：播放控制
+     ===================================================================== */
+  var current = -1;
+  var playing = false;
+  var timer = null;
+  var speed = Number(speedInput.value);
+
+  function render() {
+    var step = current >= 0 ? STEPS[current] : null;
+    var prev = current > 0 ? STEPS[current - 1] : null;
+
+    updateCode(step);
+    updateVars(step, prev);
+    updateArr(step);
+    updateOutput(step);
+    updateExplain(step);
+
+    btnPrev.disabled = current < 0;
+    btnNext.disabled = current >= STEPS.length - 1;
+
+    centerActiveLine();
+  }
+
+  function updatePlayBtn() {
+    btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+    btnPlay.classList.toggle('playing', playing);
+  }
+
+  function tick() {
+    if (current >= STEPS.length - 1) { pause(); return; }
+    current += 1;
+    render();
+    if (current >= STEPS.length - 1) pause();
+  }
+
+  function play() {
+    if (playing) return;
+    if (current >= STEPS.length - 1) { current = -1; render(); }
+    playing = true;
+    updatePlayBtn();
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+    tick();
+  }
+
+  function pause() {
+    playing = false;
+    window.clearInterval(timer);
+    timer = null;
+    updatePlayBtn();
+  }
+
+  function nextStep() {
+    pause();
+    if (current < STEPS.length - 1) { current += 1; render(); }
+  }
+
+  function prevStep() {
+    pause();
+    if (current > -1) { current -= 1; render(); }
+  }
+
+  function resetAll() {
+    pause();
+    current = -1;
+    lastOutText = null;
+    consoleBody.innerHTML = '';
+    codeScroll.scrollTop = 0;
+    render();
+  }
+
+  /* =====================================================================
+     第七部分：事件绑定
+     ===================================================================== */
+  btnPlay.addEventListener('click', function () { playing ? pause() : play(); });
+  btnNext.addEventListener('click', nextStep);
+  btnPrev.addEventListener('click', prevStep);
+  btnReset.addEventListener('click', resetAll);
+  btnLayout.addEventListener('click', applyLayout);
+
+  btnFull.addEventListener('click', function () {
+    if (!document.fullscreenElement) {
+      (document.documentElement.requestFullscreen || function () {}).call(document.documentElement);
+    } else {
+      (document.exitFullscreen || function () {}).call(document);
+    }
+  });
+
+  btnPanels.addEventListener('click', function () {
+    var anyVisible = allWins.some(function (w) { return !w.classList.contains('hidden'); });
+    allWins.forEach(function (w) {
+      if (anyVisible) w.classList.add('hidden');
+      else w.classList.remove('hidden');
+    });
+    window.setTimeout(requestSync, 40);
+  });
+
+  btnMini.addEventListener('click', function () {
+    var mini = document.getElementById('winMini');
+    mini.classList.toggle('hidden');
+    window.setTimeout(requestSync, 40);
+  });
+
+  speedInput.addEventListener('input', function () {
+    speed = Number(speedInput.value);
+    speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+    if (playing) {
+      window.clearInterval(timer);
+      timer = window.setInterval(tick, speed);
+    }
+  });
+
+  /* 全局快捷键始终有效 */
+  document.addEventListener('keydown', function (e) {
+    if (e.target && e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      playing ? pause() : play();
+    } else if (e.code === 'ArrowRight') {
+      e.preventDefault(); nextStep();
+    } else if (e.code === 'ArrowLeft') {
+      e.preventDefault(); prevStep();
+    } else if (e.code === 'KeyR') {
+      e.preventDefault(); resetAll();
+    } else if (e.code === 'KeyF') {
+      e.preventDefault(); btnFull.click();
+    } else if (e.code === 'KeyM') {
+      e.preventDefault(); btnMini.click();
+    } else if (e.code === 'KeyH') {
+      e.preventDefault(); btnPanels.click();
+    }
+  });
+
+  /* =====================================================================
+     第八部分：初始化
+     ===================================================================== */
+  buildVarTable();
+  allWins = Array.prototype.slice.call(document.querySelectorAll('.win'));
+  allWins.forEach(initWindow);
+  applyLayout();
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  render();
+})();
+</script>
+</body>
+</html>

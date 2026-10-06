@@ -1,0 +1,1328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 质因数分解 · for 省略三要素 · continue 跳过 i++ · x/=i（希沃大屏版）</title>
+<style>
+:root{
+  --bg:#0d1117;
+  --panel-bg:rgba(13,17,23,.80);
+  --border:#26374d;
+  --text:#e6edf7;
+  --muted:#8ea3bf;
+  --accent:#38bdf8;
+  --green:#4ade80;
+  --amber:#fbbf24;
+  --pink:#f472b6;
+  --purple:#c084fc;
+  --teal:#2dd4bf;
+  --orange:#fb923c;
+
+  --code-font: clamp(80px, 5vw, 120px);
+  --out-font: clamp(72px, 4.5vw, 110px);
+  --var-font: clamp(40px, 2.4vw, 60px);
+  --explain-font: clamp(48px, 2.8vw, 72px);
+  --btn-font: clamp(40px, 2.2vw, 60px);
+  --title-font: clamp(34px, 2.2vw, 54px);
+  --line-h: 1.40;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--bg);}
+body{
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  color:var(--text);
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* ===================== 全屏代码层 ===================== */
+#stage{position:fixed;inset:0;overflow:hidden;background:var(--bg);}
+#codeScroll{
+  position:absolute;inset:0;overflow:auto;
+  scrollbar-width:thin;scrollbar-color:#33415a transparent;
+}
+#codeScroll::-webkit-scrollbar{width:16px;height:16px;}
+#codeScroll::-webkit-scrollbar-thumb{background:#2f3f58;border-radius:10px;}
+#codeScroll::-webkit-scrollbar-track{background:#0b1017;}
+
+/* 每行代码独占一行，不折行，横向可滚动 */
+#codeInner{
+  display:block;
+  width:max-content;
+  min-width:100%;
+  padding:10px 0 60px 0;
+}
+
+.code-line{
+  display:flex;
+  align-items:flex-start;
+  white-space:pre;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  line-height:var(--line-h);
+  padding:0 80px 0 0;
+  border-left:10px solid transparent;
+  transition:background .22s,border-color .22s,opacity .22s;
+}
+.code-line .ln{
+  flex:0 0 auto;
+  width:2.7em;
+  text-align:right;
+  padding-right:.45em;
+  color:#3f5a7d;
+  user-select:none;
+  font-variant-numeric:tabular-nums;
+}
+.code-line .src{flex:0 0 auto;padding-right:2em;}
+
+/* 循环体命中（绿） */
+.code-line.hit{
+  background:linear-gradient(90deg,rgba(74,222,128,.20),rgba(74,222,128,0));
+  border-left-color:var(--green);
+}
+.code-line.hit .ln{color:var(--green);}
+/* 本轮被跳过（灰） */
+.code-line.skip{opacity:.20;}
+.code-line.skip .ln{color:#3d4c60;}
+/* 当前行（最高优先级） */
+.code-line.active{
+  background:linear-gradient(90deg,rgba(56,189,248,.30),rgba(56,189,248,.02));
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 3px rgba(56,189,248,.22);
+  opacity:1;
+}
+.code-line.active .ln{color:var(--accent);font-weight:700;}
+.code-line.active .src{color:#ffffff;}
+
+/* 语法着色 */
+.pp{color:var(--purple);font-weight:700;}
+.str{color:var(--green);}
+.cmt{color:#6b809e;font-style:italic;}
+.fn{color:var(--accent);}
+.kw{color:var(--pink);font-weight:700;}
+.num{color:var(--amber);}
+.op{color:var(--orange);font-weight:700;}
+
+/* ===================== 悬浮面板通用 ===================== */
+.panel{
+  position:fixed;
+  z-index:100;
+  background:var(--panel-bg);
+  -webkit-backdrop-filter:blur(14px) saturate(1.2);
+  backdrop-filter:blur(14px) saturate(1.2);
+  border:2px solid var(--border);
+  border-radius:18px;
+  display:flex;flex-direction:column;
+  overflow:hidden;
+  box-shadow:0 18px 48px rgba(0,0,0,.62);
+  transition:border-color .18s, box-shadow .18s, opacity .18s;
+  opacity:.94;
+}
+.panel:hover{opacity:1;}
+.panel.active-panel{
+  border-color:var(--accent);
+  box-shadow:0 0 0 4px rgba(56,189,248,.30),0 22px 60px rgba(0,0,0,.72);
+}
+.panel.hidden{display:none;}
+.panel.dragging,.panel.resizing{opacity:1;}
+
+.panel-head{
+  flex:0 0 auto;
+  display:flex;align-items:center;gap:14px;
+  padding:10px 12px 10px 20px;
+  background:linear-gradient(180deg,rgba(30,45,68,.94),rgba(16,25,38,.94));
+  border-bottom:2px solid var(--border);
+  cursor:move;touch-action:none;user-select:none;
+}
+.panel-head .ptitle{
+  font-size:var(--title-font);font-weight:800;letter-spacing:.03em;
+  color:#cfe4ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.panel-head .spacer{flex:1 1 auto;}
+.pbtn{
+  flex:0 0 auto;
+  min-width:60px;min-height:60px;
+  font-size:var(--btn-font);line-height:1;
+  border-radius:12px;border:2px solid #2f435e;
+  background:#1a2637;color:#dbe8fa;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  padding:0 12px;font-family:inherit;
+  transition:background .15s,border-color .15s,transform .08s;
+}
+.pbtn:hover{background:#22334a;border-color:#3f5c82;}
+.pbtn:active{transform:translateY(2px);}
+.pbtn.close{background:#3a1d24;border-color:#7f2d3c;color:#ffc9d2;}
+.pbtn.close:hover{background:#54232f;}
+
+.panel-body{
+  flex:1 1 auto;min-height:0;overflow:auto;
+  padding:12px 16px;
+  scrollbar-width:thin;scrollbar-color:#33415a transparent;
+}
+.panel-body::-webkit-scrollbar{width:12px;height:12px;}
+.panel-body::-webkit-scrollbar-thumb{background:#31425c;border-radius:8px;}
+.panel.folded .panel-body,
+.panel.folded .rs{display:none;}
+
+/* 右下角调整大小把手：不设最小/最大限制 */
+.rs{
+  position:absolute;right:0;bottom:0;width:52px;height:52px;
+  cursor:nwse-resize;touch-action:none;
+  background:
+    linear-gradient(135deg,transparent 44%,var(--accent) 44%,var(--accent) 54%,transparent 54%,
+      transparent 66%,var(--accent) 66%,var(--accent) 76%,transparent 76%,
+      transparent 86%,var(--accent) 86%,var(--accent) 94%,transparent 94%);
+  opacity:.75;
+}
+.rs:hover{opacity:1;}
+
+/* ===================== 顶部控制栏 ===================== */
+#panelTop{left:16px;top:12px;}
+.toolbar{display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:14px 20px;}
+.tbtn{
+  min-height:78px;
+  font-size:var(--btn-font);font-family:inherit;font-weight:700;
+  padding:0 24px;border-radius:14px;
+  border:2px solid #2f435e;background:#1a2637;color:#e2edff;cursor:pointer;
+  white-space:nowrap;transition:background .15s,border-color .15s,transform .08s;
+}
+.tbtn:hover{background:#22334a;border-color:#3f5c82;}
+.tbtn:active{transform:translateY(2px);}
+.tbtn.primary{background:linear-gradient(180deg,#0ea5e9,#0369a1);border-color:#7dd3fc;color:#03121f;}
+.tbtn.primary.playing{background:linear-gradient(180deg,#f59e0b,#b45309);border-color:#fbbf24;color:#1c1200;}
+.tbtn.ghost{background:#141d2a;}
+.speedbox{display:flex;align-items:center;gap:14px;font-size:var(--btn-font);color:#a9c1dd;}
+.speedbox input[type=range]{width:clamp(180px,11vw,340px);height:48px;accent-color:var(--accent);cursor:pointer;}
+.speedbox b{color:var(--accent);min-width:4.6em;display:inline-block;font-variant-numeric:tabular-nums;}
+
+/* ===================== 变量面板 ===================== */
+#panelVars{left:16px;top:18vh;width:760px;height:34vh;}
+.vrow{
+  display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
+  padding:10px 16px;margin-bottom:8px;border-radius:12px;
+  background:rgba(13,23,40,.92);border:2px solid #1d2c42;
+  font-size:var(--var-font);line-height:1.34;
+}
+.vrow .k{color:var(--muted);white-space:nowrap;font-size:.82em;}
+.vrow .v{
+  font-family:ui-monospace,Consolas,monospace;font-weight:800;
+  color:var(--accent);text-align:right;word-break:break-word;
+  font-variant-numeric:tabular-nums;
+}
+.vrow .v.dim{color:#5f7796;font-weight:500;}
+.vrow.k-main{border-left:10px solid #22d3ee;}  .vrow.k-main .v{color:var(--green);}
+.vrow.k-sw{border-left:10px solid #2dd4bf;}    .vrow.k-sw .v{color:var(--teal);}
+.vrow.k-mod{border-left:10px solid #c084fc;}   .vrow.k-mod .v{color:var(--purple);}
+.vrow.k-sub{border-left:10px solid #38bdf8;}
+.vrow.k-val{border-left:10px solid #f472b6;}   .vrow.k-val .v{color:var(--pink);}
+.vrow.k-note{border-left:10px solid #2dd4bf;}  .vrow.k-note .v{color:var(--teal);font-size:.80em;}
+.vrow.k-ctx{background:rgba(18,40,68,.92);border-color:#26456b;}
+.vrow.k-money{border-left:10px solid #fbbf24;} .vrow.k-money .v{color:var(--amber);}
+.vrow.k-ret{border-left:10px solid #fbbf24;}   .vrow.k-ret .v{color:var(--amber);}
+@keyframes vflash{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.22);color:#fff;text-shadow:0 0 22px var(--accent);}
+  100%{transform:scale(1);}
+}
+.vrow .v.flash{animation:vflash .55s ease-out;}
+
+/* ===================== 输出面板 ===================== */
+#panelOut{left:16px;top:54vh;width:1160px;height:16vh;}
+#consoleBody{
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);
+  line-height:1.45;
+  white-space:pre;
+  color:#eaf3ff;
+  min-height:100%;
+}
+.out-line{animation:slideIn .4s ease-out;white-space:pre;}
+@keyframes slideIn{from{opacity:0;transform:translateX(-26px);}to{opacity:1;transform:none;}}
+.seg-out{color:#eaf3ff;}
+.seg-in{color:var(--teal);font-weight:800;}
+.seg-money{color:var(--amber);font-weight:800;}
+.hint{font-size:clamp(20px,1.15vw,30px);color:#7f95b3;line-height:1.45;margin-top:12px;}
+
+/* ===================== 说明条 ===================== */
+#panelEx{left:16px;top:72vh;width:1160px;height:26vh;}
+#explainBody{font-size:var(--explain-font);line-height:1.5;color:#c2d5ee;}
+#explainBody strong{color:#fff;}
+#explainBody code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(148,163,184,.2);border-radius:8px;padding:0 10px;color:#e8f2ff;
+}
+#explainBody .tag{
+  display:inline-block;margin-right:16px;padding:2px 20px;border-radius:10px;
+  background:rgba(56,189,248,.22);color:var(--accent);font-weight:800;font-size:.80em;
+}
+#explainBody .tag.hit{background:rgba(74,222,128,.22);color:var(--green);}
+#explainBody .tip{
+  display:block;margin-top:14px;padding:12px 20px;border-radius:12px;
+  background:rgba(45,212,191,.12);border-left:8px solid var(--teal);color:#c3f7ee;
+  font-size:.90em;
+}
+#explainBody .warn{
+  display:block;margin-top:14px;padding:12px 20px;border-radius:12px;
+  background:rgba(251,191,36,.14);border-left:8px solid var(--amber);color:#ffe9bb;
+  font-size:.90em;
+}
+
+/* ===================== 缩略图 ===================== */
+#panelMap{right:16px;top:18vh;width:340px;height:52vh;}
+#mapWrap{padding:0;overflow:hidden;}
+#mapBody{
+  position:relative;width:100%;height:100%;
+  overflow:hidden;border-radius:10px;
+  background:rgba(6,11,19,.72);
+}
+#mapInner{position:absolute;left:0;top:0;width:100%;}
+.map-line{
+  display:flex;align-items:center;
+  overflow:hidden;white-space:nowrap;
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  line-height:1;
+  padding-left:6px;
+  border-left:4px solid transparent;
+}
+.map-line .map-src{white-space:pre;display:block;transform-origin:left center;}
+.map-line.cur{
+  background:linear-gradient(90deg,rgba(56,189,248,.55),rgba(56,189,248,.05));
+  border-left-color:var(--accent);
+}
+#mapView{
+  position:absolute;left:0;right:0;
+  border:3px solid rgba(56,189,248,.95);
+  background:rgba(56,189,248,.13);
+  border-radius:6px;
+  pointer-events:none;
+  box-shadow:0 0 18px rgba(56,189,248,.55);
+  transition:none;
+}
+</style>
+</head>
+<body>
+
+<!-- ===================== 全屏代码层 ===================== -->
+<div id="stage">
+  <div id="codeScroll">
+    <div id="codeInner">
+      <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+      <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span></span></div>
+      <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">int</span> x, i<span class="op">=</span><span class="num">2</span>;                        <span class="cmt">// 定义要分解的数x和因子i</span></span></div>
+      <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="fn">printf</span>(<span class="str">"Input a figure:"</span>);         <span class="cmt">// 提示输入</span></span></div>
+      <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    <span class="fn">scanf</span>(<span class="str">"%d"</span>, <span class="op">&amp;</span>x);                   <span class="cmt">// 输入要分解的数</span></span></div>
+      <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    <span class="fn">printf</span>(<span class="str">"%d="</span>, x);                  <span class="cmt">// 输出等式左边</span></span></div>
+      <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">    <span class="kw">for</span> ( ; i <span class="op">&lt;</span> x; ) {                 <span class="cmt">// for循环，i从2开始</span></span></div>
+      <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">        <span class="kw">if</span> (x <span class="op">%</span> i <span class="op">==</span> <span class="num">0</span>) {              <span class="cmt">// 如果x能被i整除</span></span></div>
+      <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">            <span class="fn">printf</span>(<span class="str">"%d*"</span>, i);          <span class="cmt">// 输出因子i</span></span></div>
+      <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">            x <span class="op">/=</span> i;                    <span class="cmt">// x除以i，继续分解</span></span></div>
+      <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">            <span class="kw">continue</span>;                  <span class="cmt">// 跳过i++，继续用同一因子</span></span></div>
+      <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">        }</span></div>
+      <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">        i<span class="op">++</span>;                           <span class="cmt">// i自增1</span></span></div>
+      <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">    }</span></div>
+      <div class="code-line" data-line="15"><span class="ln">15</span><span class="src">    <span class="fn">printf</span>(<span class="str">"%d"</span>, i);                    <span class="cmt">// 输出最后一个因子</span></span></div>
+      <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回0，程序结束</span></span></div>
+      <div class="code-line" data-line="17"><span class="ln">17</span><span class="src">}</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== 顶部控制栏 ===================== -->
+<div class="panel" id="panelTop">
+  <div class="panel-head" data-drag>
+    <span class="ptitle">质因数分解 · for 省略三要素 · continue 跳过 i++ · x /= i</span>
+    <span class="spacer"></span>
+    <button class="pbtn" data-act="fold" title="折叠/展开">▾</button>
+    <button class="pbtn close" data-act="close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="panel-body" style="padding:0;overflow:visible;">
+    <div class="toolbar">
+      <button class="tbtn" id="btnReset">⟲ 重置</button>
+      <button class="tbtn" id="btnPrev">◀ 上一步</button>
+      <button class="tbtn primary" id="btnPlay">▶ 自动播放</button>
+      <button class="tbtn" id="btnNext">下一步 ▶</button>
+      <span class="speedbox">速度<input type="range" id="speed" min="300" max="3000" step="100" value="900"><b id="speedLabel">0.90s</b></span>
+      <button class="tbtn ghost" id="btnFull">⛶ 全屏</button>
+      <button class="tbtn ghost" id="btnAll">👁 面板</button>
+      <button class="tbtn ghost" id="btnMapToggle">▭ 缩略图</button>
+      <button class="tbtn ghost" id="btnLayout">⟲ 重置布局</button>
+    </div>
+  </div>
+  <div class="rs" data-resize></div>
+</div>
+
+<!-- ===================== 变量 / 状态面板 ===================== -->
+<div class="panel" id="panelVars">
+  <div class="panel-head" data-drag>
+    <span class="ptitle">变量 · 循环条件 · 取余 · 状态表</span>
+    <span class="spacer"></span>
+    <button class="pbtn" data-act="fold">▾</button>
+    <button class="pbtn close" data-act="close">×</button>
+  </div>
+  <div class="panel-body"><div id="varTable"></div></div>
+  <div class="rs" data-resize></div>
+</div>
+
+<!-- ===================== 输出面板 ===================== -->
+<div class="panel" id="panelOut">
+  <div class="panel-head" data-drag>
+    <span class="ptitle">程序运行结果（屏幕输出）</span>
+    <span class="spacer"></span>
+    <button class="pbtn" data-act="fold">▾</button>
+    <button class="pbtn close" data-act="close">×</button>
+  </div>
+  <div class="panel-body" style="padding:0 22px 18px;">
+    <div id="consoleBody"></div>
+    <div class="hint">本程序有 scanf 输入。本次演示输入 <b>x = 60</b>，屏幕共 2 行：<br>第 1 行 <code>Input a figure:60</code>（回车换行）　第 2 行 <code>60=2*2*3*5</code>（末尾无换行）</div>
+  </div>
+  <div class="rs" data-resize></div>
+</div>
+
+<!-- ===================== 当前语句说明条 ===================== -->
+<div class="panel" id="panelEx">
+  <div class="panel-head" data-drag>
+    <span class="ptitle">当前语句说明</span>
+    <span class="spacer"></span>
+    <button class="pbtn" data-act="fold">▾</button>
+    <button class="pbtn close" data-act="close">×</button>
+  </div>
+  <div class="panel-body"><div id="explainBody"></div></div>
+  <div class="rs" data-resize></div>
+</div>
+
+<!-- ===================== 缩略图 ===================== -->
+<div class="panel" id="panelMap">
+  <div class="panel-head" data-drag>
+    <span class="ptitle">缩略图 · Minimap</span>
+    <span class="spacer"></span>
+    <button class="pbtn" data-act="fold">▾</button>
+    <button class="pbtn close" data-act="close">×</button>
+  </div>
+  <div class="panel-body" id="mapWrap">
+    <div id="mapBody">
+      <div id="mapInner"></div>
+      <div id="mapView"></div>
+    </div>
+  </div>
+  <div class="rs" data-resize></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================================
+   1. 逐步执行轨迹（严格按 C 真实执行生成）
+   ------------------------------------------------------------------------
+   输入 x = 60：
+   i=2,x=60 : 2<60真 60%2=0真 → 输出"2*" x=30 continue(跳过i++)
+   i=2,x=30 : 2<30真 30%2=0真 → 输出"2*" x=15 continue(跳过i++)
+   i=2,x=15 : 2<15真 15%2=1假 → i++ → 3
+   i=3,x=15 : 3<15真 15%3=0真 → 输出"3*" x=5  continue(跳过i++)
+   i=3,x=5  : 3<5 真 5%3=2 假 → i++ → 4
+   i=4,x=5  : 4<5 真 5%4=1 假 → i++ → 5
+   i=5,x=5  : 5<5 假 → 退出循环
+   printf("%d", 5) → 输出"5"
+   结果：循环体 6 次，continue 3 次，printf 6 次，scanf 1 次，返回 0
+        输出 2 行：Input a figure:60  /  60=2*2*3*5
+   ========================================================================= */
+var IN_X = 60;
+
+var STEPS = (function build(){
+  var st = [];
+  var x = null;              /* 待分解数，未初始化 */
+  var i = 2;                 /* 因子候选，初值 2   */
+  var loops = 0;             /* 当前轮次编号       */
+  var prints = 0;            /* printf 调用次数    */
+  var scanfs = 0;            /* scanf  调用次数    */
+  var ret = '—';
+  var outLines = [[]];       /* 输出：行的数组     */
+
+  function addSeg(t, c){ outLines[outLines.length - 1].push({ t:t, c:c || 'out' }); }
+  function newLine(){ outLines.push([]); }
+  function snap(){
+    var r = outLines.map(function(l){ return l.slice(); });
+    while (r.length && r[r.length - 1].length === 0) r.pop();
+    return r.length ? r : null;
+  }
+  function push(line, ctx, ov, hit, skip, title, desc){
+    var v = {
+      x:    (x === null ? '未初始化（不定值）' : String(x)),
+      i:    String(i),
+      cond: '—', mod: '—',
+      subExpr: '—', subVal: '—', note: '—',
+      loops: loops, prints: prints, scanfs: scanfs, ret: ret
+    };
+    for (var k in ov){ if (Object.prototype.hasOwnProperty.call(ov, k)) v[k] = ov[k]; }
+    st.push({
+      line: line, ctx: ctx, vars: v, out: snap(),
+      hit: hit || [], skip: skip || [],
+      title: title, desc: desc
+    });
+  }
+
+  /* ---------- 第 1 行 ---------- */
+  push(1, '预处理阶段（编译前完成）', { x:'—', i:'—' }, [], [],
+    '#include &lt;stdio.h&gt; —— 预处理指令',
+    '预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容整份引入源文件，让编译器认识 ' +
+    '<code>printf</code> 和 <code>scanf</code> 的函数原型。<br>' +
+    '<span class="tip"><b>要点：</b>这一行<b>不是 C 语句</b>，在编译之前就被预处理器处理完了，不占运行时间，也不产生任何屏幕输出。' +
+    '<br><b>尖括号：</b><code>#include &lt;stdio.h&gt;</code> 直接到<b>系统目录</b>查找；若写成双引号 <code>"stdio.h"</code> 则先到<b>当前源文件目录</b>找，' +
+    '找不到再到系统目录。标准库头文件通常推荐尖括号。</span>'
+  );
+
+  /* ---------- 第 2 行 ---------- */
+  push(2, 'main · 程序入口', { x:'—', i:'—' }, [], [],
+    'int main() { —— 程序从这里开始执行',
+    '操作系统把控制权交给 <code>main</code>，程序正式开跑。<br>' +
+    '<span class="tip"><b>要点：</b><code>int</code> 是函数返回类型，说明 main 要把一个整数交还给操作系统；' +
+    '系统为 main 建立<b>栈帧</b>，局部变量 x、i 都住在这个栈帧里，函数结束时随栈帧一起销毁。' +
+    '第 2 行的 <code>{</code> 与第 17 行的 <code>}</code> 圈出整个函数体。</span>'
+  );
+
+  /* ---------- 第 3 行 ---------- */
+  push(3, 'main · 声明并初始化 x, i',
+    { x:'未初始化（不定值）', i:'2',
+      subExpr:'int x, i=2;',
+      subVal:'i = 2；x 未初始化',
+      note:'i 是因子候选，从最小质数 2 开始' },
+    [], [],
+    'int x, i=2;  声明待分解数 x 与因子候选 i',
+    '一条语句声明两个 <b>int</b> 变量：<br>' +
+    '· <b>x 未初始化</b>：待分解的数，稍后由 scanf 读入；<br>' +
+    '· <b>i = 2</b>：<b>因子候选</b>，从最小的质数 <b>2</b> 开始枚举。<br>' +
+    '<span class="tip"><b>为什么从 2 开始？</b>因为 1 是任何数的因子，用它试除毫无意义；而 2 是最小的质数。' +
+    '从 2 开始逐一递增，<b>第一个能整除 x 的 i 一定是质因子</b>——这是本算法成立的关键：' +
+    '从小到大试除，一旦找到因子，它必然是质数（否则它会被更小的因子先行拆掉）。</span>'
+  );
+
+  /* ---------- 第 4 行 ---------- */
+  prints++;                                  /* printf 第 1 次 */
+  addSeg('Input a figure:', 'out');
+  push(4, 'main · printf 提示输入',
+    { x:'未初始化（不定值）', i:'2',
+      subExpr:'printf("Input a figure:")',
+      subVal:'输出提示文字，不换行',
+      note:'格式串无 \\n，光标停在冒号后等待输入' },
+    [], [],
+    'printf("Input a figure:");  打印输入提示',
+    '向屏幕打印提示文字。注意结尾<b>没有</b> <code>\\n</code>，光标会停在冒号后面等待输入，不换行。' +
+    '<span class="tip"><b>交互式程序的习惯：</b>先 printf 提示，再让 scanf 在同一行读取，用户看到的就是 ' +
+    '<code>Input a figure:60</code> 这样一行。<br><b>printf 调用次数：</b>目前为 <b>1</b> 次。</span>'
+  );
+
+  /* ---------- 第 5 行 · scanf 等待 ---------- */
+  push(5, 'main · scanf 等待输入',
+    { x:'未初始化（不定值）', i:'2',
+      subExpr:'scanf("%d", &x)',
+      subVal:'（等待输入…）',
+      note:'%d 读十进制整数；参数必须是地址 &x' },
+    [], [],
+    'scanf("%d", &amp;x);  阻塞等待用户输入',
+    '<code>scanf</code> 需要知道"把读到的整数写到哪里"，所以第二个参数必须是<b>地址</b>：<code>&amp;x</code>。' +
+    '格式串 <code>%d</code> 表示按十进制读一个整数。<br>此刻程序<b>阻塞</b>，光标停在冒号后面等待用户输入。' +
+    '<span class="warn"><b>易错点：</b>如果误写成 <code>scanf("%d", x)</code>（漏掉 &amp;），' +
+    '就是把一个不定值当地址用，属于未定义行为，程序很可能直接崩溃。</span>'
+  );
+
+  /* ---------- 第 5 行 · scanf 返回 ---------- */
+  x = IN_X; scanfs = 1;
+  addSeg(String(IN_X), 'in');
+  newLine();                                 /* 回车换行，光标到下一行 */
+  push(5, 'main · scanf 返回',
+    { x: String(IN_X), i:'2',
+      subExpr:'（输入完成）',
+      subVal:'x = ' + IN_X,
+      note:'x 已通过地址 &x 写入' },
+    [], [],
+    '用户输入 ' + IN_X + '，写入 x',
+    '用户键入 <code>' + IN_X + '</code> 并回车，scanf 按 <code>%d</code> 把它解析成整数，顺着 <code>&amp;x</code> 写进 x 的存储单元。' +
+    '此刻 <b>x = ' + IN_X + '</b>，<b>scanf 调用 1 次</b>。<br>屏幕显示为 <b>Input a figure:' + IN_X + '</b>——提示与输入在同一行，回车后光标换到下一行。' +
+    '<span class="tip"><b>为什么选 ' + IN_X + ' 来演示？</b>因为 ' + IN_X + ' = <b>2 × 2 × 3 × 5</b>，含有<b>重复因子 2</b>，' +
+    '正好能展示 <code>continue</code> 跳过 <code>i++</code> 的关键行为——第 1 次用 i=2 除完后 i 不递增，第 2 次仍用 i=2 继续除，' +
+    '从而捕捉到重复的质因子。<b>如果换成 30（=2×3×5）就只有一个 2，看不出 continue 的作用。</b></span>'
+  );
+
+  /* ---------- 第 6 行 ---------- */
+  prints++;                                  /* printf 第 2 次 */
+  addSeg(String(IN_X) + '=', 'out');
+  push(6, 'main · printf 输出等式左边',
+    { x: String(IN_X), i:'2',
+      subExpr:'printf("%d=", x)',
+      subVal:'输出 "' + IN_X + '="',
+      note:'无 \\n，因子会接着输出' },
+    [], [],
+    'printf("%d=", x);  输出 ' + IN_X + '=',
+    '<code>printf("%d=", x);</code> 按 <code>%d</code> 输出 x，再输出一个等号。<br>' +
+    '· 屏幕上出现 <b>' + IN_X + '=</b>；<br>' +
+    '· 格式串里<b>没有</b> <code>\\n</code>，所以后面输出的每个因子都会追加在同一行，' +
+    '最终形成 <b>' + IN_X + '=2*2*3*5</b> 这样的完整等式。'
+  );
+
+  /* ===================== 循环 ===================== */
+  var round = 1, guard = 0;
+  while (i < x && guard++ < 200){
+    loops = round;
+
+    /* ---------- 第 7 行：条件为真 ---------- */
+    push(7, 'main · for 条件判断（第 ' + round + ' 轮）',
+      { x: String(x), i: String(i),
+        cond: i + ' < ' + x + ' → 真',
+        subExpr:'for ( ; i < x; )  →  ' + i + ' < ' + x,
+        subVal:'真（1）→ 进入循环体',
+        note:'for 的式1、式3 都为空，只保留条件' },
+      [], [],
+      'for (' + i + ' &lt; ' + x + ')  为真，进入循环体',
+      '<code>for ( ; i &lt; x; )</code> 的<b>式 1（初始化）和式 3（更新）都是空的</b>，只保留了条件 <code>i &lt; x</code>。<br>' +
+      '· <b>条件</b>：<code>' + i + ' &lt; ' + x + '</code> 成立，结果为<b>真</b>；<br>' +
+      '· 因为式 3 为空，<b>循环变量 i 的更新完全靠循环体自己完成</b>（第 13 行的 <code>i++</code>）；<br>' +
+      '· 这恰好为 <code>continue</code> 提供了用武之地：<b>continue 会跳过第 13 行，从而"冻结" i，让它继续充当因子</b>。' +
+      '<span class="tip"><b>为什么写成 <code>for ( ; i &lt; x; )</code> 而不直接写 <code>while (i &lt; x)</code>？</b>' +
+      '两者完全等价。写 for 只是保留了"这是个循环"的形式感，也方便以后想加初始化或更新时直接补上，不用改结构。</span>'
+    );
+
+    var rem = x % i;
+    if (rem === 0){
+      /* ---------- 第 8 行：if 真 ---------- */
+      push(8, 'main · if 判断能否被 i 整除（第 ' + round + ' 轮）',
+        { x: String(x), i: String(i),
+          cond: i + ' < ' + x + ' → 真',
+          mod: x + ' % ' + i + ' = ' + rem,
+          subExpr:'if (x % i == 0)  →  ' + x + ' % ' + i,
+          subVal:'余数 ' + rem + ' == 0 → 真（1），进入 if 体',
+          note:'% 取余：余数为 0 表示整除；== 是判断相等' },
+        [8,9,10,11], [13],
+        'if (' + x + ' % ' + i + ' == 0)  为真',
+        '<code>if (x % i == 0)</code> 用<b>取余运算符</b> <code>%</code> 判断 x 能否被 i 整除：<br>' +
+        '· 计算：<code>' + x + ' % ' + i + '</code>，余数为 <b>' + rem + '</b>；<br>' +
+        '· 判断余数 <code>== 0</code>，结果是<b>真（1）</b>。<br>' +
+        '说明 <b>' + i + '</b> 是 ' + x + ' 的一个因子，进入 if 体执行第 9~11 行。' +
+        '<span class="tip"><b>为什么这里找到的 i 一定是质因子？</b>因为我们是从 2 开始<b>从小到大</b>试除的。' +
+        '如果 i 是合数，比如 i=4，那么它的因子 2 早就该先被试出来，x 早就被 2 除干净了，根本轮不到 4 来整除。' +
+        '所以每次命中的 i 必然是质数。<b>这就是"从小到大逐一试除"的巧妙之处。</b><br>' +
+        '<b>易错：</b><code>x % i == 0</code> 不能写成 <code>x % i = 0</code>，后者是赋值，编译会报错。</span>'
+      );
+
+      /* ---------- 第 9 行：printf 输出因子 ---------- */
+      prints++;
+      addSeg(String(i) + '*', 'money');
+      push(9, 'main · printf 输出因子 i',
+        { x: String(x), i: String(i),
+          cond: i + ' < ' + x + ' → 真',
+          mod: x + ' % ' + i + ' = 0',
+          subExpr:'printf("%d*", ' + i + ')',
+          subVal:'输出 "' + i + '*"（%d 输出 int）',
+          note:'格式串无 \\n，因子用 * 相连' },
+        [9,10,11], [13],
+        'printf("' + i + '*");  输出因子 ' + i,
+        '<code>printf("%d*", i);</code> 输出因子 i 和一个星号作为分隔。<br>' +
+        '· 屏幕上追加 <b>' + i + '*</b>；<br>' +
+        '· <code>%d</code> 用于输出 <b>int</b> 型数据；<br>' +
+        '· 格式串<b>没有</b> <code>\\n</code>，所以输出的因子会连成 <code>2*2*3*5</code> 这样的形式；<br>' +
+        '· 星号既充当分隔符，也让等式读起来更自然：<b>' + IN_X + '=2*2*3*5</b>。<br>' +
+        '<span class="tip"><b>printf 调用次数：</b>目前为 <b>' + prints + '</b> 次。</span>'
+      );
+
+      /* ---------- 第 10 行：x /= i ---------- */
+      var oldX = x;
+      x = x / i;
+      push(10, 'main · x /= i 继续分解',
+        { x: String(x), i: String(i),
+          cond: i + ' < ' + x + ' → 真',
+          mod: oldX + ' % ' + i + ' = 0',
+          subExpr:'x /= i   即   x = x / ' + i,
+          subVal:'x = ' + oldX + ' / ' + i + ' = ' + x,
+          note:'复合赋值；整数除法，商写回 x' },
+        [10,11], [13],
+        'x /= ' + i + '：' + oldX + ' → ' + x,
+        '<code>x /= i;</code> 中 <code>/=</code> 是<b>复合赋值运算符</b>，等价于 <code>x = x / i;</code>：把 x 除以 i，商写回 x。<br>' +
+        '· x 由 <b>' + oldX + '</b> 变成 <b>' + x + '</b>；<br>' +
+        '· 这里执行的是<b>整数除法</b>，但因为已经确认 <code>' + oldX + ' % ' + i + ' == 0</code>，' +
+        '所以商是精确的整数，不会有小数被截断的问题；<br>' +
+        '· x 缩小后，剩下的因子就更少了，循环会越来越快地结束。' +
+        '<span class="tip"><b>为什么每次都要 x /= i？</b>因为 ' + oldX + ' 里可能含有<b>多个</b> ' + i + ' 因子。' +
+        '每除掉一个，x 就小一圈，直到除不动为止。这样"从小到大试除"的方式自然就把重复因子逐个提取出来了。</span>'
+      );
+
+      /* ---------- 第 11 行：continue ---------- */
+      push(11, 'main · continue 跳过 i++',
+        { x: String(x), i: String(i),
+          cond: i + ' < ' + x + ' → 真',
+          mod:'—',
+          subExpr:'continue;',
+          subVal:'跳过第 13 行的 i++，直接回到 for 头',
+          note:'关键：i 保持不变，继续用同一因子试除' },
+        [11], [13],
+        'continue;  跳过 i++，仍用 i = ' + i + ' 继续试除',
+        '<code>continue;</code> 的作用是<b>立即跳过循环体剩余部分</b>，直接回到 <code>for</code> 头重新判断条件。<br>' +
+        '· 本轮 <b>i = ' + i + '</b>，第 13 行的 <code>i++</code> 被<b>跳过</b>；<br>' +
+        '· 因此 <b>i 保持不变</b>，下一轮仍用 <b>' + i + '</b> 试除新的 x = <b>' + x + '</b>；<br>' +
+        '· 如果 x 里还有 ' + i + ' 因子，会再次命中并输出；如果没有了，就会走出 if 去执行 i++。' +
+        '<span class="tip"><b>这就是本程序最精妙的地方：</b>正是靠 <code>continue</code> 跳过 i++，才让同一个质因子被<b>连续提取多次</b>。<br>' +
+        '<b>如果这里不写 continue：</b>i 会立刻加 1，那么 ' + IN_X + ' 里的第 2 个 2 就永远提不出来了，' +
+        '分解结果会变成 ' + IN_X + '=2*3*5（错误）。<br>' +
+        '<b>continue 与 break 的区别：</b><br>' +
+        '· <code>break</code> → 彻底终止循环，跳出循环执行后面的语句；<br>' +
+        '· <code>continue</code> → 只跳过本轮循环体剩余部分，循环继续执行下一轮。</span>'
+      );
+
+    } else {
+      /* ---------- 第 8 行：if 假 ---------- */
+      push(8, 'main · if 判断能否被 i 整除（第 ' + round + ' 轮）',
+        { x: String(x), i: String(i),
+          cond: i + ' < ' + x + ' → 真',
+          mod: x + ' % ' + i + ' = ' + rem,
+          subExpr:'if (x % i == 0)  →  ' + x + ' % ' + i,
+          subVal:'余数 ' + rem + ' ≠ 0 → 假（0），进入 i++ 分支',
+          note:'余数不为 0，i 不是当前 x 的因子' },
+        [13], [9,10,11],
+        'if (' + x + ' % ' + i + ' == 0)  为假',
+        '<code>if (x % i == 0)</code> 判断余数是否为零：<br>' +
+        '· 计算：<code>' + x + ' % ' + i + '</code>，余数为 <b>' + rem + '</b>；<br>' +
+        '· 判断余数 <code>== 0</code>，结果是<b>假（0）</b>。<br>' +
+        '说明 <b>' + i + '</b> <b>不是</b> ' + x + ' 的因子，if 体被<b>整块跳过</b>（第 9~11 行都不执行），' +
+        '程序直接走到第 12 行的右花括号之后，执行第 13 行的 <code>i++</code>。' +
+        '<span class="tip"><b>关系表达式的值：</b>结果为 int 型，真为 1、假为 0。这里得到的是 <b>0</b>，所以走 else 分支（实际上没有 else，直接跳过 if 体）。</span>'
+      );
+
+      /* ---------- 第 13 行：i++ ---------- */
+      var oldI = i;
+      i = i + 1;
+      push(13, 'main · i++ 换下一个因子',
+        { x: String(x), i: String(i),
+          cond:'—', mod:'—',
+          subExpr:'i++',
+          subVal:'i = ' + oldI + ' + 1 = ' + i,
+          note:'i 不是因子，换下一个候选' },
+        [13], [9,10,11],
+        'i++：' + oldI + ' → ' + i,
+        '<code>i++;</code> 把因子候选加 1，由 <b>' + oldI + '</b> 变成 <b>' + i + '</b>。<br>' +
+        '· 因为 ' + oldI + ' 不能整除 ' + x + '，所以我们尝试下一个数；<br>' +
+        '· 循环体执行完毕，程序自动回到第 7 行<b>重新判断条件</b>；<br>' +
+        '· 随着 i 逐步递增，循环一定会在 <b>i ≥ x</b> 时结束——因为 i 每次至少加 1，而 x 只会变小。' +
+        '<span class="tip"><b>为什么 <code>i++</code> 写在 if 体外面？</b>因为"检查 i 是否是因子"和"i 加 1 换下一个"是两个独立的步骤。' +
+        '把 <code>i++</code> 放在 if 体<b>之后</b>（而不是 if 体内），才能保证：<br>' +
+        '· 命中因子时 → 用 continue 跳过它（不换 i，继续用同一个因子）；<br>' +
+        '· 未命中时 → 正常执行它（换下一个 i）。<b>这个顺序是程序正确性的关键。</b></span>'
+      );
+    }
+    round++;
+  }
+
+  /* ---------- 第 7 行：条件为假，退出循环 ---------- */
+  push(7, 'main · for 条件判断（假，退出循环）',
+    { x: String(x), i: String(i),
+      cond: i + ' < ' + x + ' → 假',
+      subExpr:'for ( ; i < x; )  →  ' + i + ' < ' + x,
+      subVal:'假（0）→ 退出循环，执行 for 之后的语句',
+      note:'i 追上 x，分解完成' },
+    [], [8,9,10,11,13],
+    'for (' + i + ' &lt; ' + x + ')  为假，循环结束',
+    '此刻 <b>i = ' + i + '</b>，<b>x = ' + x + '</b>，<code>' + i + ' &lt; ' + x + '</code> 不成立，结果为<b>假（0）</b>。' +
+    '循环条件不再满足，<b>不再进入循环体</b>，程序跳到 <code>for</code> 之后（第 15 行）继续执行。<br>' +
+    '<b>循环总账：</b>循环体一共执行了 <b>6 轮</b>，从 x = ' + IN_X + ' 一路分解，最终 x 缩小为 <b>' + x + '</b>（一个质数），而 i 刚好追平它。' +
+    '<span class="tip"><b>为什么退出时 i == x？</b>因为当 x 缩小到只剩一个质数 p 时，i 从 2 一路增加到 p 才能整除它。' +
+    '而 i 一旦等于 p，<code>p &lt; p</code> 就为假，循环退出，<b>剩下的这个 p 还从未被输出</b>。' +
+    '所以需要第 15 行补上最后这个因子。</span>'
+  );
+
+  /* ---------- 第 15 行：printf 最后一个因子 ---------- */
+  prints++;
+  addSeg(String(i), 'money');
+  push(15, 'main · printf 输出最后一个因子',
+    { x: String(x), i: String(i),
+      cond:'—',
+      subExpr:'printf("%d", ' + i + ')',
+      subVal:'输出 "' + i + '"（%d 输出 int）',
+      note:'退出循环后 i == x，就是最后剩下的质因子' },
+    [], [],
+    'printf("' + i + '");  输出最后一个因子 ' + i,
+    '<code>printf("%d", i);</code> 输出循环结束后剩下的 i，也就是<b>最后那个质因子</b>。<br>' +
+    '· 屏幕上追加 <b>' + i + '</b>；<br>' +
+    '· 因为前面的 printf 都没输出 \\n，所以这里输出的 ' + i + ' 会紧跟在 <code>' + IN_X + '=2*2*3*</code> 之后，' +
+    '形成完整等式 <b>' + IN_X + '=2*2*3*' + i + '</b>；<br>' +
+    '· printf 调用总次数为 <b>' + prints + '</b> 次。<br>' +
+    '<span class="tip"><b>为什么要单独输出？</b>因为循环条件是 <code>i &lt; x</code>，一旦 i 追上 x 就退出，' +
+    '<b>此时最后那个质数还没来得及进入循环体被输出</b>。所以必须在循环之后补上一句，把最后一个因子打印出来。<br>' +
+    '<b>这是质因数分解程序的标准"尾巴"写法</b>——循环处理"成对出现"的因子，最后一个"落单"的因子在循环外单独输出。</span>'
+  );
+
+  /* ---------- 第 16 行：return ---------- */
+  ret = '0';
+  push(16, 'main · return 0 结束函数',
+    { x: String(x), i: String(i),
+      cond:'—', mod:'—', subExpr:'—', subVal:'—', note:'—',
+      ret:'0' },
+    [], [],
+    'return 0;  —— main 函数结束，返回值 0',
+    '<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。' +
+    '约定返回 <b>0</b> 表示程序<b>正常结束</b>，返回非 0 通常表示出错。<br>' +
+    '这条语句不产生任何屏幕输出。<br>' +
+    '<span class="tip"><b>注意：</b>本程序调用了 <code>scanf</code> <b>1 次</b>，读取了用户输入的 ' + IN_X + '。</span>'
+  );
+
+  /* ---------- 第 17 行：函数结束 ---------- */
+  push(17, 'main 结束 · 栈帧销毁',
+    { x: String(x) + '（随栈帧释放）', i: String(i) + '（随栈帧释放）',
+      cond:'—', mod:'—', subExpr:'—', subVal:'—',
+      note:'函数结束，局部变量生命周期终止' },
+    [], [],
+    '}  —— main 函数体结束，栈帧销毁',
+    '函数体收尾，main 的<b>栈帧被销毁</b>，局部变量 x、i 随栈帧一起释放，控制权交还操作系统。<br>' +
+    '<span class="tip"><b>本程序要点总结：</b><br>' +
+    '① <b>for 省略式 1 和式 3</b>：<code>for ( ; i &lt; x; )</code> 只保留条件，把 i 的更新交给循环体处理，为 continue 铺路；<br>' +
+    '② <b>从小到大逐一试除</b>：从 i=2 开始递增，第一个能整除 x 的 i 必然是质因子；<br>' +
+    '③ <b>x /= i 整数除法</b>：每除掉一个因子，x 就缩小一圈；<br>' +
+    '④ <b>continue 跳过 i++</b>：命中因子后 i 保持不变，继续用同一因子试除，从而能提取<b>重复的质因子</b>；<br>' +
+    '⑤ <b>循环后单独 printf</b>：补上最后"落单"的那个质因子；<br>' +
+    '⑥ <b>scanf("%d", &amp;x)</b> 读入 1 次；<b>%d 输出 int</b>，格式串无 \\n 时输出连成一行。<br>' +
+    '<b>本次输入 ' + IN_X + ' 的执行结果：</b>' + IN_X + ' = 2 × 2 × 3 × 5，屏幕上输出 <b>' + IN_X + '=2*2*3*5</b>。<br>' +
+    '<b>统计：</b>循环体执行 6 轮，continue 执行 3 次（i=2 两轮、i=3 一轮），printf 调用 6 次，scanf 调用 1 次，返回值 0。<br>' +
+    '<b>常见错误：</b>① 忘记写 <code>continue</code>，重复因子只会被提取一次（60 会被分解成 2*3*5，少了第二个 2）；' +
+    '② 把 <code>i++</code> 写在 if 体内而不是外面，会导致命中因子时 i 也递增，同样丢重复因子；' +
+    '③ 循环条件写成 <code>i &lt;= x</code>，最后那个质因子会在循环内被输出，导致后面第 15 行重复输出；' +
+    '④ 把 x 定义成 float，<code>x % i</code> 无法使用（% 只能用于整数）；' +
+    '⑤ scanf 漏写 &amp;，属于未定义行为。</span>'
+  );
+
+  return st;
+})();
+
+/* =========================================================================
+   2. DOM 引用
+   ========================================================================= */
+var codeScroll = document.getElementById('codeScroll');
+var codeLineEls = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+var varTable    = document.getElementById('varTable');
+var consoleBody = document.getElementById('consoleBody');
+var explainBody = document.getElementById('explainBody');
+var mapBody     = document.getElementById('mapBody');
+var mapInner    = document.getElementById('mapInner');
+var mapView     = document.getElementById('mapView');
+var btnPlay     = document.getElementById('btnPlay');
+var btnPrev     = document.getElementById('btnPrev');
+var btnNext     = document.getElementById('btnNext');
+var btnReset    = document.getElementById('btnReset');
+var speedInput  = document.getElementById('speed');
+var speedLabel  = document.getElementById('speedLabel');
+
+var TOTAL_LINES = codeLineEls.length;   /* = 17 */
+
+/* =========================================================================
+   3. 状态
+   ========================================================================= */
+var current = -1;
+var playing = false;
+var timer = null;
+var speed = Number(speedInput.value);
+var lastOutSig = '';
+var currentLine = 0;
+var allHidden = false;
+
+/* =========================================================================
+   4. 变量表
+   ========================================================================= */
+var VAR_ROWS = [
+  { k:'ctx',     label:'当前执行位置',            cls:'k-ctx'   },
+  { k:'x',       label:'x (int) 待分解的数',      cls:'k-money' },
+  { k:'i',       label:'i (int) 因子候选',        cls:'k-main'  },
+  { k:'cond',    label:'循环条件 i < x',          cls:'k-sw'    },
+  { k:'mod',     label:'x % i（取余结果）',       cls:'k-mod'   },
+  { k:'subExpr', label:'正在求值的子表达式',      cls:'k-sub'   },
+  { k:'subVal',  label:'子表达式结果',            cls:'k-val'   },
+  { k:'note',    label:'关键规则提示',            cls:'k-note'  },
+  { k:'loops',   label:'循环体已执行次数',        cls:'k-ctx'   },
+  { k:'prints',  label:'printf 调用次数',         cls:'k-ctx'   },
+  { k:'scanfs',  label:'scanf 调用次数',          cls:'k-ctx'   },
+  { k:'ret',     label:'main 返回值',             cls:'k-ret'   }
+];
+
+function buildVarTable(){
+  varTable.innerHTML = VAR_ROWS.map(function(r){
+    return '<div class="vrow ' + r.cls + '">' +
+             '<span class="k">' + r.label + '</span>' +
+             '<span class="v dim" data-k="' + r.k + '">—</span>' +
+           '</div>';
+  }).join('');
+}
+
+function valueOf(step, key){
+  if (!step) return '—';
+  if (key === 'ctx') return step.ctx;
+  var v = step.vars[key];
+  return (v === undefined || v === null) ? '—' : String(v);
+}
+
+function updateVars(step, prev){
+  VAR_ROWS.forEach(function(r){
+    var el = varTable.querySelector('.v[data-k="' + r.k + '"]');
+    if (!el) return;
+    var val = valueOf(step, r.k);
+    var old = valueOf(prev, r.k);
+    if (el.textContent !== val){
+      el.textContent = val;
+      el.classList.toggle('dim', val === '—');
+      el.title = val;
+      if (prev && old !== val){
+        el.classList.remove('flash');
+        void el.offsetWidth;
+        el.classList.add('flash');
+      }
+    }
+  });
+}
+
+/* =========================================================================
+   5. 代码高亮 + 自动居中
+   ========================================================================= */
+function scrollToLine(n){
+  var el = codeLineEls[n - 1];
+  if (!el) return;
+  var er = el.getBoundingClientRect();
+  var cr = codeScroll.getBoundingClientRect();
+  var delta = (er.top + er.height / 2) - (cr.top + cr.height / 2);
+  if (Math.abs(delta) > 8){
+    codeScroll.scrollTo({ top: Math.max(0, codeScroll.scrollTop + delta), behavior:'smooth' });
+  }
+}
+
+function updateCode(step){
+  var active = step ? step.line : -1;
+  var hit  = step ? step.hit  : [];
+  var skip = step ? step.skip : [];
+  codeLineEls.forEach(function(el){
+    var n = Number(el.dataset.line);
+    el.classList.toggle('active', n === active);
+    el.classList.toggle('hit',   hit.indexOf(n)  !== -1);
+    el.classList.toggle('skip',  skip.indexOf(n) !== -1);
+  });
+  currentLine = active > 0 ? active : 0;
+  if (currentLine > 0) scrollToLine(currentLine);
+}
+
+/* =========================================================================
+   6. 输出区
+   ========================================================================= */
+function updateOutput(){
+  var out = null;
+  for (var k = current; k >= 0; k--){
+    if (STEPS[k] && STEPS[k].out){ out = STEPS[k].out; break; }
+  }
+  var sig = out ? JSON.stringify(out) : '';
+  if (sig === lastOutSig) return;
+  lastOutSig = sig;
+
+  consoleBody.innerHTML = '';
+  if (!out) return;
+
+  out.forEach(function(line){
+    var d = document.createElement('div');
+    d.className = 'out-line';
+    line.forEach(function(seg){
+      var s = document.createElement('span');
+      s.className = 'seg-' + (seg.c || 'out');
+      s.textContent = seg.t;
+      d.appendChild(s);
+    });
+    consoleBody.appendChild(d);
+  });
+}
+
+/* =========================================================================
+   7. 总渲染
+   ========================================================================= */
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+  var prev = current > 0 ? STEPS[current - 1] : null;
+
+  updateCode(step);
+  updateVars(step, prev);
+  updateOutput();
+
+  if (step){
+    var isHit = step.hit && step.hit.length > 0;
+    explainBody.innerHTML =
+      '<span class="tag' + (isHit ? ' hit' : '') + '">第 ' + step.line + ' 行</span>' +
+      '<strong>' + step.title + '</strong><br>' + step.desc;
+  } else {
+    explainBody.innerHTML =
+      '<span class="tag">准备就绪</span>点击「自动播放」或「下一步」，开始逐条执行程序。' +
+      '本次演示输入 <b>x = ' + IN_X + '</b>（= 2 × 2 × 3 × 5，含重复因子 2，正好展示 <code>continue</code> 跳过 i++ 的关键作用）。' +
+      '<span class="tip"><b>快捷键：</b>空格 播放/暂停 ｜ ← → 上一步/下一步 ｜ R 重置 ｜ F 全屏 ｜ M 缩略图 ｜ H 全部面板 ｜ L 重置布局</span>';
+  }
+  queueSync();
+}
+
+/* =========================================================================
+   8. 播放控制
+   ========================================================================= */
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+
+function tick(){
+  if (current >= STEPS.length - 1){ pause(); return; }
+  current++;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){
+  pause();
+  if (current < STEPS.length - 1){ current++; render(); }
+}
+
+function prevStep(){
+  pause();
+  if (current > -1){ current--; render(); }
+}
+
+function resetAll(){
+  pause();
+  current = -1;
+  lastOutSig = '';
+  consoleBody.innerHTML = '';
+  render();
+}
+
+/* =========================================================================
+   9. 缩略图：真实渲染 17 行缩小版代码
+   ========================================================================= */
+var mapLineEls = [];
+
+function buildMap(){
+  mapInner.innerHTML = '';
+  mapLineEls = [];
+  codeLineEls.forEach(function(el){
+    var src = el.querySelector('.src');
+    var d = document.createElement('div');
+    d.className = 'map-line';
+    var s = document.createElement('span');
+    s.className = 'map-src';
+    s.innerHTML = src.innerHTML;      /* 保留缩进与语法高亮 */
+    d.appendChild(s);
+    mapInner.appendChild(d);
+    mapLineEls.push(d);
+  });
+}
+
+/* -------------------------------------------------------------------------
+   缩略图荧光框与全屏可见区域严格同步：
+     全屏单行高度  lineH  = 代码行实际高度
+     缩略图单行高度 rowH  = mapBody.clientHeight / 17
+     荧光框高度   boxH  = (codeScroll.clientHeight / lineH) * rowH
+     荧光框 top   boxT  = (codeScroll.scrollTop   / lineH) * rowH
+   ------------------------------------------------------------------------- */
+var syncQueued = false;
+function queueSync(){
+  if (syncQueued) return;
+  syncQueued = true;
+  window.requestAnimationFrame(function(){
+    syncQueued = false;
+    syncMap();
+  });
+}
+
+function syncMap(){
+  if (!mapBody || !mapView) return;
+  var mh = mapBody.clientHeight;
+  var mw = mapBody.clientWidth;
+  if (mh <= 0 || mw <= 0) return;
+
+  var first = codeLineEls[0];
+  if (!first) return;
+  var lineH = first.getBoundingClientRect().height;
+  if (lineH <= 0) return;
+
+  var rowH = mh / TOTAL_LINES;
+
+  /* 逐行设置高度，保证缩略图内部 17 行均匀铺满 */
+  for (var i = 0; i < mapLineEls.length; i++){
+    mapLineEls[i].style.height = rowH + 'px';
+  }
+  /* 缩略图字号：跟随行高与宽度，保证文字不溢出但清晰可辨 */
+  var fs = Math.min(rowH * 0.62, mw / 17);
+  if (fs < 3) fs = 3;
+  mapInner.style.fontSize = fs.toFixed(2) + 'px';
+
+  /* 视口荧光框 */
+  var scrollTop = codeScroll.scrollTop;
+  var viewH = codeScroll.clientHeight;
+
+  var boxH = (viewH / lineH) * rowH;
+  var boxT = (scrollTop / lineH) * rowH;
+
+  if (boxH > mh) boxH = mh;
+  if (boxT < 0) boxT = 0;
+  if (boxT + boxH > mh) boxT = Math.max(0, mh - boxH);
+
+  mapView.style.top    = boxT.toFixed(2) + 'px';
+  mapView.style.height = boxH.toFixed(2) + 'px';
+
+  /* 当前执行行标记 */
+  for (var j = 0; j < mapLineEls.length; j++){
+    mapLineEls[j].classList.toggle('cur', (j + 1) === currentLine);
+  }
+}
+
+/* 点击缩略图 → 跳转到对应行 */
+mapBody.addEventListener('pointerdown', function(e){
+  var r = mapBody.getBoundingClientRect();
+  var y = e.clientY - r.top;
+  var rowH = r.height / TOTAL_LINES;
+  var idx = Math.floor(y / rowH);
+  if (idx < 0) idx = 0;
+  if (idx > TOTAL_LINES - 1) idx = TOTAL_LINES - 1;
+
+  var lineH = codeLineEls[0].getBoundingClientRect().height;
+  if (lineH <= 0) return;
+  var target = idx * lineH - (codeScroll.clientHeight - lineH) / 2;
+  codeScroll.scrollTo({ top: Math.max(0, target), behavior:'smooth' });
+});
+
+/* =========================================================================
+   10. 面板：置顶 / 拖动 / 调整大小 / 折叠 / 关闭
+   ========================================================================= */
+var zTop = 200;
+function bringFront(el){
+  zTop++;
+  el.style.zIndex = zTop;
+  document.querySelectorAll('.panel').forEach(function(p){
+    p.classList.toggle('active-panel', p === el);
+  });
+}
+
+/* 点击任意面板 → 置顶（含按钮、拖动、调整大小） */
+document.addEventListener('pointerdown', function(e){
+  var p = e.target.closest ? e.target.closest('.panel') : null;
+  if (p) bringFront(p);
+}, true);
+
+/* ---------- 拖动 ---------- */
+var dragState = null;
+document.addEventListener('pointerdown', function(e){
+  var h = e.target.closest ? e.target.closest('[data-drag]') : null;
+  if (!h) return;
+  if (e.target.closest('.pbtn')) return;      /* 按钮不触发拖动 */
+  var panel = h.closest('.panel');
+  if (!panel) return;
+  e.preventDefault();
+  var r = panel.getBoundingClientRect();
+  dragState = { el: panel, ox: e.clientX - r.left, oy: e.clientY - r.top };
+  panel.classList.add('dragging');
+}, true);
+
+document.addEventListener('pointermove', function(e){
+  if (!dragState) return;
+  dragState.el.style.left   = (e.clientX - dragState.ox) + 'px';
+  dragState.el.style.top    = (e.clientY - dragState.oy) + 'px';
+  dragState.el.style.right  = 'auto';
+  dragState.el.style.bottom = 'auto';
+}, true);
+
+document.addEventListener('pointerup', function(){
+  if (dragState){
+    dragState.el.classList.remove('dragging');
+    dragState = null;
+    queueSync();
+  }
+}, true);
+
+/* ---------- 调整大小：不设最小 / 最大限制 ---------- */
+var rsState = null;
+document.addEventListener('pointerdown', function(e){
+  var h = e.target.closest ? e.target.closest('[data-resize]') : null;
+  if (!h) return;
+  var panel = h.closest('.panel');
+  if (!panel) return;
+  e.preventDefault();
+  var r = panel.getBoundingClientRect();
+  rsState = { el: panel, sx: e.clientX, sy: e.clientY, w: r.width, h: r.height };
+  panel.classList.add('resizing');
+}, true);
+
+document.addEventListener('pointermove', function(e){
+  if (!rsState) return;
+  var w = rsState.w + (e.clientX - rsState.sx);
+  var h = rsState.h + (e.clientY - rsState.sy);
+  if (w < 0) w = 0;     /* 只防止负值，不设最小值 */
+  if (h < 0) h = 0;
+  rsState.el.style.width  = w + 'px';
+  rsState.el.style.height = h + 'px';
+  queueSync();
+}, true);
+
+document.addEventListener('pointerup', function(){
+  if (rsState){
+    rsState.el.classList.remove('resizing');
+    rsState = null;
+    queueSync();
+  }
+}, true);
+
+/* ---------- 折叠 / 关闭 ---------- */
+document.querySelectorAll('.panel').forEach(function(p){
+  p.querySelectorAll('.pbtn').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      var act = btn.dataset.act;
+      if (act === 'fold'){
+        p.classList.toggle('folded');
+        btn.textContent = p.classList.contains('folded') ? '▸' : '▾';
+      } else if (act === 'close'){
+        p.classList.add('hidden');
+      }
+      queueSync();
+    });
+  });
+});
+
+/* ---------- 默认布局 ---------- */
+var DEFAULT_LAYOUT = {
+  panelTop:  { left:'16px', top:'12px',  width:'auto',  height:'auto', right:'auto', bottom:'auto' },
+  panelVars: { left:'16px', top:'18vh',  width:'760px', height:'34vh', right:'auto', bottom:'auto' },
+  panelOut:  { left:'16px', top:'54vh',  width:'1160px',height:'16vh', right:'auto', bottom:'auto' },
+  panelEx:   { left:'16px', top:'72vh',  width:'1160px',height:'26vh', right:'auto', bottom:'auto' },
+  panelMap:  { left:'auto', top:'18vh',  width:'340px', height:'52vh', right:'16px', bottom:'auto' }
+};
+var DEFAULT_Z = { panelTop:200, panelVars:180, panelOut:180, panelEx:180, panelMap:180 };
+
+function applyLayout(){
+  Object.keys(DEFAULT_LAYOUT).forEach(function(id){
+    var el = document.getElementById(id);
+    if (!el) return;
+    var L = DEFAULT_LAYOUT[id];
+    el.style.left   = L.left;
+    el.style.top    = L.top;
+    el.style.width  = L.width;
+    el.style.height = L.height;
+    el.style.right  = L.right;
+    el.style.bottom = L.bottom;
+    el.style.zIndex = DEFAULT_Z[id];
+    el.classList.remove('folded','hidden','active-panel');
+    var fb = el.querySelector('.pbtn[data-act="fold"]');
+    if (fb) fb.textContent = '▾';
+  });
+  zTop = 200;
+  allHidden = false;
+  queueSync();
+}
+
+/* =========================================================================
+   11. 事件绑定
+   ========================================================================= */
+btnPlay.addEventListener('click', function(){ playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if (playing){
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+document.getElementById('btnFull').addEventListener('click', function(){
+  if (!document.fullscreenElement){
+    if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+  } else {
+    if (document.exitFullscreen) document.exitFullscreen();
+  }
+});
+
+function toggleAllPanels(){
+  allHidden = !allHidden;
+  document.querySelectorAll('.panel').forEach(function(p){
+    p.classList.toggle('hidden', allHidden);
+  });
+  if (!allHidden) document.querySelectorAll('.panel').forEach(function(p){});
+  queueSync();
+}
+function toggleMap(){
+  var p = document.getElementById('panelMap');
+  p.classList.toggle('hidden');
+  if (!p.classList.contains('hidden')) bringFront(p);
+  queueSync();
+}
+function resetLayout(){ applyLayout(); }
+
+document.getElementById('btnAll').addEventListener('click', toggleAllPanels);
+document.getElementById('btnMapToggle').addEventListener('click', toggleMap);
+document.getElementById('btnLayout').addEventListener('click', resetLayout);
+
+/* ---------- 全局快捷键：绑定在 document ---------- */
+document.addEventListener('keydown', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+
+  switch (e.code){
+    case 'Space':      e.preventDefault(); playing ? pause() : play(); break;
+    case 'ArrowRight': e.preventDefault(); nextStep(); break;
+    case 'ArrowLeft':  e.preventDefault(); prevStep(); break;
+    case 'KeyR':       e.preventDefault(); resetAll(); break;
+    case 'KeyF':       e.preventDefault();
+      if (!document.fullscreenElement){
+        if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+      }
+      break;
+    case 'KeyM':       e.preventDefault(); toggleMap(); break;
+    case 'KeyH':       e.preventDefault(); toggleAllPanels(); break;
+    case 'KeyL':       e.preventDefault(); resetLayout(); break;
+  }
+});
+
+/* =========================================================================
+   12. 尺寸 / 滚动同步（requestAnimationFrame 节流）
+   ========================================================================= */
+codeScroll.addEventListener('scroll', queueSync, { passive:true });
+window.addEventListener('resize', queueSync);
+window.addEventListener('orientationchange', queueSync);
+
+if (window.ResizeObserver){
+  var ro = new ResizeObserver(queueSync);
+  ro.observe(codeScroll);
+  ro.observe(mapBody);
+  document.querySelectorAll('.panel').forEach(function(p){ ro.observe(p); });
+}
+if (document.fonts && document.fonts.ready){
+  document.fonts.ready.then(queueSync);
+}
+
+/* =========================================================================
+   13. 初始化
+   ========================================================================= */
+buildVarTable();
+buildMap();
+applyLayout();
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+render();
+/* 多帧补同步：字体 / 布局稳定后荧光框仍然精确 */
+[0, 60, 200, 500, 1000, 1800].forEach(function(ms){ window.setTimeout(queueSync, ms); });
+
+})();
+</script>
+</body>
+</html>

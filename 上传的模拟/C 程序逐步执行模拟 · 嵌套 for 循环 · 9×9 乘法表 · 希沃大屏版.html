@@ -1,0 +1,1455 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 嵌套 for 循环 · 9×9 乘法表 · 希沃大屏版</title>
+<style>
+/* =========================================================
+   全局变量：极端大字号（1920×1080 下后排 10 米可读）
+   ========================================================= */
+:root{
+  --code-font: clamp(80px, 4.8vw, 150px);
+  --ln-font:   clamp(56px, 3.2vw, 100px);
+  --out-font:  clamp(72px, 4.2vw, 130px);
+  --var-font:  clamp(40px, 2.3vw, 70px);
+  --explain-font: clamp(48px, 2.6vw, 80px);
+  --btn-font:  clamp(40px, 2vw, 60px);
+  --title-font: clamp(48px, 2.6vw, 80px);
+
+  --bg:#0d1117;
+  --panel-bg:rgba(13,17,23,.86);
+  --border:rgba(56,189,248,.35);
+  --accent:#38bdf8;
+  --green:#4ade80;
+  --amber:#fbbf24;
+  --pink:#f472b6;
+  --purple:#c084fc;
+  --teal:#2dd4bf;
+  --orange:#fb923c;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;height:100%;overflow:hidden;}
+body{
+  background:var(--bg);
+  color:#dce8f8;
+  font-family:"Microsoft YaHei","PingFang SC","Segoe UI",system-ui,sans-serif;
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* =========================================================
+   1. 全屏代码区（不透明、不被永久遮挡）
+   ========================================================= */
+#codeScroll{
+  position:fixed;
+  inset:0;
+  overflow:auto;
+  background:#0d1117;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  scrollbar-width:thin;
+  scrollbar-color:#334155 #0d1117;
+  z-index:1;
+}
+#codeScroll::-webkit-scrollbar{width:18px;height:18px;}
+#codeScroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+#codeScroll::-webkit-scrollbar-track{background:#0d1117;}
+
+.code-line{
+  display:flex;
+  align-items:baseline;
+  white-space:pre;          /* 关键：不折行 */
+  line-height:1.32;
+  font-size:var(--code-font);
+  padding:0 .45em 0 0;
+  border-left:12px solid transparent;
+  min-width:100%;
+  width:max-content;        /* 关键：内容多宽就多宽，超出用横向滚动 */
+  transition:background .25s,border-color .25s,opacity .25s;
+}
+.code-line .ln{
+  flex:0 0 auto;
+  display:inline-block;
+  min-width:2.3em;
+  text-align:right;
+  padding:0 .35em 0 .25em;
+  color:#3f5a7d;
+  font-size:var(--ln-font);
+  line-height:calc(var(--code-font) * 1.32);
+  user-select:none;
+  font-variant-numeric:tabular-nums;
+}
+.code-line .src{flex:0 0 auto;}
+
+/* 循环体命中（绿底） */
+.code-line.hit{
+  background:rgba(74,222,128,.10);
+  border-left-color:rgba(74,222,128,.55);
+}
+.code-line.hit .ln{color:#4ade80;}
+/* 被跳过（灰显） */
+.code-line.skip{opacity:.26;}
+/* 当前执行行（最高优先级） */
+.code-line.active{
+  background:linear-gradient(90deg,rgba(56,189,248,.30),rgba(56,189,248,.06));
+  border-left-color:#38bdf8;
+  box-shadow:inset 0 0 0 2px rgba(56,189,248,.38);
+  opacity:1;
+}
+.code-line.active .ln{color:#38bdf8;font-weight:800;}
+
+/* 语法着色 */
+.pp{color:var(--purple);font-weight:700;}
+.str{color:var(--green);}
+.cmt{color:#64748b;font-style:italic;}
+.fn{color:var(--accent);}
+.kw{color:var(--pink);font-weight:700;}
+.num{color:var(--amber);}
+.op{color:var(--orange);font-weight:700;}
+
+/* =========================================================
+   2. 悬浮面板（可拖动 / 可关闭 / 可任意调整大小 / 点击置顶）
+   ========================================================= */
+.panel{
+  position:fixed;
+  background:var(--panel-bg);
+  backdrop-filter:blur(18px);
+  -webkit-backdrop-filter:blur(18px);
+  border:3px solid var(--border);
+  border-radius:22px;
+  box-shadow:0 24px 70px rgba(0,0,0,.72);
+  display:flex;
+  flex-direction:column;
+  overflow:hidden;
+  z-index:10;
+  transition:border-color .18s, box-shadow .18s, opacity .18s;
+}
+.panel.active-panel{
+  border-color:#38bdf8;
+  box-shadow:0 0 0 4px rgba(56,189,248,.35), 0 26px 80px rgba(0,0,0,.85);
+}
+.panel-head{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  gap:.5em;
+  padding:.18em .35em .18em .7em;
+  cursor:move;
+  user-select:none;
+  touch-action:none;
+  background:linear-gradient(180deg,rgba(56,189,248,.24),rgba(56,189,248,.05));
+  border-bottom:3px solid rgba(56,189,248,.25);
+}
+.panel-title{
+  font-size:var(--title-font);
+  font-weight:800;
+  color:#e2f2ff;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  letter-spacing:.02em;
+}
+.panel-hint{
+  font-size:calc(var(--title-font) * .62);
+  color:#7d93b3;
+  white-space:nowrap;
+  margin-left:.6em;
+}
+.panel-close{
+  margin-left:auto;
+  flex:0 0 auto;
+  width:clamp(48px,3vw,76px);
+  height:clamp(48px,3vw,76px);
+  display:flex;align-items:center;justify-content:center;
+  font-size:clamp(28px,1.8vw,46px);
+  line-height:1;
+  border:3px solid rgba(248,113,113,.55);
+  background:rgba(248,113,113,.18);
+  color:#fca5a5;
+  border-radius:14px;
+  cursor:pointer;
+  font-family:inherit;
+  font-weight:800;
+  transition:background .15s,border-color .15s;
+}
+.panel-close:hover{background:rgba(248,113,113,.4);border-color:#f87171;color:#fff;}
+
+.panel-body{
+  flex:1 1 auto;
+  min-height:0;
+  min-width:0;
+  overflow:auto;
+  padding:.35em .5em;
+  scrollbar-width:thin;
+  scrollbar-color:#334155 transparent;
+}
+.panel-body::-webkit-scrollbar{width:14px;height:14px;}
+.panel-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+
+/* 右下角 resize 把手（不设最小/最大限制） */
+.rz{
+  position:absolute;
+  right:0;bottom:0;
+  width:clamp(46px,3vw,72px);
+  height:clamp(46px,3vw,72px);
+  cursor:nwse-resize;
+  touch-action:none;
+  z-index:30;
+  background:
+    linear-gradient(135deg,transparent 58%,rgba(56,189,248,.85) 58%,rgba(56,189,248,.85) 68%,transparent 68%),
+    linear-gradient(135deg,transparent 74%,rgba(56,189,248,.5) 74%,rgba(56,189,248,.5) 84%,transparent 84%);
+}
+
+/* =========================================================
+   3. 顶部控制栏
+   ========================================================= */
+#panelTop{background:rgba(13,17,23,.75);}
+#panelTop .panel-body{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:.35em .5em;
+  overflow:visible;
+}
+button{
+  font-family:inherit;
+  font-size:var(--btn-font);
+  padding:.22em .62em;
+  min-height:72px;
+  border-radius:16px;
+  border:3px solid rgba(56,189,248,.35);
+  background:rgba(30,45,70,.8);
+  color:#dce8f8;
+  cursor:pointer;
+  white-space:nowrap;
+  transition:background .15s,border-color .15s,transform .1s;
+  touch-action:manipulation;
+  font-weight:700;
+}
+button:hover:not(:disabled){background:rgba(45,70,110,.95);border-color:#38bdf8;}
+button:active:not(:disabled){transform:translateY(2px);}
+button:disabled{opacity:.3;cursor:not-allowed;}
+button.primary{
+  background:linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#7dd3fc;color:#04121f;
+}
+button.primary.playing{
+  background:linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24;color:#1a1200;
+}
+.speed{
+  display:flex;align-items:center;gap:.4em;
+  font-size:var(--btn-font);color:#9db4d0;white-space:nowrap;
+}
+.speed input{
+  width:clamp(180px,11vw,340px);
+  height:52px;
+  accent-color:var(--accent);
+  cursor:pointer;
+}
+.speed b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:3.6em;display:inline-block;}
+
+/* =========================================================
+   4. 变量表
+   ========================================================= */
+#varTable{display:flex;flex-direction:column;gap:.1em;}
+.var-row{
+  display:flex;justify-content:space-between;align-items:center;gap:.6em;
+  padding:.14em .5em;
+  border-radius:12px;
+  background:rgba(13,23,40,.85);
+  border:2px solid #1b293f;
+  font-size:var(--var-font);
+  transition:background .3s,border-color .3s;
+}
+.var-row.k-ctx{background:rgba(18,40,68,.9);border-color:#26456b;}
+.var-row.k-main{border-left:10px solid rgba(74,222,128,.85);}
+.var-row.k-sub{border-left:10px solid rgba(56,189,248,.9);}
+.var-row.k-val{border-left:10px solid rgba(244,114,182,.9);}
+.var-row.k-sw{border-left:10px solid rgba(45,212,191,.9);}
+.var-row.k-money{border-left:10px solid rgba(251,191,36,.95);}
+.var-row.k-note{border-left:10px solid rgba(45,212,191,.7);}
+.var-row.k-ret{border-left:10px solid rgba(251,191,36,.55);}
+.var-row.changed{border-color:rgba(56,189,248,.9);background:rgba(56,189,248,.16);}
+.var-name{color:#8aa3c4;white-space:nowrap;font-weight:600;}
+.var-value{
+  font-family:ui-monospace,Consolas,monospace;
+  font-weight:800;
+  color:var(--accent);
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+  text-align:right;
+}
+.var-value.dim{color:#5f7796;font-weight:500;}
+.var-row.k-main .var-value{color:var(--green);}
+.var-row.k-val .var-value{color:var(--pink);}
+.var-row.k-sw .var-value{color:var(--teal);}
+.var-row.k-money .var-value{color:var(--amber);}
+.var-row.k-note .var-value{color:var(--teal);font-size:.86em;}
+@keyframes flash{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.22);color:#fff;text-shadow:0 0 18px var(--accent);}
+  100%{transform:scale(1);}
+}
+.var-value.flash{animation:flash .55s ease-out;}
+
+/* =========================================================
+   5. 程序输出面板
+   ========================================================= */
+#consoleBody{
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);
+  line-height:1.42;
+  white-space:pre;
+  color:#e8f2ff;
+  tab-size:8;
+  -moz-tab-size:8;
+}
+#consoleBody:empty::before{content:"（等待程序输出…）";color:#3d5474;}
+.out-line{animation:slideIn .4s ease-out;}
+.seg-expr{color:#a9c4e4;}
+.seg-money{color:var(--amber);font-weight:800;}
+.seg-sep{color:#5f7796;}
+@keyframes slideIn{from{opacity:0;transform:translateX(-14px);}to{opacity:1;transform:none;}}
+
+/* =========================================================
+   6. 说明条
+   ========================================================= */
+#explainBody{
+  font-size:var(--explain-font);
+  line-height:1.55;
+  color:#c4d6ee;
+}
+#explainBody .ex-line{
+  display:inline-block;margin-right:.5em;padding:.05em .5em;
+  border-radius:12px;background:rgba(56,189,248,.22);
+  color:#7dd3fc;font-weight:800;font-size:.82em;vertical-align:middle;
+}
+#explainBody .ex-line.hit{background:rgba(74,222,128,.22);color:#86efac;}
+#explainBody strong{color:#ffffff;}
+#explainBody code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(148,163,184,.18);border-radius:8px;
+  padding:0 .3em;color:#f0f6ff;
+}
+#explainBody .tip{
+  display:block;margin-top:.4em;padding:.35em .6em;border-radius:12px;
+  background:rgba(45,212,191,.12);border-left:10px solid var(--teal);
+  color:#bff5ec;font-size:.9em;
+}
+
+/* =========================================================
+   7. 缩略图（VSCode minimap）
+   ========================================================= */
+.mini-wrap{position:relative;flex:1 1 auto;min-height:0;min-width:0;}
+#miniBody{
+  position:absolute;inset:0;
+  overflow:hidden;
+  background:rgba(5,12,23,.55);
+  border-radius:12px;
+}
+.mini-line{
+  position:absolute;
+  left:0;right:0;
+  overflow:hidden;
+  white-space:pre;
+  opacity:.85;
+  padding-left:4px;
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+}
+.mini-line .cmt{opacity:.85;}
+#miniViewport{
+  position:absolute;
+  left:0;right:0;
+  background:rgba(56,189,248,.16);
+  border-top:3px solid #38bdf8;
+  border-bottom:3px solid #38bdf8;
+  box-shadow:0 0 26px rgba(56,189,248,.55);
+  pointer-events:none;
+  z-index:5;
+}
+#miniCurrent{
+  position:absolute;
+  left:0;right:0;
+  background:rgba(74,222,128,.42);
+  border-left:6px solid #4ade80;
+  pointer-events:none;
+  z-index:6;
+}
+
+/* 窄屏兜底 */
+@media (max-width:900px){
+  :root{
+    --code-font:clamp(56px,7vw,90px);
+    --ln-font:clamp(40px,5vw,64px);
+    --out-font:clamp(48px,6vw,80px);
+    --var-font:clamp(28px,3.6vw,48px);
+    --explain-font:clamp(30px,4vw,52px);
+    --btn-font:clamp(28px,3.4vw,44px);
+    --title-font:clamp(30px,3.8vw,52px);
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- =========================================================
+     全屏代码区（13 行，每行代码与行尾注释同占一行，不折行）
+     ========================================================= -->
+<div id="codeScroll">
+  <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+  <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span></span></div>
+  <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">int</span> i, j;                          <span class="cmt">// 定义循环变量</span></span></div>
+  <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">for</span> (i<span class="op">=</span><span class="num">1</span>; i<span class="op">&lt;=</span><span class="num">9</span>; i<span class="op">++</span>) {             <span class="cmt">// 外层循环，控制行（1~9）</span></span></div>
+  <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">        <span class="kw">for</span> (j<span class="op">=</span><span class="num">1</span>; j<span class="op">&lt;=</span><span class="num">9</span>; j<span class="op">++</span>) {         <span class="cmt">// 内层循环，控制列（1~9）</span></span></div>
+  <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">            <span class="fn">printf</span>(<span class="str">"%d*%d=%d \t"</span>, i, j, i<span class="op">*</span>j); <span class="cmt">// 输出乘法表达式</span></span></div>
+  <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">            <span class="kw">if</span> (j <span class="op">==</span> <span class="num">9</span>) {               <span class="cmt">// 每行输出9个后换行</span></span></div>
+  <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">                <span class="fn">printf</span>(<span class="str">"\n"</span>);</span></div>
+  <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">            }</span></div>
+  <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">        }</span></div>
+  <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">    }</span></div>
+  <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回0，程序结束</span></span></div>
+  <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">}</span></div>
+</div>
+
+<!-- =========================================================
+     顶部控制栏
+     ========================================================= -->
+<div class="panel" id="panelTop" style="left:12px;top:12px;">
+  <div class="panel-head">
+    <span class="panel-title">C 程序逐步执行模拟</span>
+    <span class="panel-hint" id="stepCounter">步骤 — / —</span>
+    <button class="panel-close" data-close="panelTop" title="关闭（按 H 重新显示）">✕</button>
+  </div>
+  <div class="panel-body">
+    <button id="btnReset">⟲ 重置</button>
+    <button id="btnPrev">◀ 上一步</button>
+    <button id="btnPlay" class="primary">▶ 自动播放</button>
+    <button id="btnNext">下一步 ▶</button>
+    <label class="speed">速度 <input type="range" id="speed" min="60" max="1500" step="20" value="200"><b id="speedLabel">0.20s</b></label>
+    <button id="btnFull">⛶ 全屏</button>
+    <button id="btnPanels">👁 面板</button>
+    <button id="btnMini">🗺 缩略图</button>
+    <button id="btnLayout">↺ 重置布局</button>
+  </div>
+  <div class="rz"></div>
+</div>
+
+<!-- =========================================================
+     变量面板
+     ========================================================= -->
+<div class="panel" id="panelVars">
+  <div class="panel-head">
+    <span class="panel-title">变量 · 循环条件 · 状态</span>
+    <button class="panel-close" data-close="panelVars">✕</button>
+  </div>
+  <div class="panel-body" id="varTable"></div>
+  <div class="rz"></div>
+</div>
+
+<!-- =========================================================
+     程序输出面板
+     ========================================================= -->
+<div class="panel" id="panelOut">
+  <div class="panel-head">
+    <span class="panel-title">程序运行结果（9 行 × 9 列）</span>
+    <button class="panel-close" data-close="panelOut">✕</button>
+  </div>
+  <div class="panel-body"><div id="consoleBody"></div></div>
+  <div class="rz"></div>
+</div>
+
+<!-- =========================================================
+     当前语句说明条
+     ========================================================= -->
+<div class="panel" id="panelExplain">
+  <div class="panel-head">
+    <span class="panel-title">当前语句说明</span>
+    <button class="panel-close" data-close="panelExplain">✕</button>
+  </div>
+  <div class="panel-body" id="explainBody"></div>
+  <div class="rz"></div>
+</div>
+
+<!-- =========================================================
+     缩略图（VSCode minimap）
+     ========================================================= -->
+<div class="panel" id="panelMini">
+  <div class="panel-head">
+    <span class="panel-title">缩略图</span>
+    <button class="panel-close" data-close="panelMini">✕</button>
+  </div>
+  <div class="mini-wrap">
+    <div id="miniBody">
+      <div id="miniViewport"></div>
+      <div id="miniCurrent" style="display:none;"></div>
+    </div>
+  </div>
+  <div class="rz"></div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+/* =========================================================
+   0. 常量
+   ========================================================= */
+var LINES = 13;          /* 源代码共 13 行 */
+var OUTER_MAX = 9;       /* 外层 i 从 1 到 9 */
+var INNER_MAX = 9;       /* 内层 j 从 1 到 9 */
+
+/* =========================================================
+   1. 构建逐步执行轨迹
+      —— 严格对照 C 语言真实执行顺序
+      —— 外层 i：1→9，共 9 轮，外层循环体执行 9 次
+      —— 内层 j：每轮重新从 1 到 9，内层循环体执行 9×9 = 81 次
+      —— 第 6 行 printf 执行 81 次，第 8 行 printf 执行 9 次
+      —— printf 总调用 90 次
+      —— 最终 i = 10，j = 10，main 返回值 0
+   ========================================================= */
+function buildSteps() {
+  var st = [];
+  var i = null, j = null;
+  var printed = 0;              /* printf 调用次数 */
+  var rows = [];                /* 已封存完成的输出行 */
+  var curRow = [];              /* 正在构建的输出行 */
+  var ret = '—';
+
+  function snapOut() {
+    var res = rows.map(function (r) { return r.slice(); });
+    if (curRow.length) res.push(curRow.slice());
+    return res.length ? res : null;
+  }
+  function fmt(v) { return v === null ? '未初始化（不定值）' : String(v); }
+
+  function push(opt) {
+    var v = {
+      i: fmt(i), j: fmt(j),
+      condOuter: '—', condInner: '—',
+      expr: '—', prod: '—',
+      subExpr: '—', subVal: '—', note: '—',
+      prints: printed, ret: ret
+    };
+    if (opt.v) {
+      for (var k in opt.v) {
+        if (Object.prototype.hasOwnProperty.call(opt.v, k)) v[k] = opt.v[k];
+      }
+    }
+    st.push({
+      line: opt.line,
+      ctx: opt.ctx,
+      vars: v,
+      out: snapOut(),
+      hit: opt.hit || [],
+      skip: opt.skip || [],
+      title: opt.title,
+      desc: opt.desc
+    });
+  }
+
+  /* ---------- 第 1 行：#include <stdio.h> ---------- */
+  push({
+    line: 1, ctx: '预处理阶段 · #include',
+    v: { i:'—', j:'—',
+         subExpr: '#include <stdio.h>',
+         subVal: '引入标准输入输出头文件',
+         note: '预处理指令，编译前已处理完毕' },
+    title: '预处理指令 #include &lt;stdio.h&gt;',
+    desc: '预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容在<b>编译之前</b>引入源文件，' +
+          '让 <code>printf</code> 获得正确的函数声明。<br>这一行<b>不是 C 语句</b>，不占运行时间，也不产生任何屏幕输出。'
+  });
+
+  /* ---------- 第 2 行：int main() { ---------- */
+  push({
+    line: 2, ctx: 'main · 程序入口',
+    v: { i:'—', j:'—',
+         subExpr: 'int main()',
+         subVal: '程序开始执行',
+         note: 'main 是程序唯一入口' },
+    title: 'int main() { —— 程序从这里开始',
+    desc: '操作系统把控制权交给 <code>main</code>，程序正式运行。系统为 main 建立<b>栈帧</b>，' +
+          '变量 i、j 就存放在这个栈帧里，函数结束时随栈帧一起销毁。'
+  });
+
+  /* ---------- 第 3 行：int i, j; ---------- */
+  push({
+    line: 3, ctx: 'main · 声明循环变量',
+    v: { i:'未初始化（不定值）', j:'未初始化（不定值）',
+         subExpr: 'int i, j;',
+         subVal: 'i、j 均未初始化',
+         note: '每个 int 占 4 个字节' },
+    title: 'int i, j; —— 声明两个循环变量',
+    desc: '一条语句声明两个 <b>int</b> 变量，此刻它们<b>都没有初值</b>。<br>' +
+          '· <b>i</b>：外层循环变量，代表乘法表的<b>行号</b>（左因数），从 1 到 9；<br>' +
+          '· <b>j</b>：内层循环变量，代表乘法表的<b>列号</b>（右因数），从 1 到 9。' +
+          '<span class="tip"><b>嵌套循环思想：</b>乘法表是 9 行 × 9 列的表格，需要两层循环——外层“逐行走”，内层“在每行里逐列输出”。' +
+          '外层每前进一步（i 加 1），内层就要从头到尾跑完一整圈（j 从 1 到 9），所以内层循环体总共执行 <b>9 × 9 = 81 次</b>。</span>'
+  });
+
+  /* ---------- 第 4 行：外层 for 初始化（i = 1） ---------- */
+  i = 1;
+  push({
+    line: 4, ctx: 'main · 外层 for 初始化（第 1 行）',
+    v: { i:'1', j:'未初始化（不定值）',
+         condOuter: '1 <= 9 → 真',
+         subExpr: 'for (i=1; i<=9; i++)',
+         subVal: '初始化 i = 1；1 <= 9 成立',
+         note: '外层 for 初始化，整个循环只执行 1 次' },
+    hit: [4,5,6,7,8,9,10,11],
+    title: 'for (i=1; 1 &lt;= 9; i++) —— 外层循环初始化，进入第 1 行',
+    desc: '外层 <code>for</code> 的执行顺序：<br>' +
+          '① <b>初始化</b> <code>i=1</code>（整个循环<b>只执行 1 次</b>）；<br>' +
+          '② <b>判断</b> <code>1 &lt;= 9</code>，结果为<b>真</b>；<br>' +
+          '③ 执行外层循环体（也就是整个内层循环）；<br>' +
+          '④ 回到 <code>for</code> 头执行 <code>i++</code>；⑤ 再次判断条件，如此往复。' +
+          '<span class="tip">外层 for 控制“<b>行</b>”，i 依次取 1、2、…、9，外层循环体共执行 <b>9 次</b>，外层条件判断共 <b>10 次</b>。</span>'
+  });
+
+  /* ---------- 外层循环 9 轮 ---------- */
+  for (var oi = 1; oi <= OUTER_MAX; oi++) {
+
+    /* ----- 第 5 行：内层 for 初始化 j = 1 ----- */
+    j = 1;
+    push({
+      line: 5, ctx: 'main · 内层 for 初始化（第 ' + oi + ' 行第 1 列）',
+      v: { i: String(i), j: '1',
+           condOuter: oi + ' <= 9 → 真',
+           condInner: '1 <= 9 → 真',
+           subExpr: 'for (j=1; j<=9; j++)',
+           subVal: '初始化 j = 1；1 <= 9 成立',
+           note: '每进入新的一行，内层 j 必须重新从 1 开始' },
+      hit: [5,6,7,8,9,10],
+      title: 'for (j=1; 1 &lt;= 9; j++) —— 内层循环初始化，第 ' + oi + ' 行第 1 列',
+      desc: '内层 <code>for</code> 的执行顺序：<br>' +
+            '① <b>初始化</b> <code>j=1</code>——<b>每次外层循环都要重新执行这一句</b>，因为每一行都要从第 1 列重新开始；<br>' +
+            '② <b>判断</b> <code>1 &lt;= 9</code>，结果为<b>真</b>；<br>' +
+            '③ 执行内层循环体（第 6~9 行）；④ 回到 <code>for</code> 头执行 <code>j++</code>；⑤ 再次判断条件。' +
+            '<span class="tip"><b>为什么 j 必须每轮重新赋值为 1？</b>如果 <code>j=1</code> 写在内层循环外面，' +
+            '第 2 行开始时 j 已经是 10，<code>10 &lt;= 9</code> 一开始就为假，程序只会输出第 1 行——这是嵌套循环最常见的错误。</span>'
+    });
+
+    /* ----- 内层循环 j = 1..9 ----- */
+    for (var ij = 1; ij <= INNER_MAX; ij++) {
+
+      /* === 第 6 行：printf 输出表达式（不换行） === */
+      var prod = i * j;
+      printed++;
+      curRow.push({ t: String(i) + '*' + String(j) + '=', c: 'expr' });
+      curRow.push({ t: String(prod), c: 'money' });
+      curRow.push({ t: ' \t', c: 'sep' });
+
+      push({
+        line: 6, ctx: 'main · 内层循环体 · printf 输出',
+        v: { i: String(i), j: String(j),
+             condOuter: oi + ' <= 9 → 真',
+             condInner: ij + ' <= 9 → 真',
+             expr: i + '*' + j + '=' + prod,
+             prod: String(prod),
+             subExpr: 'printf("%d*%d=%d \\t", ' + i + ', ' + j + ', ' + i + '*' + j + ')',
+             subVal: '输出 "' + i + '*' + j + '=' + prod + ' \\t"（含空格与制表符）',
+             note: '\\t 是制表符，让各列对齐；\\n 才是换行' },
+        hit: [6,7,8,9],
+        title: 'printf 输出：' + i + '*' + j + '=' + prod + ' \\t',
+        desc: '<code>printf("%d*%d=%d \\t", i, j, i*j);</code> —— <br>' +
+              '· 三个 <code>%d</code> 依次被 <b>i=' + i + '</b>、<b>j=' + j + '</b>、<b>i*j=' + prod + '</b> 替换；<br>' +
+              '· 格式串末尾是 <code> \\t</code>：先输出一个<b>空格</b>，再输出一个<b>制表符</b>；<br>' +
+              '· 格式串里<b>没有</b> <code>\\n</code>，所以这句<b>不换行</b>，输出继续追加在当前行末尾。' +
+              '<span class="tip"><b>制表符对齐原理：</b>制表符会“跳到下一个制表位”（通常是 8 的倍数），' +
+              '所以各列乘法表达式会自动横向对齐。</span>'
+      });
+
+      /* === 第 7 行：if (j == 9) === */
+      var isNine = (j === 9);
+      push({
+        line: 7, ctx: 'main · 内层循环体 · if (j == 9) 判断',
+        v: { i: String(i), j: String(j),
+             condOuter: oi + ' <= 9 → 真',
+             condInner: ij + ' <= 9 → 真',
+             expr: i + '*' + j + '=' + prod,
+             prod: String(prod),
+             subExpr: 'if (j == 9)  →  ' + j + ' == 9',
+             subVal: isNine ? '真 → 需要换行' : '假 → 不换行，继续在本行输出',
+             note: '== 是相等比较；= 是赋值，不要混淆' },
+        hit: isNine ? [7,8,9] : [6,7,9],
+        skip: isNine ? [] : [8],
+        title: 'if (' + j + ' == 9) —— ' + (isNine ? '真，执行换行' : '假，跳过第 8 行'),
+        desc: '<code>if (j == 9)</code> 判断当前列号是否为 9（是否为本行最后一列）：<br>' +
+              '· 比较：<code>' + j + ' == 9</code>，结果是 <b>' + (isNine ? '真' : '假') + '</b>。<br>' +
+              (isNine
+                ? '条件成立，执行第 8 行的 <code>printf("\\n")</code>，让本行输出结束、光标移到下一行。'
+                : '条件不成立，if 体（第 8 行）被<b>整块跳过</b>，程序直接到第 9 行结束 if。') +
+              '<span class="tip"><b>为什么用 <code>j == 9</code>？</b>因为内层循环的 j 恰好从 1 到 9，' +
+              '所以“j 等于 9”就等价于“本行已经输出完 9 个”。写成 <code>j == 9</code> 更直接、更易读。</span>'
+      });
+
+      /* === 第 8 行：printf("\n") === */
+      if (isNine) {
+        printed++;
+        rows.push(curRow);
+        curRow = [];
+        push({
+          line: 8, ctx: 'main · 内层循环体 · printf 输出换行',
+          v: { i: String(i), j: String(j),
+               condOuter: oi + ' <= 9 → 真',
+               condInner: ij + ' <= 9 → 真',
+               expr: i + '*' + j + '=' + prod,
+               prod: String(prod),
+               subExpr: 'printf("\\n")',
+               subVal: '输出 1 个换行符，光标移到下一行',
+               note: '\\n 是换行符；本行到此结束' },
+          hit: [7,8,9],
+          title: 'printf("\\n") —— 输出换行符，第 ' + i + ' 行结束',
+          desc: '<code>printf("\\n")</code> 只输出<b>一个换行符</b>，作用是让屏幕上的输出<b>换到下一行</b>。<br>' +
+                '· 执行前，本行已经输出了 <b>9 个乘法表达式</b>（j 从 1 到 9）；<br>' +
+                '· 执行后，光标移到下一行开头，本行正式封存，内层循环即将退出。' +
+                '<span class="tip"><b>换行放在这里的好处：</b>每行输出的表达式个数恰好由内层循环的上限决定。' +
+                '如果把上限改成 <code>j &lt;= 5</code>，同时把 <code>j == 9</code> 改成 <code>j == 5</code>，就会输出 5 列的乘法表——行列数可以灵活调整。</span>'
+        });
+      }
+
+      /* === 第 9 行：} 结束 if === */
+      push({
+        line: 9, ctx: 'main · 内层循环体 · } 结束 if',
+        v: { i: String(i), j: String(j),
+             condOuter: oi + ' <= 9 → 真',
+             condInner: ij + ' <= 9 → 真',
+             expr: i + '*' + j + '=' + prod,
+             prod: String(prod),
+             subExpr: '}   // 结束 if (j == 9) 语句块',
+             subVal: isNine ? '条件为真，if 体已执行' : '条件为假，if 体被跳过',
+             note: '花括号配对，if 语句块结束' },
+        hit: [6,7,9],
+        title: '第 9 行 } —— 结束 if 语句块',
+        desc: '第 9 行的 <code>}</code> 结束 <code>if (j == 9)</code> 语句块。<br>' +
+              (isNine
+                ? '刚才条件为<b>真</b>，第 8 行已经输出了换行符。'
+                : '刚才条件为<b>假</b>，if 体（第 8 行）被整块跳过。') +
+              '<br>接下来控制权回到内层 <code>for</code> 的更新部分 <code>j++</code>。'
+      });
+
+      /* === 第 5 行：j++ 与条件 === */
+      var oldJ = j;
+      j = j + 1;
+      var innerStillIn = (j <= INNER_MAX);
+      push({
+        line: 5, ctx: 'main · 内层 for 更新 j++ 与条件',
+        v: { i: String(i), j: String(j),
+             condOuter: oi + ' <= 9 → 真',
+             condInner: j + ' <= 9 → ' + (innerStillIn ? '真' : '假'),
+             subExpr: 'j++  然后判断  ' + j + ' <= 9',
+             subVal: 'j = ' + oldJ + ' + 1 = ' + j + '；' +
+                     (innerStillIn ? '条件为真，继续第 ' + j + ' 列' : '条件为假，退出内层循环'),
+             note: 'j++ 在内层循环体之后自动执行' },
+        hit: innerStillIn ? [5,6,7,8,9,10] : [5],
+        skip: innerStillIn ? [] : [6,7,8,9],
+        title: 'j++ 后判断 ' + j + ' &lt;= 9 —— ' + (innerStillIn ? '真，继续' : '假，退出内层'),
+        desc: '<code>j++</code> 把内层循环变量加 1，由 <b>' + oldJ + '</b> 变成 <b>' + j + '</b>。<br>' +
+              (innerStillIn
+                ? '· 重新判断 <code>' + j + ' &lt;= 9</code> 为<b>真</b>，内层循环继续，准备输出第 ' + i + ' 行的第 ' + j + ' 列。'
+                : '· 重新判断 <code>10 &lt;= 9</code> 结果为<b>假</b>，<b>不再进入内层循环体</b>，内层循环结束。<br>' +
+                  '<b>本行总账：</b>第 ' + i + ' 行一共输出 <b>9 个乘法表达式</b>，加上末尾 1 个换行符，形成完整的一行。') +
+              '<span class="tip">内层 for 的三步走：初始化（每轮 1 次）→ 条件判断（每轮 10 次）→ 循环体（每轮 9 次）→ 更新 j++（每轮 9 次）。</span>'
+      });
+    }
+
+    /* ----- 第 10 行：} 结束内层 for ----- */
+    push({
+      line: 10, ctx: 'main · } 结束内层 for',
+      v: { i: String(i), j: String(j),
+           condOuter: oi + ' <= 9 → 真',
+           condInner: '10 <= 9 → 假',
+           subExpr: '}   // 结束内层 for 循环',
+           subVal: '内层循环结束，此时 j = 10',
+           note: '内层 for 的右花括号' },
+      title: '第 10 行 } —— 结束内层 for 循环',
+      desc: '内层 <code>for</code> 的右花括号，内层循环到此结束。<br>' +
+            '· 第 ' + i + ' 行的 9 列已经全部输出完毕，末尾也输出了换行；<br>' +
+            '· 此时 <b>j = 10</b>，已经超出上限 9；<br>' +
+            '· 接下来回到外层 <code>for</code> 的更新部分 <code>i++</code>。'
+    });
+
+    /* ----- 第 4 行：i++ 与条件 ----- */
+    var oldI = i;
+    i = i + 1;
+    var outerStillIn = (i <= OUTER_MAX);
+    push({
+      line: 4, ctx: 'main · 外层 for 更新 i++ 与条件',
+      v: { i: String(i), j: String(j),
+           condOuter: i + ' <= 9 → ' + (outerStillIn ? '真' : '假'),
+           condInner: '—',
+           subExpr: 'i++  然后判断  ' + i + ' <= 9',
+           subVal: 'i = ' + oldI + ' + 1 = ' + i + '；' +
+                   (outerStillIn ? '条件为真，进入第 ' + i + ' 行' : '条件为假，退出外层循环'),
+           note: 'i++ 在外层循环体之后自动执行' },
+      hit: outerStillIn ? [4,5,6,7,8,9,10,11] : [4],
+      skip: outerStillIn ? [] : [5,6,7,8,9,10],
+      title: 'i++ 后判断 ' + i + ' &lt;= 9 —— ' + (outerStillIn ? '真，进入第 ' + i + ' 行' : '假，退出外层循环'),
+      desc: '<code>i++</code> 把外层循环变量加 1，由 <b>' + oldI + '</b> 变成 <b>' + i + '</b>。<br>' +
+            (outerStillIn
+              ? '重新判断 <code>' + i + ' &lt;= 9</code> 为<b>真</b>，进入外层第 <b>' + i + '</b> 轮，准备输出乘法表的第 ' + i + ' 行。' +
+                '<b>注意：内层循环变量 j 会在下一轮开头被重新初始化为 1。</b>'
+              : '重新判断 <code>10 &lt;= 9</code> 结果为<b>假</b>，<b>不再进入外层循环体</b>，程序跳到外层 <code>for</code> 之后（第 11 行）继续执行。<br>' +
+                '<b>循环总账：</b>外层一共执行 <b>9 轮</b>，内层每轮执行 <b>9 次</b>，内层循环体总执行 <b>9 × 9 = 81 次</b>，' +
+                '一共输出 81 个乘法表达式，分布在 <b>9 行</b>里；每行末尾各输出 1 个换行符，printf 共调用 <b>81 + 9 = 90 次</b>。') +
+            '<span class="tip">外层 for 三步走：初始化（只做 1 次）→ 条件（做 10 次）→ 循环体（做 9 次）→ 更新 i++（做 9 次）。</span>'
+    });
+  }
+
+  /* ---------- 第 11 行：} 结束外层 for ---------- */
+  push({
+    line: 11, ctx: 'main · } 结束外层 for',
+    v: { i: String(i), j: String(j),
+         condOuter: '10 <= 9 → 假',
+         condInner: '—',
+         subExpr: '}   // 结束外层 for 循环',
+         subVal: '外层循环结束，此时 i = 10、j = 10',
+         note: '外层 for 的右花括号' },
+    skip: [4,5,6,7,8,9,10],
+    title: '第 11 行 } —— 结束外层 for 循环',
+    desc: '外层 <code>for</code> 的右花括号，外层循环到此结束。<br>' +
+          '· 此时 <b>i = 10</b>（超出上限 9），<b>j = 10</b>（内层最后一次退出时的值）；<br>' +
+          '· 乘法表 9 行 × 9 列全部输出完成；<br>' +
+          '· 程序继续执行第 12 行。'
+  });
+
+  /* ---------- 第 12 行：return 0; ---------- */
+  ret = '0';
+  push({
+    line: 12, ctx: 'main · return',
+    v: { i: String(i), j: String(j),
+         condOuter: '10 <= 9 → 假（已退出）',
+         condInner: '—',
+         subExpr: 'return 0;',
+         subVal: '返回 0，程序正常结束',
+         note: '返回 0 表示正常结束，非 0 通常表示出错' },
+    title: 'return 0; —— 结束 main 函数',
+    desc: '<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。' +
+          '约定返回 0 表示程序<b>正常结束</b>，返回非 0 通常表示出错。这条语句不产生屏幕输出。<br>' +
+          '此时 <b>printf 已调用 90 次</b>（81 次表达式 + 9 次换行）。'
+  });
+
+  /* ---------- 第 13 行：} main 结束 ---------- */
+  push({
+    line: 13, ctx: '程序结束',
+    v: { i: String(i), j: String(j),
+         condOuter: '—', condInner: '—',
+         subExpr: '—', subVal: '—',
+         note: 'main 栈帧销毁，i、j 随之释放' },
+    title: '第 13 行 } —— main 函数结束，栈帧销毁',
+    desc: '函数体收尾，main 的<b>栈帧被销毁</b>，变量 i、j 随栈帧一起释放，控制权交还操作系统。<br>' +
+          '本程序<b>没有输入</b>（没有 scanf、没有 getchar），共调用 <b>printf 90 次</b>' +
+          '（81 次乘法表达式 + 9 次换行），内层循环体执行 <b>81 次</b>，外层循环体执行 <b>9 次</b>，' +
+          '最终输出 <b>9 行 × 9 列</b> 的乘法表，返回值 <b>0</b>。' +
+          '<span class="tip"><b>本程序要点总结：</b><br>' +
+          '① 嵌套 for 循环：外层 i 控制“行”，内层 j 控制“列”；<br>' +
+          '② 外层每前进一步，内层从头跑一遍：内层循环体总执行 9×9 = 81 次；<br>' +
+          '③ j 每次都要重新初始化为 1，写在内层 <code>for</code> 的初始化位置；<br>' +
+          '④ i*j 计算乘积，每个位置输出唯一结果；<br>' +
+          '⑤ \\t 制表符让 9 列数字横向整齐排列；<br>' +
+          '⑥ j == 9 时换行，每行输出 9 个后自动换行；<br>' +
+          '⑦ i 到 10 时退出外层（10 &lt;= 9 为假）。<br>' +
+          '<b>屏幕最终效果：</b>9 行，每行 9 个乘法表达式——第 1 行 1*1=1 … 1*9=9；第 2 行 2*1=2 … 2*9=18；…；第 9 行 9*1=9 … 9*9=81。</span>'
+  });
+
+  return st;
+}
+
+var STEPS = buildSteps();
+
+/* =========================================================
+   2. DOM 引用
+   ========================================================= */
+var codeScroll  = document.getElementById('codeScroll');
+var codeLines   = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+var varTable    = document.getElementById('varTable');
+var consoleBody = document.getElementById('consoleBody');
+var explainBody = document.getElementById('explainBody');
+var stepCounter = document.getElementById('stepCounter');
+var miniBody    = document.getElementById('miniBody');
+var miniViewport= document.getElementById('miniViewport');
+var miniCurrent = document.getElementById('miniCurrent');
+var btnPlay     = document.getElementById('btnPlay');
+var btnPrev     = document.getElementById('btnPrev');
+var btnNext     = document.getElementById('btnNext');
+var btnReset    = document.getElementById('btnReset');
+var speedInput  = document.getElementById('speed');
+var speedLabel  = document.getElementById('speedLabel');
+
+/* =========================================================
+   3. 变量表定义
+   ========================================================= */
+var VAR_ROWS = [
+  { key:'ctx',        name:'当前执行位置',        kind:'k-ctx'   },
+  { key:'i',          name:'i (int) 外层循环（行）', kind:'k-main'  },
+  { key:'j',          name:'j (int) 内层循环（列）', kind:'k-main'  },
+  { key:'condOuter',  name:'外层条件 i <= 9',     kind:'k-sw'    },
+  { key:'condInner',  name:'内层条件 j <= 9',     kind:'k-sw'    },
+  { key:'expr',       name:'当前乘法表达式',      kind:'k-sub'   },
+  { key:'prod',       name:'乘积 i*j',            kind:'k-money' },
+  { key:'subExpr',    name:'正在求值的子表达式',  kind:'k-sub'   },
+  { key:'subVal',     name:'子表达式结果',        kind:'k-val'   },
+  { key:'note',       name:'关键规则提示',        kind:'k-note'  },
+  { key:'prints',     name:'printf 调用次数',     kind:'k-ctx'   },
+  { key:'ret',        name:'main 返回值',         kind:'k-ret'   }
+];
+
+/* =========================================================
+   4. 运行状态
+   ========================================================= */
+var current    = -1;
+var playing    = false;
+var timer      = null;
+var speed      = Number(speedInput.value);
+var lastOutSig = '';
+var currentLine = 0;         /* 缩略图当前执行行（1~13，0 表示无） */
+
+/* =========================================================
+   5. 构建变量表骨架
+   ========================================================= */
+function buildVarTable() {
+  varTable.innerHTML = VAR_ROWS.map(function (r) {
+    return '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+             '<span class="var-name">' + r.name + '</span>' +
+             '<span class="var-value dim">—</span>' +
+           '</div>';
+  }).join('');
+}
+
+function valueOf(step, key) {
+  if (!step) return '—';
+  if (key === 'ctx') return step.ctx;
+  return step.vars[key];
+}
+
+function updateVars(step, prevStep) {
+  VAR_ROWS.forEach(function (r) {
+    var row   = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+    if (!row) return;
+    var valEl = row.querySelector('.var-value');
+    var val   = String(valueOf(step, r.key));
+    var old   = String(valueOf(prevStep, r.key));
+
+    if (valEl.textContent !== val) {
+      valEl.textContent = val;
+      valEl.classList.toggle('dim', val === '—');
+      valEl.title = val;
+      valEl.classList.remove('flash');
+      void valEl.offsetWidth;              /* 重排，重放动画 */
+      valEl.classList.add('flash');
+      if (prevStep && old !== val) {
+        row.classList.add('changed');
+        window.setTimeout(function () { row.classList.remove('changed'); }, 700);
+      }
+    }
+  });
+}
+
+/* =========================================================
+   6. 输出区（按快照重建）
+   ========================================================= */
+function resolveOut(upto) {
+  for (var k = upto; k >= 0; k--) {
+    if (STEPS[k] && STEPS[k].out) return STEPS[k].out;
+  }
+  return null;
+}
+
+function updateOutput(upto) {
+  var lines = resolveOut(upto);
+  var sig   = lines ? JSON.stringify(lines) : '';
+  if (sig === lastOutSig) return;
+  lastOutSig = sig;
+
+  consoleBody.innerHTML = '';
+  if (!lines) return;
+
+  lines.forEach(function (segs) {
+    var div = document.createElement('div');
+    div.className = 'out-line';
+    segs.forEach(function (seg) {
+      var sp = document.createElement('span');
+      sp.className = 'seg-' + (seg.c || 'out');
+      sp.textContent = seg.t;
+      div.appendChild(sp);
+    });
+    consoleBody.appendChild(div);
+  });
+  consoleBody.parentNode.scrollTop = consoleBody.parentNode.scrollHeight;
+}
+
+/* =========================================================
+   7. 缩略图（VSCode minimap）
+      —— 完整渲染 13 行缩小版代码（保留缩进与语法高亮）
+      —— 荧光视口框与全屏可见区域严格一致
+   ========================================================= */
+var miniLines = [];
+
+function buildMinimap() {
+  var srcs = codeScroll.querySelectorAll('.code-line .src');
+  /* 清空旧内容（保留视口框与当前行标记） */
+  Array.prototype.slice.call(miniBody.querySelectorAll('.mini-line')).forEach(function (n) {
+    n.parentNode.removeChild(n);
+  });
+  miniLines = [];
+  srcs.forEach(function (src, idx) {
+    var d = document.createElement('div');
+    d.className = 'mini-line';
+    d.innerHTML = src.innerHTML;                 /* 复用同一套语法高亮与缩进空格 */
+    d.style.top = (idx * 100 / LINES) + '%';
+    d.style.height = (100 / LINES) + '%';
+    miniBody.appendChild(d);
+    miniLines.push(d);
+  });
+}
+
+/* —— 用 requestAnimationFrame 节流 —— */
+var rafId = null;
+function requestSync() {
+  if (rafId) return;
+  rafId = window.requestAnimationFrame(function () {
+    rafId = null;
+    syncMinimap();
+  });
+}
+
+function syncMinimap() {
+  if (!codeLines.length || !miniBody) return;
+  var lineH = codeLines[1].offsetTop - codeLines[0].offsetTop;
+  if (!lineH || lineH <= 0) return;
+
+  var bodyH = miniBody.clientHeight;
+  var bodyW = miniBody.clientWidth;
+  if (bodyH <= 0) return;
+  var rowH = bodyH / LINES;
+
+  /* 缩略图文字大小随行高缩放（保留缩进、保留颜色） */
+  var fs = Math.max(3, rowH * 0.60);
+  for (var k = 0; k < miniLines.length; k++) {
+    miniLines[k].style.fontSize = fs + 'px';
+    miniLines[k].style.lineHeight = rowH + 'px';
+  }
+
+  /* 荧光视口框：与全屏可见区域严格一致 */
+  var visRows = Math.min(LINES, codeScroll.clientHeight / lineH);
+  var top = (codeScroll.scrollTop / lineH) * rowH;
+  if (top < 0) top = 0;
+  var vh = visRows * rowH;
+  if (top + vh > bodyH) top = Math.max(0, bodyH - vh);
+
+  miniViewport.style.top = top + 'px';
+  miniViewport.style.height = vh + 'px';
+
+  /* 当前执行行标记 */
+  if (currentLine > 0) {
+    miniCurrent.style.display = 'block';
+    miniCurrent.style.top = ((currentLine - 1) * rowH) + 'px';
+    miniCurrent.style.height = rowH + 'px';
+  } else {
+    miniCurrent.style.display = 'none';
+  }
+}
+
+/* 点击缩略图跳转 */
+miniBody.addEventListener('click', function (e) {
+  var r = miniBody.getBoundingClientRect();
+  var rowH = r.height / LINES;
+  if (rowH <= 0) return;
+  var idx = Math.floor((e.clientY - r.top) / rowH);
+  idx = Math.max(0, Math.min(LINES - 1, idx));
+  jumpToLine(idx + 1);
+});
+
+/* 把指定行平滑滚动到全屏代码区中间 */
+function jumpToLine(n) {
+  if (n < 1 || n > LINES) return;
+  var lineH = codeLines[1].offsetTop - codeLines[0].offsetTop;
+  var el = codeLines[n - 1];
+  var target = el.offsetTop - (codeScroll.clientHeight - lineH) / 2;
+  var maxTop = codeScroll.scrollHeight - codeScroll.clientHeight;
+  target = Math.max(0, Math.min(maxTop, target));
+  codeScroll.scrollTo({ top: target, behavior: 'smooth' });
+  requestSync();
+}
+
+/* 步骤变化时：把当前执行行滚动到视野中央 */
+function centerCurrentLine(n) {
+  if (n < 1 || n > LINES) return;
+  var lineH = codeLines[1].offsetTop - codeLines[0].offsetTop;
+  var el = codeLines[n - 1];
+  var target = el.offsetTop - (codeScroll.clientHeight - lineH) / 2;
+  var maxTop = codeScroll.scrollHeight - codeScroll.clientHeight;
+  target = Math.max(0, Math.min(maxTop, target));
+  codeScroll.scrollTop = target;
+  requestSync();
+}
+
+/* =========================================================
+   8. 代码高亮
+   ========================================================= */
+function updateCode(step) {
+  var activeLine = step ? step.line : 0;
+  var hitLines   = (step && step.hit)  || [];
+  var skipLines  = (step && step.skip) || [];
+  currentLine = activeLine;
+
+  codeLines.forEach(function (el) {
+    var n = Number(el.dataset.line);
+    el.classList.toggle('active', activeLine !== 0 && n === activeLine);
+    el.classList.toggle('hit',    hitLines.indexOf(n)  !== -1);
+    el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+  });
+
+  if (activeLine) centerCurrentLine(activeLine);
+  else requestSync();
+}
+
+/* =========================================================
+   9. 总渲染
+   ========================================================= */
+function render() {
+  var step = current >= 0 ? STEPS[current] : null;
+  var prev = current > 0 ? STEPS[current - 1] : null;
+
+  updateCode(step);
+  updateVars(step, prev);
+  updateOutput(current);
+
+  if (step) {
+    var isHit = step.hit && step.hit.length > 0;
+    explainBody.innerHTML =
+      '<span class="ex-line' + (isHit ? ' hit' : '') + '">第 ' + step.line + ' 行</span>' +
+      '<strong>' + step.title + '</strong> —— ' + step.desc;
+    stepCounter.textContent = '步骤 ' + (current + 1) + ' / ' + STEPS.length;
+  } else {
+    explainBody.innerHTML =
+      '<em>点击「自动播放」或「下一步」，开始逐条执行程序。' +
+      '本程序用<b>嵌套 for 循环</b>输出 9×9 乘法表：外层 i 控制行，内层 j 控制列，' +
+      '共 81 个乘法表达式，printf 调用 90 次，最终 i=10、j=10，返回值 0。</em>';
+    stepCounter.textContent = '步骤 — / ' + STEPS.length;
+  }
+
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+
+  requestSync();
+}
+
+/* =========================================================
+   10. 播放控制
+   ========================================================= */
+function updatePlayBtn() {
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+
+function tick() {
+  if (current >= STEPS.length - 1) { pause(); return; }
+  current += 1;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+
+function play() {
+  if (playing) return;
+  if (current >= STEPS.length - 1) { current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+
+function pause() {
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep() {
+  pause();
+  if (current < STEPS.length - 1) { current += 1; render(); }
+}
+
+function prevStep() {
+  pause();
+  if (current > -1) { current -= 1; render(); }
+}
+
+function resetAll() {
+  pause();
+  current = -1;
+  currentLine = 0;
+  lastOutSig = '';
+  consoleBody.innerHTML = '';
+  codeScroll.scrollTop = 0;
+  render();
+}
+
+/* =========================================================
+   11. 面板通用交互：置顶 / 拖动 / 调整大小 / 关闭
+   ========================================================= */
+var zTop = 10;
+var allPanels = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+
+function bringToFront(el) {
+  if (!el) return;
+  zTop += 1;
+  el.style.zIndex = zTop;
+  allPanels.forEach(function (p) { p.classList.remove('active-panel'); });
+  el.classList.add('active-panel');
+}
+
+/* —— 拖动 —— */
+function makeDraggable(el) {
+  var head = el.querySelector('.panel-head');
+  if (!head) return;
+  head.addEventListener('pointerdown', function (e) {
+    if (e.target.closest('.panel-close')) return;
+    bringToFront(el);
+    var startX = e.clientX, startY = e.clientY;
+    var r = el.getBoundingClientRect();
+    var startL = r.left, startT = r.top;
+
+    function move(ev) {
+      var nl = startL + (ev.clientX - startX);
+      var nt = startT + (ev.clientY - startY);
+      el.style.left = nl + 'px';
+      el.style.top  = nt + 'px';
+      el.style.right = 'auto';
+      el.style.bottom = 'auto';
+    }
+    function up(ev) {
+      head.removeEventListener('pointermove', move);
+      head.removeEventListener('pointerup', up);
+      head.removeEventListener('pointercancel', up);
+      try { head.releasePointerCapture(ev.pointerId); } catch (_) {}
+      requestSync();
+    }
+    head.setPointerCapture(e.pointerId);
+    head.addEventListener('pointermove', move);
+    head.addEventListener('pointerup', up);
+    head.addEventListener('pointercancel', up);
+    e.preventDefault();
+  });
+}
+
+/* —— 调整大小（完全不设最小 / 最大限制） —— */
+function makeResizable(el) {
+  var rz = el.querySelector('.rz');
+  if (!rz) return;
+  rz.addEventListener('pointerdown', function (e) {
+    bringToFront(el);
+    var startX = e.clientX, startY = e.clientY;
+    var startW = el.offsetWidth, startH = el.offsetHeight;
+
+    function move(ev) {
+      var w = startW + (ev.clientX - startX);
+      var h = startH + (ev.clientY - startY);
+      /* 不设任何最小 / 最大限制，用户拖多大就多大 */
+      el.style.width  = w + 'px';
+      el.style.height = h + 'px';
+      requestSync();
+    }
+    function up(ev) {
+      rz.removeEventListener('pointermove', move);
+      rz.removeEventListener('pointerup', up);
+      rz.removeEventListener('pointercancel', up);
+      try { rz.releasePointerCapture(ev.pointerId); } catch (_) {}
+      requestSync();
+    }
+    rz.setPointerCapture(e.pointerId);
+    rz.addEventListener('pointermove', move);
+    rz.addEventListener('pointerup', up);
+    rz.addEventListener('pointercancel', up);
+    e.preventDefault();
+    e.stopPropagation();
+  });
+}
+
+/* —— 点击面板任意位置也置顶 —— */
+allPanels.forEach(function (el) {
+  makeDraggable(el);
+  makeResizable(el);
+  el.addEventListener('pointerdown', function () { bringToFront(el); });
+  el.addEventListener('focusin',   function () { bringToFront(el); });
+});
+
+/* —— 关闭按钮 —— */
+document.querySelectorAll('.panel-close').forEach(function (btn) {
+  btn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    var id = btn.getAttribute('data-close');
+    var p = document.getElementById(id);
+    if (p) p.style.display = 'none';
+    requestSync();
+  });
+});
+
+/* =========================================================
+   12. 默认布局 / 重置布局
+   ========================================================= */
+var DEFAULT_LAYOUT = {
+  panelTop:     { left:12,  top:12,  width:'auto', height:'auto', z:10 },
+  panelVars:    { left:12,  top:170, width:980,    height:400,    z:11 },
+  panelOut:     { left:12,  top:590, width:980,    height:478,    z:12 },
+  panelExplain: { left:1004,top:170, width:660,    height:898,    z:13 },
+  panelMini:    { left:1676,top:170, width:232,    height:898,    z:14 }
+};
+
+function applyLayout(layout) {
+  Object.keys(layout).forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var L = layout[id];
+    el.style.display = '';
+    el.style.left = L.left + 'px';
+    el.style.top  = L.top  + 'px';
+    el.style.right = 'auto';
+    el.style.bottom = 'auto';
+    el.style.width  = (L.width  === 'auto' ? 'auto' : L.width + 'px');
+    el.style.height = (L.height === 'auto' ? 'auto' : L.height + 'px');
+    el.style.zIndex = L.z;
+    el.classList.remove('active-panel');
+  });
+  zTop = 14;
+  requestSync();
+}
+
+/* =========================================================
+   13. 事件绑定
+   ========================================================= */
+btnPlay.addEventListener('click', function () { playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function () {
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if (playing) {
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+/* 全屏 */
+document.getElementById('btnFull').addEventListener('click', function () {
+  var d = document;
+  var el = d.documentElement;
+  if (!d.fullscreenElement) {
+    if (el.requestFullscreen) el.requestFullscreen();
+  } else {
+    if (d.exitFullscreen) d.exitFullscreen();
+  }
+});
+
+/* 面板总开关 */
+var panelsVisible = true;
+function toggleAllPanels(force) {
+  panelsVisible = (typeof force === 'boolean') ? force : !panelsVisible;
+  allPanels.forEach(function (p) {
+    /* 缩略图单独由 M 键控制，但总开关也会一并处理 */
+    p.style.display = panelsVisible ? '' : 'none';
+  });
+  if (panelsVisible) {
+    allPanels.forEach(function (p) { p.classList.remove('active-panel'); });
+    bringToFront(document.getElementById('panelTop'));
+    panelsVisible = true;
+  }
+  requestSync();
+}
+document.getElementById('btnPanels').addEventListener('click', function () { toggleAllPanels(); });
+
+/* 缩略图单独开关 */
+var miniVisible = true;
+function toggleMini(force) {
+  miniVisible = (typeof force === 'boolean') ? force : !miniVisible;
+  var p = document.getElementById('panelMini');
+  p.style.display = miniVisible ? '' : 'none';
+  if (miniVisible) bringToFront(p);
+  requestSync();
+}
+document.getElementById('btnMini').addEventListener('click', function () { toggleMini(); });
+
+/* 重置布局 */
+document.getElementById('btnLayout').addEventListener('click', function () {
+  applyLayout(DEFAULT_LAYOUT);
+  panelsVisible = true;
+  miniVisible = true;
+  bringToFront(document.getElementById('panelTop'));
+});
+
+/* —— 全局快捷键 —— */
+document.addEventListener('keydown', function (e) {
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) {
+    if (e.code === 'Space') e.preventDefault();
+    return;
+  }
+  switch (e.code) {
+    case 'Space':
+      e.preventDefault();
+      playing ? pause() : play();
+      break;
+    case 'ArrowRight':
+      e.preventDefault();
+      nextStep();
+      break;
+    case 'ArrowLeft':
+      e.preventDefault();
+      prevStep();
+      break;
+    case 'KeyR':
+      e.preventDefault();
+      resetAll();
+      break;
+    case 'KeyF':
+      e.preventDefault();
+      document.getElementById('btnFull').click();
+      break;
+    case 'KeyM':
+      e.preventDefault();
+      toggleMini();
+      break;
+    case 'KeyH':
+      e.preventDefault();
+      toggleAllPanels();
+      break;
+  }
+});
+
+/* =========================================================
+   14. 滚动 / 尺寸变化同步
+   ========================================================= */
+codeScroll.addEventListener('scroll', requestSync, { passive: true });
+window.addEventListener('resize', function () { requestSync(); });
+
+if (window.ResizeObserver) {
+  var ro = new ResizeObserver(function () { requestSync(); });
+  ro.observe(codeScroll);
+  ro.observe(miniBody);
+  allPanels.forEach(function (p) { ro.observe(p); });
+}
+
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(function () { requestSync(); });
+}
+window.addEventListener('load', function () { requestSync(); });
+
+/* =========================================================
+   15. 初始化
+   ========================================================= */
+buildVarTable();
+buildMinimap();
+applyLayout(DEFAULT_LAYOUT);
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+render();
+window.setTimeout(requestSync, 60);
+window.setTimeout(requestSync, 300);
+
+})();
+</script>
+</body>
+</html>

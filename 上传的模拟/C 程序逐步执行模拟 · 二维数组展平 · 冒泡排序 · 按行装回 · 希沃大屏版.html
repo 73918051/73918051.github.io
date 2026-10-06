@@ -1,0 +1,1749 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 二维数组展平 · 冒泡排序 · 按行装回 · 希沃大屏版</title>
+<style>
+  /* ============ 字号硬指标（1920×1080 后排 10 米可读） ============ */
+  :root{
+    --code-font: clamp(80px, 5vw, 120px);
+    --out-font:  clamp(72px, 4.5vw, 110px);
+    --var-font:  clamp(40px, 2.4vw, 60px);
+    --explain-font: clamp(48px, 2.8vw, 72px);
+    --btn-font:  clamp(40px, 2.2vw, 60px);
+    --title-font:clamp(56px, 3vw, 80px);
+    --head-font: clamp(32px, 1.6vw, 46px);
+
+    --bg:#0d1117;
+    --panel-bg: rgba(13,17,23,.78);
+    --border:#30363d;
+    --text:#e6edf3;
+    --muted:#8b949e;
+    --accent:#58a6ff;
+    --green:#3fb950;
+    --amber:#d29922;
+    --pink:#f778ba;
+    --purple:#bc8cff;
+    --teal:#39d353;
+    --orange:#ffa657;
+    --gold:#e3b341;
+    --red:#f85149;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;padding:0;}
+  body{
+    background:var(--bg);color:var(--text);overflow:hidden;
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  }
+
+  /* ============ 全屏代码舞台（不透明，永远在最底层） ============ */
+  #codeStage{
+    position:fixed;inset:0;background:var(--bg);
+    overflow:auto;scrollbar-width:thin;scrollbar-color:#3a4a5e transparent;
+    z-index:1;
+  }
+  #codeStage::-webkit-scrollbar{width:22px;height:22px;}
+  #codeStage::-webkit-scrollbar-track{background:#0b0f14;}
+  #codeStage::-webkit-scrollbar-thumb{background:#334155;border-radius:12px;border:4px solid #0b0f14;}
+  #codeInner{display:inline-block;min-width:100%;padding:24px 0 40px;}
+
+  .code-line{
+    display:flex;align-items:flex-start;
+    padding:.06em 2em .06em .5em;
+    border-left:10px solid transparent;
+    /* ★ 修复：nowrap 会把行首连续空格折叠成一个空格，改成 pre 保留所有前导缩进空格 */
+    white-space:pre;
+    transition:background .25s,border-color .25s,opacity .25s;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:var(--code-font);
+    line-height:1.35;
+  }
+  .code-line .ln{
+    flex:0 0 auto;width:3ch;text-align:right;color:#3f4d5e;
+    user-select:none;font-variant-numeric:tabular-nums;margin-right:.5em;
+    font-size:.7em;
+  }
+  .code-line .src{
+    flex:0 0 auto;
+    /* ★ 修复：确保代码正文里的前导空格也被保留 */
+    white-space:pre;
+  }
+  .code-line.skip{opacity:.18;}
+  .code-line.active{
+    background:linear-gradient(90deg,rgba(88,166,255,.26),rgba(88,166,255,.02) 70%);
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 3px rgba(88,166,255,.35);
+  }
+  .code-line.active .ln{color:var(--accent);font-weight:700;}
+  .code-line.active .src{color:#ffffff;}
+
+  .pp{color:var(--purple);font-weight:600;}
+  .str{color:var(--green);}
+  .cmt{color:#6e7d8f;font-style:italic;}
+  .fn{color:var(--accent);}
+  .kw{color:var(--pink);font-weight:600;}
+  .num{color:var(--amber);}
+  .op{color:var(--orange);font-weight:700;}
+
+  /* ============ 通用悬浮面板 ============ */
+  .panel{
+    position:fixed;z-index:100;
+    background:var(--panel-bg);
+    -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+    border:2px solid rgba(120,160,220,.28);
+    border-radius:18px;
+    display:flex;flex-direction:column;
+    overflow:hidden;
+    box-shadow:0 18px 50px rgba(0,0,0,.65);
+    transition:border-color .15s,box-shadow .15s,opacity .15s;
+  }
+  .panel:hover{opacity:1;}
+  .panel.active-panel{
+    border-color:rgba(88,166,255,.95);
+    box-shadow:0 0 0 3px rgba(88,166,255,.35),0 22px 60px rgba(0,0,0,.75);
+  }
+  .panel-head{
+    flex:0 0 auto;display:flex;align-items:center;gap:14px;
+    padding:10px 14px;cursor:move;user-select:none;touch-action:none;
+    background:rgba(255,255,255,.05);
+    border-bottom:1px solid rgba(120,160,220,.18);
+  }
+  .panel-title{
+    font-size:var(--head-font);font-weight:700;color:#c9d7e8;
+    letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .panel-body{flex:1 1 auto;min-height:0;overflow:auto;padding:10px 14px;}
+  .panel-body::-webkit-scrollbar{width:14px;height:14px;}
+  .panel-body::-webkit-scrollbar-thumb{background:#334155;border-radius:8px;}
+
+  .pclose{
+    margin-left:auto;flex:0 0 auto;
+    width:56px;height:56px;line-height:1;
+    font-size:40px;font-weight:700;
+    border-radius:12px;border:2px solid rgba(248,81,73,.55);
+    background:rgba(248,81,73,.18);color:#ffb3ae;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;padding:0;
+  }
+  .pclose:hover{background:rgba(248,81,73,.42);color:#fff;}
+
+  .resizer{
+    position:absolute;right:0;bottom:0;width:46px;height:46px;
+    cursor:nwse-resize;touch-action:none;
+    background:linear-gradient(135deg,transparent 46%,rgba(120,170,255,.6) 46%);
+    border-bottom-right-radius:16px;
+  }
+  .resizer:hover{background:linear-gradient(135deg,transparent 46%,rgba(88,166,255,1) 46%);}
+
+  /* ============ 控制栏 ============ */
+  #panelTools .panel-body{
+    display:flex;flex-wrap:wrap;gap:14px;align-items:center;
+  }
+  .btn{
+    font:inherit;font-size:var(--btn-font);font-weight:700;
+    min-height:76px;padding:0 26px;border-radius:14px;
+    border:2px solid rgba(120,160,220,.4);
+    background:rgba(30,44,64,.9);color:#dce8f8;cursor:pointer;
+    white-space:nowrap;touch-action:manipulation;
+  }
+  .btn:hover{background:rgba(48,70,100,.95);border-color:#5c8dd0;}
+  .btn:active{transform:translateY(2px);}
+  .btn:disabled{opacity:.3;cursor:not-allowed;}
+  .btn.primary{background:linear-gradient(180deg,#1f6feb,#1158c7);border-color:#58a6ff;color:#fff;}
+  .btn.primary.playing{background:linear-gradient(180deg,#d29922,#a16207);border-color:#e3b341;color:#1a1200;}
+  .speed{display:flex;align-items:center;gap:12px;font-size:var(--head-font);color:#9fb3cc;}
+  .speed input[type=range]{width:240px;height:36px;accent-color:var(--accent);cursor:pointer;}
+  .speed b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:5ch;display:inline-block;}
+
+  /* ============ 数组可视化 ============ */
+  .arr-title{font-size:var(--head-font);color:#9fb3cc;margin:6px 0 8px;letter-spacing:.02em;}
+  .arr-title b{color:var(--accent);}
+  .arr-title i{color:var(--gold);font-style:normal;font-weight:700;}
+  .arr-grid{display:grid;gap:8px;grid-template-columns:4.6em repeat(3,minmax(0,1fr));}
+  .arr-grid.bgrid{grid-template-columns:4.6em repeat(6,minmax(0,1fr));}
+  .arr-head{font-size:var(--head-font);color:#6e8199;text-align:center;font-variant-numeric:tabular-nums;}
+  .arr-head.mcol{text-align:right;padding-right:8px;}
+  .arr-cell{
+    text-align:center;border-radius:10px;padding:6px 2px;
+    background:rgba(20,30,44,.9);border:2px solid #24334a;
+    transition:background .25s,border-color .25s,box-shadow .25s,transform .25s;
+    overflow:hidden;
+  }
+  .arr-cell .idx{display:block;font-size:.52em;color:#6e8199;line-height:1.25;font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .arr-cell .val{
+    display:block;font-family:ui-monospace,Consolas,monospace;font-weight:800;
+    font-size:1.25em;color:#93a7c0;font-variant-numeric:tabular-nums;line-height:1.3;
+  }
+  .arr-cell.mtag{
+    font-size:var(--head-font);color:#6e8199;font-weight:700;text-align:right;
+    padding-right:8px;line-height:2.4;background:transparent;border-color:transparent;
+  }
+  .arr-cell.is-hl{border-color:var(--accent);background:rgba(88,166,255,.22);box-shadow:0 0 0 3px rgba(88,166,255,.4);transform:translateY(-3px);}
+  .arr-cell.is-hl .val{color:#fff;} .arr-cell.is-hl .idx{color:var(--accent);}
+  .arr-cell.is-warn{border-color:var(--red);background:rgba(248,81,73,.24);box-shadow:0 0 0 3px rgba(248,81,73,.5);}
+  .arr-cell.is-warn .val{color:#ffd0d0;}
+  .arr-cell.is-swap{border-color:var(--gold);background:rgba(227,179,65,.26);box-shadow:0 0 0 3px rgba(227,179,65,.55);transform:translateY(-4px);}
+  .arr-cell.is-swap .val{color:#fff8d0;} .arr-cell.is-swap .idx{color:var(--gold);}
+  @keyframes cellFlash{0%{transform:scale(1);}40%{transform:scale(1.3);color:#fff;}100%{transform:scale(1);}}
+  .arr-cell .val.flash{animation:cellFlash .5s ease-out;}
+
+  /* ============ 变量表 ============ */
+  .var-row{
+    display:flex;justify-content:space-between;align-items:center;gap:12px;
+    padding:8px 12px;border-radius:12px;margin-bottom:6px;
+    background:rgba(20,30,44,.85);border:2px solid #1e2a3d;
+    font-size:var(--var-font);transition:background .25s,border-color .25s;
+  }
+  .var-row.k-ctx{background:rgba(31,111,235,.22);border-color:#2f5c9e;}
+  .var-row.k-main{border-left:8px solid rgba(34,211,238,.7);}
+  .var-row.k-val{border-left:8px solid rgba(247,120,186,.9);}
+  .var-row.k-sw{border-left:8px solid rgba(57,211,83,.9);}
+  .var-row.k-money{border-left:8px solid rgba(210,153,34,.95);}
+  .var-row.k-note{border-left:8px solid rgba(57,211,83,.8);}
+  .var-row.k-ret{border-left:8px solid rgba(210,153,34,.6);}
+  .var-row.k-gold{border-left:8px solid rgba(227,179,65,.95);}
+  .var-row.k-cnt{border-left:8px solid rgba(188,140,255,.9);}
+  .var-row.changed{border-color:rgba(88,166,255,.95);background:rgba(88,166,255,.18);}
+  .var-name{color:#93a7c0;white-space:nowrap;font-size:.72em;flex:0 0 auto;}
+  .var-value{
+    font-family:ui-monospace,Consolas,monospace;font-weight:800;color:var(--accent);
+    font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right;
+    flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  }
+  .var-value.dim{color:#5f7796;font-weight:500;}
+  .var-row.k-ctx .var-value{color:var(--green);}
+  .var-row.k-main .var-value{color:#67e8f9;}
+  .var-row.k-val .var-value{color:var(--pink);}
+  .var-row.k-sw .var-value{color:var(--teal);}
+  .var-row.k-money .var-value{color:var(--amber);}
+  .var-row.k-note .var-value{color:var(--teal);}
+  .var-row.k-ret .var-value{color:var(--amber);}
+  .var-row.k-gold .var-value{color:var(--gold);}
+  .var-row.k-cnt .var-value{color:var(--purple);}
+  @keyframes vflash{0%{transform:scale(1);}35%{transform:scale(1.22);color:#fff;text-shadow:0 0 16px var(--accent);}100%{transform:scale(1);}}
+  .var-value.flash{animation:vflash .5s ease-out;}
+
+  /* ============ 输出面板 ============ */
+  #consoleBody{
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:var(--out-font);line-height:1.5;color:#ffd76e;
+    white-space:pre-wrap;word-break:break-all;
+  }
+  #consoleBody:empty::before{content:"（等待程序输出…）";color:#3d5474;}
+  .out-line{margin:0;white-space:pre-wrap;animation:outIn .5s ease-out both;}
+  @keyframes outIn{from{opacity:0;transform:translateY(14px);}to{opacity:1;transform:none;}}
+
+  /* ============ 说明条 ============ */
+  #explainBody{font-size:var(--explain-font);line-height:1.45;color:#c4d4e8;}
+  .ex-line{
+    display:inline-block;margin-right:14px;padding:4px 18px;border-radius:10px;
+    background:rgba(88,166,255,.22);color:#8ecbff;font-weight:800;font-size:.8em;
+    vertical-align:middle;
+  }
+  .ex-line.ans{background:rgba(210,153,34,.26);color:#ffd479;}
+  .ex-line.mv{background:rgba(247,120,186,.26);color:#ffa8d8;}
+  .ex-line.skip{background:rgba(57,211,83,.22);color:#7ee89a;}
+  .ex-line.gold{background:rgba(227,179,65,.26);color:#ffe08a;}
+  .ex-line.warn{background:rgba(248,81,73,.26);color:#ffb3ae;}
+  #explainBody strong{color:#fff;}
+  #explainBody code{
+    font-family:ui-monospace,Consolas,monospace;background:rgba(148,163,184,.18);
+    border-radius:6px;padding:0 8px;color:#e2e8f0;font-size:.92em;
+  }
+  #explainBody .tip,#explainBody .warn,#explainBody .danger,#explainBody .win{
+    display:block;margin-top:10px;padding:10px 16px;border-radius:10px;font-size:.9em;line-height:1.45;
+  }
+  #explainBody .tip{background:rgba(57,211,83,.12);border-left:10px solid var(--teal);color:#bff5ec;}
+  #explainBody .warn{background:rgba(210,153,34,.14);border-left:10px solid var(--amber);color:#ffe6b0;}
+  #explainBody .danger{background:rgba(248,81,73,.16);border-left:10px solid var(--red);color:#ffc9c9;}
+  #explainBody .win{background:rgba(227,179,65,.16);border-left:10px solid var(--gold);color:#fff3c4;font-weight:700;}
+
+  /* ============ 缩略图（VSCode minimap） ============ */
+  #miniContent{
+    position:relative;width:100%;
+    background:rgba(8,12,18,.55);
+  }
+  .mini-line{
+    height:8px;line-height:8px;font-size:7px;overflow:hidden;
+    /* ★ 修复：nowrap 会把行首连续空格折叠成一个空格，改成 pre 保留缩进 */
+    white-space:pre;
+    font-family:ui-monospace,Consolas,monospace;
+    padding-left:2px;border-left:2px solid transparent;
+    opacity:.72;
+  }
+  .mini-line.active{background:rgba(88,166,255,.42);border-left-color:#58a6ff;opacity:1;}
+  .mini-line.skip{opacity:.22;}
+  .mini-line .cmt{color:#4a5a6b;}
+  .mini-viewport{
+    position:absolute;left:0;right:0;
+    border:2px solid rgba(88,166,255,.95);
+    background:rgba(88,166,255,.16);
+    border-radius:4px;pointer-events:none;
+  }
+
+  /* 隐藏类 */
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
+
+<!-- ============ 全屏代码舞台 ============ -->
+<div id="codeStage"><div id="codeInner"></div></div>
+
+<!-- ============ 控制栏 ============ -->
+<div class="panel" id="panelTools" data-panel>
+  <div class="panel-head" data-drag>
+    <span class="panel-title">控制台</span>
+    <button class="pclose" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <button class="btn" id="btnReset">⟲ 重置</button>
+    <button class="btn" id="btnPrev">◀ 上一步</button>
+    <button class="btn primary" id="btnPlay">▶ 播放</button>
+    <button class="btn" id="btnNext">下一步 ▶</button>
+    <label class="speed">速度
+      <input type="range" id="speed" min="80" max="2000" step="20" value="600">
+      <b id="speedLabel">0.60s</b>
+    </label>
+    <button class="btn" id="btnFull">⛶ 全屏</button>
+    <button class="btn" id="btnPanels">▣ 面板</button>
+    <button class="btn" id="btnMini">▤ 缩略图</button>
+    <button class="btn" id="btnLayout">⤾ 重置布局</button>
+  </div>
+  <div class="resizer" data-resize></div>
+</div>
+
+<!-- ============ 变量 / 数组 / 状态面板 ============ -->
+<div class="panel" id="panelVars" data-panel>
+  <div class="panel-head" data-drag>
+    <span class="panel-title">数组 a[2][3] · b[6] · 变量 · 循环条件 · 状态表</span>
+    <button class="pclose" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="arr-title">二维数组 <b>a[2][3]</b>　当前考察 <b>蓝</b>　交换中 <i>金</i>　越界 <span style="color:#fca5a5">红</span></div>
+    <div class="arr-grid" id="arrGridA"></div>
+    <div class="arr-title" style="margin-top:16px">一维数组 <b>b[6]</b>（未赋值显示 <span style="color:#5f7796">?</span>）</div>
+    <div class="arr-grid bgrid" id="arrGridB"></div>
+    <div id="varTable" style="margin-top:18px"></div>
+  </div>
+  <div class="resizer" data-resize></div>
+</div>
+
+<!-- ============ 程序输出面板 ============ -->
+<div class="panel" id="panelOut" data-panel>
+  <div class="panel-head" data-drag>
+    <span class="panel-title">程序运行结果（屏幕输出）</span>
+    <button class="pclose" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body"><div id="consoleBody"></div></div>
+  <div class="resizer" data-resize></div>
+</div>
+
+<!-- ============ 当前语句说明条 ============ -->
+<div class="panel" id="panelExplain" data-panel>
+  <div class="panel-head" data-drag>
+    <span class="panel-title" id="stepCounter">步骤 — / —</span>
+    <button class="pclose" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body"><div id="explainBody"></div></div>
+  <div class="resizer" data-resize></div>
+</div>
+
+<!-- ============ 缩略图面板 ============ -->
+<div class="panel" id="panelMini" data-panel>
+  <div class="panel-head" data-drag>
+    <span class="panel-title">缩略图</span>
+    <button class="pclose" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body" style="padding:0;position:relative;">
+    <div id="miniContent"></div>
+    <div class="mini-viewport" id="miniViewport"></div>
+  </div>
+  <div class="resizer" data-resize></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ================================================================
+   一、源代码（严格 32 行，与教材一致）
+   ——每行代码都带有前导空格（缩进），配合 CSS 的 white-space:pre 显示
+   ================================================================ */
+var CODE = [
+/*1 */ '<span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span>',
+/*2 */ '<span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span>',
+/*3 */ '    <span class="kw">static</span> <span class="kw">int</span> a[<span class="num">2</span>][<span class="num">3</span>] <span class="op">=</span> {<span class="num">10</span>,<span class="num">3</span>,<span class="num">5</span>,<span class="num">7</span>,<span class="num">9</span>}; <span class="cmt">// 定义并初始化二维数组</span>',
+/*4 */ '    <span class="kw">int</span> b[<span class="num">6</span>], i, t, j, k<span class="op">=</span><span class="num">0</span>;           <span class="cmt">// 定义一维数组和变量</span>',
+/*5 */ '    <span class="fn">printf</span>(<span class="str">"Input number:"</span>);           <span class="cmt">// 提示输入</span>',
+/*6 */ '    <span class="fn">scanf</span>(<span class="str">"%d"</span>, <span class="op">&amp;</span>a[<span class="num">1</span>][<span class="num">2</span>]);             <span class="cmt">// 输入一个数存入a[1][2]</span>',
+/*7 */ '    <span class="kw">for</span>(i<span class="op">=</span><span class="num">0</span>; i<span class="op">&lt;</span><span class="num">2</span>; i<span class="op">++</span>) {               <span class="cmt">// 外层循环，展平二维数组</span>',
+/*8 */ '        <span class="kw">for</span>(j<span class="op">=</span><span class="num">0</span>; j<span class="op">&lt;</span><span class="num">3</span>; j<span class="op">++</span>) {',
+/*9 */ '            b[k<span class="op">++</span>] <span class="op">=</span> a[i][j];          <span class="cmt">// 将二维数组元素存入一维数组</span>',
+/*10*/ '        }',
+/*11*/ '    }',
+/*12*/ '    <span class="kw">for</span>(j<span class="op">=</span><span class="num">0</span>; j<span class="op">&lt;</span><span class="num">6</span>; j<span class="op">++</span>) {               <span class="cmt">// 冒泡排序一维数组</span>',
+/*13*/ '        <span class="kw">for</span>(i<span class="op">=</span><span class="num">0</span>; i<span class="op">&lt;</span><span class="num">6</span><span class="op">-</span>j; i<span class="op">++</span>) {',
+/*14*/ '            <span class="kw">if</span>(b[i] <span class="op">&gt;</span> b[i<span class="op">+</span><span class="num">1</span>]) {        <span class="cmt">// 如果前一个大于后一个</span>',
+/*15*/ '                t<span class="op">=</span>b[i]; b[i]<span class="op">=</span>b[i<span class="op">+</span><span class="num">1</span>]; b[i<span class="op">+</span><span class="num">1</span>]<span class="op">=</span>t; <span class="cmt">// 交换</span>',
+/*16*/ '            }',
+/*17*/ '        }',
+/*18*/ '    }',
+/*19*/ '    k<span class="op">=</span><span class="num">0</span>;                               <span class="cmt">// 重置k</span>',
+/*20*/ '    <span class="kw">for</span>(i<span class="op">=</span><span class="num">0</span>; i<span class="op">&lt;</span><span class="num">2</span>; i<span class="op">++</span>) {               <span class="cmt">// 将排序后的一维数组送回二维数组</span>',
+/*21*/ '        <span class="kw">for</span>(j<span class="op">=</span><span class="num">0</span>; j<span class="op">&lt;</span><span class="num">3</span>; j<span class="op">++</span>) {',
+/*22*/ '            a[i][j] <span class="op">=</span> b[k<span class="op">++</span>];',
+/*23*/ '        }',
+/*24*/ '    }',
+/*25*/ '    <span class="kw">for</span>(i<span class="op">=</span><span class="num">0</span>; i<span class="op">&lt;</span><span class="num">2</span>; i<span class="op">++</span>) {               <span class="cmt">// 输出排序后的二维数组</span>',
+/*26*/ '        <span class="kw">for</span>(j<span class="op">=</span><span class="num">0</span>; j<span class="op">&lt;</span><span class="num">3</span>; j<span class="op">++</span>) {',
+/*27*/ '            <span class="fn">printf</span>(<span class="str">"%d "</span>, a[i][j]);',
+/*28*/ '        }',
+/*29*/ '        <span class="fn">printf</span>(<span class="str">"\\n"</span>);',
+/*30*/ '    }',
+/*31*/ '    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回0，程序结束</span>',
+/*32*/ '}'
+];
+
+/* ================================================================
+   二、执行状态模型
+   ================================================================ */
+var A = [[10,3,5],[7,9,0]];          // 二维数组 a（a[1][2] 初值补 0）
+var B = [null,null,null,null,null,null]; // 一维数组 b，未赋值
+var IN_VAL = 4;                       // 模拟键盘输入
+
+var vi='—', vj='—', vk='—', vt='—';
+var outText = '';
+var CNT = {scanf:0, printf:0, flat:0, cmp:0, swap:0, restore:0, outNum:0, outNl:0};
+var STEPS = [];
+
+function keyA(r,c){ return r+','+c; }
+function snapA(){ return A.map(function(r){ return r.slice(); }); }
+
+function push(o){
+  STEPS.push({
+    line: o.line,
+    ctx: o.ctx || '—',
+    vars: { i: vi, j: vj, k: vk, t: vt },
+    condOuter: o.condOuter || '—',
+    condInner: o.condInner || '—',
+    expr: o.expr || '—',
+    exprVal: o.exprVal || '—',
+    note: o.note || '—',
+    ret: o.ret || '—',
+    cnt: {printf:CNT.printf, scanf:CNT.scanf, flat:CNT.flat, cmp:CNT.cmp,
+          swap:CNT.swap, restore:CNT.restore, outNum:CNT.outNum, outNl:CNT.outNl},
+    arrA: snapA(), arrB: B.slice(),
+    hlA: o.hlA||[], hlB: o.hlB||[], swapA: o.swapA||[], swapB: o.swapB||[],
+    warnA: o.warnA||[], warnB: o.warnB||[],
+    out: outText,
+    skip: o.skip||[],
+    title: o.title,
+    desc: o.desc
+  });
+}
+
+/* ================================================================
+   三、逐行构造执行步骤
+   ================================================================ */
+
+/* ---------- 第 1 行 ---------- */
+push({
+  line:1, ctx:'预处理阶段 · 编译之前', note:'#include 在编译前完成，不占运行时间',
+  title:'#include &lt;stdio.h&gt;',
+  desc:'预处理指令：把标准输入输出头文件包含进来，让后面的 <code>printf</code>、<code>scanf</code> 拿到函数声明。' +
+       '这一行<b>不是 C 语句</b>，在编译之前就处理完了，不产生任何屏幕输出。' +
+       '<span class="tip"><b>本程序要做什么？</b><br>' +
+       '把一个 <b>2 行 3 列</b>的二维数组 <b>展平</b>成一维数组 → 对一维数组做 <b>冒泡排序</b> → 再 <b>按行装回</b>二维数组 → 按行列格式输出。<br>' +
+       '其中 <code>a[1][2]</code> 的初值由 <code>scanf</code> 从键盘输入（本模拟输入 <b>4</b>）。</span>'
+});
+
+/* ---------- 第 2 行 ---------- */
+push({
+  line:2, ctx:'main · 程序入口', note:'main 是程序入口，建立栈帧',
+  title:'int main() {　程序从这里开始',
+  desc:'操作系统把控制权交给 <code>main</code>，程序正式开始，系统为 main 建立<b>栈帧</b>。<br>' +
+       '<b>整体流程：</b><br>' +
+       '① 第 3 行：声明并初始化二维数组 a（2×3）；<br>' +
+       '② 第 4 行：声明一维数组 b[6] 和循环变量；<br>' +
+       '③ 第 5~6 行：提示输入，用 scanf 把数据读入 a[1][2]；<br>' +
+       '④ 第 7~11 行：双层循环把二维数组<b>按行展平</b>到 b；<br>' +
+       '⑤ 第 12~18 行：对 b 做<b>冒泡排序</b>（升序）；<br>' +
+       '⑥ 第 19~24 行：把排好序的 b <b>按行装回</b> a；<br>' +
+       '⑦ 第 25~30 行：按行列格式输出排序后的 a。' +
+       '<span class="tip"><b>为什么用 static？</b><br>' +
+       '<code>static int a[2][3] = {10,3,5,7,9};</code> 只给了 5 个初值，第 6 个元素 a[1][2] 会被<b>自动补 0</b>。<br>' +
+       'static 数组存放在<b>静态存储区</b>，生命周期贯穿整个程序。</span>'
+});
+
+/* ---------- 第 3 行 ---------- */
+push({
+  line:3, ctx:'main · 二维数组 a 初始化', note:'static 数组，剩余元素自动补 0',
+  hlA:[keyA(0,0),keyA(0,1),keyA(0,2),keyA(1,0),keyA(1,1),keyA(1,2)],
+  title:'static int a[2][3] = {10,3,5,7,9};',
+  desc:'声明 <b>2 行 3 列</b>的静态二维整型数组 a，共 6 个元素，只给了 <b>5 个初值</b>。<br>' +
+       '· 初值只写了一层 <code>{ }</code>，C 语言<b>按行依次填充</b>：<br>' +
+       '&nbsp;&nbsp;<b>a[0] = { 10, 3, 5 }</b><br>' +
+       '&nbsp;&nbsp;<b>a[1] = {  7, 9, 0 }</b>　← 第 6 个元素 a[1][2] <b>自动补 0</b><br>' +
+       '· 合法下标：行 <b>0 ~ 1</b>，列 <b>0 ~ 2</b>；<br>' +
+       '· <code>static</code> 说明它存放在<b>静态存储区</b>，整个程序运行期间一直存在。' +
+       '<span class="tip"><b>注意 a[1][2]：</b><br>它现在是 <b>0</b>，但第 6 行会被 <code>scanf</code> 重新赋值。<br>' +
+       '本模拟中键盘输入的是 <b>4</b>，所以最终 a[1][2] = 4。</span>'
+});
+
+/* ---------- 第 4 行 ---------- */
+vk = '0';
+push({
+  line:4, ctx:'main · 声明 b[6]、i、t、j、k=0', note:'k 被显式清零；b、i、t、j 此刻未初始化',
+  title:'int b[6], i, t, j, k=0;',
+  desc:'一句声明一个数组和四个变量：<br>' +
+       '· <b>b[6]</b>：一维整型数组，装 6 个元素，用来做排序的“中转站”；<br>' +
+       '· <b>i</b>：循环变量（展平时当行下标，排序时当内层下标）；<br>' +
+       '· <b>j</b>：循环变量（展平时当列下标，排序时当外层下标）；<br>' +
+       '· <b>t</b>：交换时的临时变量；<br>' +
+       '· <b>k</b>：展平 / 装回时的下标计数器，<b>显式初始化为 0</b>。' +
+       '<span class="warn"><b>两个易错点：</b><br>' +
+       '① <b>b[6] 现在是未初始化的</b>，里面是随机垃圾值——不过第 9 行会逐个把 6 个位置全部写满，所以不影响结果。<br>' +
+       '② <b>k 必须初始化为 0</b>：第 9 行用 <code>b[k++]</code>，如果 k 是随机值就会写越界。</span>'
+});
+
+/* ---------- 第 5 行 ---------- */
+outText = 'Input number:';
+CNT.printf++;
+push({
+  line:5, ctx:'main · printf 提示输入',
+  expr:'printf("Input number:")',
+  exprVal:'输出 "Input number:"（末尾没有 \\n，不换行）',
+  note:'屏幕显示 "Input number:"，光标停在冒号后面',
+  title:'printf("Input number:");　→　屏幕显示 Input number:',
+  desc:'调用 <code>printf</code> 把提示信息送到屏幕：<br>' +
+       '· 格式串里<b>没有 <code>\\n</code></b>，所以输出后<b>不换行</b>，光标停在冒号后面；<br>' +
+       '· 紧接着第 6 行的 <code>scanf</code> 会在这里等待键盘输入，用户输入的字符会直接接在冒号后面。' +
+       '<span class="tip"><b>屏幕当前内容：</b><code>Input number:</code>（光标在末尾闪烁）</span>'
+});
+
+/* ---------- 第 6 行（等待输入） ---------- */
+push({
+  line:6, ctx:'main · scanf 等待键盘输入',
+  expr:'scanf("%d", &a[1][2])',
+  exprVal:'等待输入一个整数……',
+  note:'程序在此暂停，等待键盘输入',
+  hlA:[keyA(1,2)],
+  title:'scanf("%d", &amp;a[1][2]);　程序暂停，等待输入',
+  desc:'<code>scanf</code> 开始等待键盘输入：<br>' +
+       '· 格式串 <code>"%d"</code> 表示读入一个<b>十进制整数</b>；<br>' +
+       '· <code>&amp;a[1][2]</code> 是<b>取地址</b>：把读到的整数直接写进 a[1][2] 这块内存；<br>' +
+       '· <code>&amp;</code> 千万不能漏！写成 <code>scanf("%d", a[1][2])</code> 会把整数当地址用，程序崩溃。' +
+       '<span class="warn"><b>程序此刻停在这里：</b>屏幕显示 <code>Input number:</code>，等待用户敲入数字并回车。</span>'
+});
+
+/* ---------- 第 6 行（读入 4） ---------- */
+A[1][2] = IN_VAL;
+outText += IN_VAL + '\n';
+CNT.scanf++;
+push({
+  line:6, ctx:'main · scanf 读入 4 存入 a[1][2]',
+  expr:'scanf("%d", &a[1][2])',
+  exprVal:'读入 4 → a[1][2] 由 0 变为 4',
+  note:'键盘输入 4，a[1][2] 由 0 变为 4',
+  hlA:[keyA(1,2)],
+  title:'scanf 读入 <b>4</b>，&amp;a[1][2] 处被写入 4',
+  desc:'用户输入 <b>4</b> 并回车，<code>scanf</code> 把它转成整数，写进 <code>&amp;a[1][2]</code> 指向的内存：<br>' +
+       '· <b>a[1][2] 由 0 变成 4</b>；<br>' +
+       '· 此时二维数组 a 的完整内容是：<br>' +
+       '&nbsp;&nbsp;<b>a[0] = {10, 3, 5}</b><br>' +
+       '&nbsp;&nbsp;<b>a[1] = { 7, 9, 4}</b>' +
+       '<span class="tip"><b>输入 4 之后：</b>6 个元素分别是 10、3、5、7、9、4。<br>' +
+       '屏幕内容：<code>Input number:4</code> 然后换行（4 是键盘回显）。</span>'
+});
+
+/* ---------- 展平阶段：第 7~11 行 ---------- */
+var kk = 0;
+for (var i1 = 0; i1 < 2; i1++) {
+  vi = String(i1);
+  push({
+    line:7,
+    ctx:'外层 for：i = ' + i1 + '（展平阶段）',
+    condOuter:'i = ' + i1 + ' < 2 → 真',
+    expr:'for(i=0; i<2; i++)',
+    exprVal: i1 === 0 ? '先执行 i=0，再判断 0 < 2 成立 → 进入循环体'
+                      : 'i++ 后 i=' + i1 + '，' + i1 + ' < 2 成立 → 继续循环',
+    note:'本轮处理二维数组的第 ' + i1 + ' 行',
+    title:'for(i=0; i&lt;2; i++)　i = ' + i1 + '，条件为真',
+    desc:'外层 <code>for</code> 负责<b>逐行</b>遍历二维数组：i 从 0 到 1。<br>' +
+         '· ' + (i1 === 0
+             ? '先执行 <code>i=0</code>，再判断 <b>0 &lt; 2</b> 成立 → 进入循环体；'
+             : '<code>i++</code> 后 i = <b>' + i1 + '</b>，判断 <b>' + i1 + ' &lt; 2</b> 成立 → 继续循环；') + '<br>' +
+         '· 内层 for 会把第 <b>' + i1 + '</b> 行的 3 个元素依次搬进一维数组 b。' +
+         (i1 === 0
+           ? '<span class="tip"><b>展平思路：</b><br>二维数组在内存里本来就是<b>按行连续存放</b>的：<br>' +
+             'a[0][0], a[0][1], a[0][2], a[1][0], a[1][1], a[1][2]<br>' +
+             '所以只要用双层循环按这个顺序读出来，就能得到一个一维序列。</span>'
+           : '')
+  });
+
+  for (var j1 = 0; j1 < 3; j1++) {
+    vj = String(j1);
+    push({
+      line:8,
+      ctx:'内层 for：j = ' + j1 + '（展平阶段）',
+      condOuter:'i = ' + i1 + ' < 2 → 真',
+      condInner:'j = ' + j1 + ' < 3 → 真',
+      expr:'for(j=0; j<3; j++)',
+      exprVal: j1 === 0 ? '先执行 j=0，再判断 0 < 3 成立 → 进入循环体'
+                        : 'j++ 后 j=' + j1 + '，' + j1 + ' < 3 成立 → 继续内层循环',
+      note:'本轮考察 a[' + i1 + '][' + j1 + '] = ' + A[i1][j1],
+      hlA:[keyA(i1,j1)],
+      title:'for(j=0; j&lt;3; j++)　j = ' + j1 + '，条件为真',
+      desc:'内层 <code>for</code> 负责<b>逐列</b>遍历第 ' + i1 + ' 行：j 从 0 到 2。<br>' +
+           '· ' + (j1 === 0
+               ? '每一轮外层循环开始时，内层 <code>for</code> 都会<b>重新执行 <code>j=0</code></b>，再判断 <b>0 &lt; 3</b> 成立 → 进入循环体；'
+               : '<code>j++</code> 后 j = <b>' + j1 + '</b>，判断 <b>' + j1 + ' &lt; 3</b> 成立 → 继续内层循环；') + '<br>' +
+           '· 当前要搬运的元素是 <b>a[' + i1 + '][' + j1 + '] = ' + A[i1][j1] + '</b>。'
+    });
+
+    var oldK = kk;
+    B[kk] = A[i1][j1];
+    kk++;
+    vk = String(kk);
+    CNT.flat++;
+
+    push({
+      line:9,
+      ctx:'b[k++] = a[' + i1 + '][' + j1 + '] → b[' + oldK + '] = ' + B[oldK] + '，k = ' + kk,
+      condOuter:'i = ' + i1 + ' < 2 → 真',
+      condInner:'j = ' + j1 + ' < 3 → 真',
+      expr:'b[k++] = a[i][j]',
+      exprVal:'b[' + oldK + '] = a[' + i1 + '][' + j1 + '] = ' + B[oldK] + '，然后 k 由 ' + oldK + ' 变为 ' + kk,
+      note:'a[' + i1 + '][' + j1 + '] 搬入 b[' + oldK + ']',
+      hlA:[keyA(i1,j1)], hlB:[oldK],
+      title:'b[k++] = a[' + i1 + '][' + j1 + '];　→　b[' + oldK + '] = ' + B[oldK] + '，k 变为 ' + kk,
+      desc:'把 a[' + i1 + '][' + j1 + '] 的值搬进一维数组 b：<br>' +
+           '· <code>b[k++]</code> 是<b>先用后加</b>：先取 k 的当前值 <b>' + oldK + '</b> 作下标 → <b>b[' + oldK + '] = ' + B[oldK] + '</b>；<br>' +
+           '· 然后 k 自增 1，<b>k 变为 ' + kk + '</b>，为下一个元素准备好位置。' +
+           '<span class="tip"><b>为什么用 <code>k++</code> 而不是 <code>++k</code>？</b><br>' +
+           '<code>b[k++]</code>：先写 b[' + oldK + ']，k 再变 ' + kk + ' ✔<br>' +
+           '<code>b[++k]</code>：k 先变 ' + kk + '，会写成 b[' + kk + ']，<b>b[' + oldK + '] 永远空着</b> ✘</span>'
+    });
+  }
+
+  vj = '3';
+  push({
+    line:8,
+    ctx:'内层 for 判断失败：j = 3',
+    condOuter:'i = ' + i1 + ' < 2 → 真',
+    condInner:'j = 3 < 3 → 假',
+    expr:'for(j=0; j<3; j++)',
+    exprVal:'j++ 后 j = 3，3 < 3 不成立 → 退出内层循环',
+    note:'第 ' + i1 + ' 行的 3 个元素已全部搬入 b',
+    skip:[9],
+    title:'for(j=0; j&lt;3; j++)　j = 3，条件为假 → 退出内层循环',
+    desc:'第 ' + i1 + ' 行最后一个元素（j = 2）搬完后，<code>j++</code> 使 j 变成 <b>3</b>；<br>' +
+         '· 判断 <b>3 &lt; 3</b> 为<b>假</b> → 内层循环结束；<br>' +
+         '· 当前一维数组 b 的内容：<br>&nbsp;&nbsp;<b>b = {' +
+         B.map(function(v){ return v === null ? '?' : v; }).join(', ') + '}</b>，k = ' + kk
+  });
+
+  push({
+    line:10,
+    ctx:'内层 for 的右花括号',
+    condOuter:'i = ' + i1 + ' < 2 → 真',
+    expr:'}　// 内层 for 结束',
+    exprVal:'内层循环结束，控制流往下走到第 11 行',
+    note:'第 ' + i1 + ' 行展平完成',
+    title:'<code>}</code>　内层 for 结束',
+    desc:'这是内层 <code>for</code> 的右花括号。<br>' +
+         '· 内层循环已经结束，第 <b>' + i1 + '</b> 行的 3 个元素都搬进了 b；<br>' +
+         '· 控制流继续往下走到第 11 行（外层 for 循环体的右花括号）。'
+  });
+
+  push({
+    line:11,
+    ctx:'外层 for 循环体的右花括号',
+    condOuter:'i = ' + i1 + ' < 2 → 真（本轮）',
+    expr:'}　// 外层 for 循环体结束',
+    exprVal:'回到第 7 行执行 i++，再判断新的 i',
+    note:'已完成第 ' + (i1 + 1) + ' 行 / 共 2 行',
+    title:'<code>}</code>　外层 for 循环体结束 → 回到第 7 行执行 i++',
+    desc:'这是外层 <code>for</code> 的右花括号。<br>' +
+         '· 执行完它之后，控制回到第 7 行：<code>i++</code> 让 i 加 1，再判断新的 i 是否仍小于 2；<br>' +
+         '· 已经处理了 <b>' + (i1 + 1) + '</b> 行，还剩 <b>' + (1 - i1) + '</b> 行。'
+  });
+}
+
+vi = '2';
+push({
+  line:7,
+  ctx:'外层 for 判断失败：i = 2',
+  condOuter:'i = 2 < 2 → 假',
+  expr:'for(i=0; i<2; i++)',
+  exprVal:'i++ 后 i = 2，2 < 2 不成立 → 退出外层循环',
+  note:'展平完成，一维数组 b 已装满 6 个元素',
+  skip:[8,9,10,11],
+  title:'for(i=0; i&lt;2; i++)　i = 2，条件为假 → 退出外层循环',
+  desc:'第 1 行（i = 1）处理完后，<code>i++</code> 使 i 变成 <b>2</b>；<br>' +
+       '· 判断 <b>2 &lt; 2</b> 为<b>假</b> → 外层循环结束；<br>' +
+       '· <b>展平完成！</b>一维数组 b 现在装满了 6 个元素：<br>' +
+       '&nbsp;&nbsp;<b>b = {' + B.join(', ') + '}</b>，k = ' + kk + '（正好等于 6，说明 6 个位置全部写满）。' +
+       '<span class="tip"><b>对比一下：</b><br>二维数组 a 是 <code>{{10,3,5},{7,9,4}}</code>；<br>' +
+       '展平后的一维数组 b 是 <code>{10,3,5,7,9,4}</code>——正好是<b>按行读取</b>的结果。</span>'
+});
+
+/* ---------- 冒泡排序阶段：第 12~18 行 ---------- */
+for (var jb = 0; jb < 6; jb++) {
+  vj = String(jb);
+  push({
+    line:12,
+    ctx:'冒泡外层 for：j = ' + jb,
+    condOuter:'j = ' + jb + ' < 6 → 真',
+    expr:'for(j=0; j<6; j++)',
+    exprVal: jb === 0 ? '先执行 j=0，再判断 0 < 6 成立 → 进入循环体'
+                      : 'j++ 后 j=' + jb + '，' + jb + ' < 6 成立 → 继续外层循环',
+    note:'第 ' + (jb + 1) + ' 趟冒泡，本趟要做 ' + (6 - jb) + ' 次比较',
+    title:'for(j=0; j&lt;6; j++)　j = ' + jb + '，条件为真（第 ' + (jb + 1) + ' 趟冒泡）',
+    desc:'冒泡排序的外层 <code>for</code> 控制<b>趟数</b>：j 从 0 到 5。<br>' +
+         '· 每一趟都会把当前未排好的部分中<b>最大的数</b>“冒”到右端；<br>' +
+         '· 第 ' + (jb + 1) + ' 趟（j = ' + jb + '）的内层循环要做 <b>' + (6 - jb) + '</b> 次比较；<br>' +
+         '· 当前 b = <b>{' + B.join(', ') + '}</b>。' +
+         (jb === 0
+           ? '<span class="tip"><b>冒泡排序口诀：</b><br>相邻两个比大小，前面大了就交换；<br>一趟走完，最大的数就“冒”到了最后面。</span>'
+           : '')
+  });
+
+  for (var ib = 0; ib < 6 - jb; ib++) {
+    vi = String(ib);
+    push({
+      line:13,
+      ctx:'冒泡内层 for：i = ' + ib + '（j = ' + jb + '）',
+      condOuter:'j = ' + jb + ' < 6 → 真',
+      condInner:'i = ' + ib + ' < ' + (6 - jb) + ' → 真',
+      expr:'for(i=0; i<6-j; i++)',
+      exprVal: ib === 0 ? '先执行 i=0，再判断 0 < ' + (6 - jb) + ' 成立 → 进入循环体'
+                        : 'i++ 后 i=' + ib + '，' + ib + ' < ' + (6 - jb) + ' 成立 → 继续内层循环',
+      note:'本轮比较 b[' + ib + '] 和 b[' + (ib + 1) + ']',
+      hlB: ib + 1 < 6 ? [ib, ib + 1] : [ib],
+      warnB: ib + 1 >= 6 ? [ib] : [],
+      title:'for(i=0; i&lt;6-j; i++)　i = ' + ib + '，条件为真',
+      desc:'内层 <code>for</code> 负责<b>相邻两两比较</b>：i 从 0 到 <b>' + (6 - jb) + ' - 1 = ' + (5 - jb) + '</b>（按写法是 i &lt; ' + (6 - jb) + '）。<br>' +
+           '· 本轮要比较的是 <b>b[' + ib + '] = ' + B[ib] + '</b> 和 <b>b[' + (ib + 1) + ']</b>' +
+           (ib + 1 < 6 ? ' = ' + B[ib + 1] : '（<span style="color:#fca5a5">越界！</span>）') + '；<br>' +
+           '· 每一轮外层 j 增大，内层要比较的次数就少 1（后面的元素已经排好了）。'
+    });
+
+    var oob = (ib + 1 >= 6);
+    var x = B[ib];
+    var y = oob ? null : B[ib + 1];
+    var cond = (!oob) && (x > y);
+    CNT.cmp++;
+
+    push({
+      line:14,
+      ctx: oob ? 'if 判断：b[' + ib + '] > b[' + (ib + 1) + ']（下标越界！）'
+               : 'if 判断：b[' + ib + '] > b[' + (ib + 1) + '] ?',
+      condOuter:'j = ' + jb + ' < 6 → 真',
+      condInner:'i = ' + ib + ' < ' + (6 - jb) + ' → 真',
+      expr:'b[' + ib + '] > b[' + (ib + 1) + ']',
+      exprVal: oob ? x + ' > b[6]（越界读取，值未知）→ 无法确定'
+                   : x + ' > ' + y + ' → ' + (cond ? '真' : '假'),
+      note: oob ? '⚠ b[6] 越界！这是程序中的缺陷'
+                : (cond ? '前一个更大！' + x + ' > ' + y + '，需要交换'
+                        : x + ' 不大于 ' + y + '，不用交换'),
+      hlB: ib + 1 < 6 ? [ib, ib + 1] : [ib],
+      warnB: oob ? [ib] : [],
+      title: oob ? 'if(b[' + ib + '] &gt; b[' + (ib + 1) + '])　→　<span style="color:#fca5a5">下标越界！</span>'
+                 : 'if(b[' + ib + '] &gt; b[' + (ib + 1) + '])　→　' + x + ' &gt; ' + y + '，条件为' + (cond ? '真' : '假'),
+      desc: oob
+        ? '比较 <b>b[' + ib + '] = ' + x + '</b> 和 <b>b[6]</b>：<br>' +
+          '· 数组 b 的合法下标是 <b>0 ~ 5</b>，<b>b[6] 已经越界</b>！<br>' +
+          '· 这里读到的是一块<b>不属于 b 的内存</b>，值是未知的；<br>' +
+          '· <code>b[i] > b[i+1]</code> 的结果<b>无法预料</b>，这是典型的<b>数组越界 bug</b>。' +
+          '<span class="danger"><b>⚠ 程序缺陷：</b>内层循环条件写成 <code>i &lt; 6-j</code>，当 j = 0 时 i 最大取 5，<br>' +
+          '此时 <code>b[i+1]</code> 就是 <b>b[6]</b>，越界了！<br>' +
+          '正确写法应该是 <code>i &lt; 5-j</code>（或 <code>i &lt; 6-1-j</code>）。<br><br>' +
+          '<b>本模拟的处理：</b>假定读到的垃圾值 ≥ ' + x + '，因此<b>条件为假，不发生交换</b>，<br>' +
+          '程序继续正常运行——后续趟数足够多，排序结果仍然正确。</span>'
+        : '比较相邻的两个元素 <b>b[' + ib + '] = ' + x + '</b> 和 <b>b[' + (ib + 1) + '] = ' + y + '</b>：<br>' +
+          '· ' + x + ' &gt; ' + y + ' → <b>' + (cond ? '成立' : '不成立') + '</b>；<br>' +
+          '· ' + (cond ? '<b>顺序反了！</b>前一个比后一个大，需要交换，进入第 15 行。'
+                      : '<b>顺序正确</b>，不用交换，直接进入下一轮 i++。') +
+          '<span class="tip"><b>冒泡的关键：</b>只比较<b>相邻</b>两个元素，一次只消一个逆序对。<br>' +
+          '一趟走下来，最大的元素就像气泡一样“浮”到了最右边。</span>'
+    });
+
+    if (cond) {
+      var tv = B[ib];
+      B[ib] = B[ib + 1];
+      B[ib + 1] = tv;
+      vt = String(tv);
+      CNT.swap++;
+
+      push({
+        line:15,
+        ctx:'交换 b[' + ib + '] 和 b[' + (ib + 1) + ']',
+        condOuter:'j = ' + jb + ' < 6 → 真',
+        condInner:'i = ' + ib + ' < ' + (6 - jb) + ' → 真',
+        expr:'t=b[i]; b[i]=b[i+1]; b[i+1]=t;',
+        exprVal:'t = ' + tv + '；b[' + ib + '] = ' + B[ib] + '；b[' + (ib + 1) + '] = ' + B[ib + 1],
+        note:'交换完成：' + tv + ' 和 ' + B[ib] + ' 互换位置',
+        hlB:[ib, ib + 1], swapB:[ib, ib + 1],
+        title:'t=b[' + ib + ']; b[' + ib + ']=b[' + (ib + 1) + ']; b[' + (ib + 1) + ']=t;　→　交换成功',
+        desc:'三句赋值完成相邻元素的交换：<br>' +
+             '① <code>t = b[' + ib + '];</code>　→　把左边的值 <b>' + tv + '</b> 暂存到 t；<br>' +
+             '② <code>b[' + ib + '] = b[' + (ib + 1) + '];</code>　→　把右边的值 <b>' + B[ib] + '</b> 搬到左边；<br>' +
+             '③ <code>b[' + (ib + 1) + '] = t;</code>　→　把暂存的 <b>' + tv + '</b> 放到右边。<br>' +
+             '· 交换后 b = <b>{' + B.join(', ') + '}</b>。' +
+             '<span class="tip"><b>为什么需要临时变量 t？</b><br>' +
+             '如果直接写 <code>b[i] = b[i+1]; b[i+1] = b[i];</code>，第一步就把 b[i] 的值<b>冲掉</b>了，<br>' +
+             '第二步等于把 b[i+1] 赋给自己，交换失败。<br>所以必须先用 t 把其中一个值<b>保存起来</b>。</span>'
+      });
+    }
+  }
+
+  vi = String(6 - jb);
+  push({
+    line:13,
+    ctx:'冒泡内层 for 判断失败：i = ' + (6 - jb),
+    condOuter:'j = ' + jb + ' < 6 → 真',
+    condInner:'i = ' + (6 - jb) + ' < ' + (6 - jb) + ' → 假',
+    expr:'for(i=0; i<6-j; i++)',
+    exprVal:'i++ 后 i = ' + (6 - jb) + '，' + (6 - jb) + ' < ' + (6 - jb) + ' 不成立 → 退出内层循环',
+    note:'第 ' + (jb + 1) + ' 趟冒泡完成，b = {' + B.join(', ') + '}',
+    skip:[14,15,16],
+    title:'for(i=0; i&lt;6-j; i++)　i = ' + (6 - jb) + '，条件为假 → 退出内层循环',
+    desc:'第 ' + (jb + 1) + ' 趟的最后一次比较做完后，<code>i++</code> 使 i 变成 <b>' + (6 - jb) + '</b>；<br>' +
+         '· 判断 <b>' + (6 - jb) + ' &lt; ' + (6 - jb) + '</b> 为<b>假</b> → 内层循环结束；<br>' +
+         '· <b>第 ' + (jb + 1) + ' 趟冒泡结束</b>，当前 b = <b>{' + B.join(', ') + '}</b>；<br>' +
+         '· 这一趟把当前未排序部分的最大值“冒”到了位置 <b>' + (5 - jb) + '</b>。'
+  });
+
+  push({
+    line:17,
+    ctx:'内层 for 的右花括号',
+    condOuter:'j = ' + jb + ' < 6 → 真',
+    expr:'}　// 内层 for 结束',
+    exprVal:'内层循环结束，控制流往下走到第 18 行',
+    note:'第 ' + (jb + 1) + ' 趟结束',
+    title:'<code>}</code>　内层 for 结束',
+    desc:'这是内层 <code>for</code> 的右花括号。<br>' +
+         '· 本趟冒泡已经结束；<br>' +
+         '· 控制流继续往下走到第 18 行（外层 for 循环体的右花括号）。'
+  });
+}
+
+vj = '6';
+push({
+  line:12,
+  ctx:'冒泡外层 for 判断失败：j = 6',
+  condOuter:'j = 6 < 6 → 假',
+  expr:'for(j=0; j<6; j++)',
+  exprVal:'j++ 后 j = 6，6 < 6 不成立 → 退出外层循环',
+  note:'冒泡排序完成，b 已升序排列',
+  skip:[13,14,15,16,17],
+  title:'for(j=0; j&lt;6; j++)　j = 6，条件为假 → 冒泡排序结束',
+  desc:'第 6 趟（j = 5）做完后，<code>j++</code> 使 j 变成 <b>6</b>；<br>' +
+       '· 判断 <b>6 &lt; 6</b> 为<b>假</b> → 外层循环结束；<br>' +
+       '· <b>冒泡排序完成！</b>一维数组 b 现在是从小到大排列的：<br>' +
+       '&nbsp;&nbsp;<b>b = {' + B.join(', ') + '}</b>' +
+       '<span class="win">★ 排序结果：{' + B.join(', ') + '}</span>'
+});
+
+push({
+  line:18,
+  ctx:'冒泡外层 for 的右花括号',
+  expr:'}　// 冒泡排序结束',
+  exprVal:'排序结束，控制流往下走到第 19 行',
+  note:'一维数组排序完毕',
+  title:'<code>}</code>　冒泡排序外层 for 结束',
+  desc:'这是冒泡排序外层 <code>for</code> 的右花括号。<br>' +
+       '· 冒泡排序全部结束，b 已经是升序；<br>' +
+       '· 控制流继续往下走到第 19 行。'
+});
+
+/* ---------- 第 19 行 ---------- */
+kk = 0;
+vk = '0';
+push({
+  line:19,
+  ctx:'k = 0（重置计数器）',
+  expr:'k = 0;',
+  exprVal:'k 由 6 重置为 0',
+  note:'k 归零，准备重新从 b[0] 开始读取',
+  title:'k = 0;　→　k 被重置为 0',
+  desc:'把计数器 k 重新置为 <b>0</b>：<br>' +
+       '· 前面展平时 k 一路加到了 6；<br>' +
+       '· 现在要把排序好的 b 装回二维数组 a，需要<b>重新从 b[0] 开始读</b>，所以必须归零；' +
+       '<span class="warn"><b>如果忘了这一句会怎样？</b><br>' +
+       'k 还是 6，第 22 行的 <code>a[i][j] = b[k++]</code> 就会变成 <code>b[6]</code>、<code>b[7]</code>……<br>' +
+       '<b>越界读取</b>，装回去的全是垃圾值，输出结果完全错误。</span>'
+});
+
+/* ---------- 装回阶段：第 20~24 行 ---------- */
+for (var i2 = 0; i2 < 2; i2++) {
+  vi = String(i2);
+  push({
+    line:20,
+    ctx:'外层 for：i = ' + i2 + '（装回阶段）',
+    condOuter:'i = ' + i2 + ' < 2 → 真',
+    expr:'for(i=0; i<2; i++)',
+    exprVal: i2 === 0 ? '先执行 i=0，再判断 0 < 2 成立 → 进入循环体'
+                      : 'i++ 后 i=' + i2 + '，' + i2 + ' < 2 成立 → 继续循环',
+    note:'本轮把 b 中的 3 个数装回第 ' + i2 + ' 行',
+    title:'for(i=0; i&lt;2; i++)　i = ' + i2 + '，条件为真',
+    desc:'装回阶段的外层 <code>for</code> 负责<b>逐行</b>写回：i 从 0 到 1。<br>' +
+         '· ' + (i2 === 0
+             ? '先执行 <code>i=0</code>，再判断 <b>0 &lt; 2</b> 成立 → 进入循环体；'
+             : '<code>i++</code> 后 i = <b>' + i2 + '</b>，判断 <b>' + i2 + ' &lt; 2</b> 成立 → 继续循环；') + '<br>' +
+         '· 内层循环会从 b 中依次取出 3 个数，写进 a 的第 ' + i2 + ' 行。'
+  });
+
+  for (var j2 = 0; j2 < 3; j2++) {
+    vj = String(j2);
+    push({
+      line:21,
+      ctx:'内层 for：j = ' + j2 + '（装回阶段）',
+      condOuter:'i = ' + i2 + ' < 2 → 真',
+      condInner:'j = ' + j2 + ' < 3 → 真',
+      expr:'for(j=0; j<3; j++)',
+      exprVal: j2 === 0 ? '先执行 j=0，再判断 0 < 3 成立 → 进入循环体'
+                        : 'j++ 后 j=' + j2 + '，' + j2 + ' < 3 成立 → 继续内层循环',
+      note:'准备写入 a[' + i2 + '][' + j2 + ']',
+      hlA:[keyA(i2,j2)],
+      title:'for(j=0; j&lt;3; j++)　j = ' + j2 + '，条件为真',
+      desc:'内层 <code>for</code> 负责<b>逐列</b>写回第 ' + i2 + ' 行：j 从 0 到 2。<br>' +
+           '· ' + (j2 === 0
+               ? '每一轮外层循环开始时，内层 <code>for</code> 都会<b>重新执行 <code>j=0</code></b>；'
+               : '<code>j++</code> 后 j = <b>' + j2 + '</b>，判断 <b>' + j2 + ' &lt; 3</b> 成立 → 继续内层循环；') + '<br>' +
+           '· 即将把 b[' + kk + '] = <b>' + B[kk] + '</b> 写进 <b>a[' + i2 + '][' + j2 + ']</b>。'
+    });
+
+    var oldK2 = kk;
+    A[i2][j2] = B[kk];
+    kk++;
+    vk = String(kk);
+    CNT.restore++;
+
+    push({
+      line:22,
+      ctx:'a[' + i2 + '][' + j2 + '] = b[k++] → a[' + i2 + '][' + j2 + '] = ' + A[i2][j2] + '，k = ' + kk,
+      condOuter:'i = ' + i2 + ' < 2 → 真',
+      condInner:'j = ' + j2 + ' < 3 → 真',
+      expr:'a[i][j] = b[k++]',
+      exprVal:'a[' + i2 + '][' + j2 + '] = b[' + oldK2 + '] = ' + A[i2][j2] + '，然后 k 由 ' + oldK2 + ' 变为 ' + kk,
+      note:'b[' + oldK2 + '] 装回 a[' + i2 + '][' + j2 + ']',
+      hlA:[keyA(i2,j2)], hlB:[oldK2],
+      title:'a[' + i2 + '][' + j2 + '] = b[' + oldK2 + '];　→　a[' + i2 + '][' + j2 + '] = ' + A[i2][j2] + '，k 变为 ' + kk,
+      desc:'把排好序的 b 中的元素按行装回二维数组 a：<br>' +
+           '· <code>b[k++]</code> 同样<b>先用后加</b>：先读 <b>b[' + oldK2 + '] = ' + A[i2][j2] + '</b>；<br>' +
+           '· 写进 <b>a[' + i2 + '][' + j2 + ']</b>，然后 k 自增为 <b>' + kk + '</b>；<br>' +
+           '· 此时二维数组 a 的内容：<br>' +
+           '&nbsp;&nbsp;<b>a[0] = {' + A[0].join(', ') + '}</b><br>' +
+           '&nbsp;&nbsp;<b>a[1] = {' + A[1].join(', ') + '}</b>' +
+           '<span class="tip"><b>顺序很关键：</b><br>' +
+           '装回的顺序必须和展平时<b>完全一样</b>（都是按行、从左到右），<br>否则元素位置就会错乱。</span>'
+    });
+  }
+
+  vj = '3';
+  push({
+    line:21,
+    ctx:'内层 for 判断失败：j = 3',
+    condOuter:'i = ' + i2 + ' < 2 → 真',
+    condInner:'j = 3 < 3 → 假',
+    expr:'for(j=0; j<3; j++)',
+    exprVal:'j++ 后 j = 3，3 < 3 不成立 → 退出内层循环',
+    note:'第 ' + i2 + ' 行 3 个位置已全部写入',
+    skip:[22],
+    title:'for(j=0; j&lt;3; j++)　j = 3，条件为假 → 退出内层循环',
+    desc:'第 ' + i2 + ' 行最后一个位置（j = 2）写完后，<code>j++</code> 使 j 变成 <b>3</b>；<br>' +
+         '· 判断 <b>3 &lt; 3</b> 为<b>假</b> → 内层循环结束；<br>' +
+         '· 第 <b>' + i2 + '</b> 行装回完成：<b>a[' + i2 + '] = {' + A[i2].join(', ') + '}</b>。'
+  });
+
+  push({
+    line:23,
+    ctx:'内层 for 的右花括号',
+    condOuter:'i = ' + i2 + ' < 2 → 真',
+    expr:'}　// 内层 for 结束',
+    exprVal:'内层循环结束，控制流往下走到第 24 行',
+    note:'第 ' + i2 + ' 行装回完成',
+    title:'<code>}</code>　内层 for 结束',
+    desc:'这是内层 <code>for</code> 的右花括号。<br>' +
+         '· 第 ' + i2 + ' 行的 3 个位置已经全部写入；<br>' +
+         '· 控制流继续往下走到第 24 行（外层 for 循环体的右花括号）。'
+  });
+
+  push({
+    line:24,
+    ctx:'外层 for 循环体的右花括号',
+    condOuter:'i = ' + i2 + ' < 2 → 真（本轮）',
+    expr:'}　// 外层 for 循环体结束',
+    exprVal:'回到第 20 行执行 i++，再判断新的 i',
+    note:'已完成第 ' + (i2 + 1) + ' 行 / 共 2 行',
+    title:'<code>}</code>　外层 for 循环体结束 → 回到第 20 行执行 i++',
+    desc:'这是外层 <code>for</code> 的右花括号。<br>' +
+         '· 执行完它之后，控制回到第 20 行：<code>i++</code> 让 i 加 1，再判断新的 i 是否仍小于 2；<br>' +
+         '· 已经写回了 <b>' + (i2 + 1) + '</b> 行，还剩 <b>' + (1 - i2) + '</b> 行。'
+  });
+}
+
+vi = '2';
+push({
+  line:20,
+  ctx:'外层 for 判断失败：i = 2',
+  condOuter:'i = 2 < 2 → 假',
+  expr:'for(i=0; i<2; i++)',
+  exprVal:'i++ 后 i = 2，2 < 2 不成立 → 退出外层循环',
+  note:'装回完成，a = {{' + A[0].join(',') + '},{' + A[1].join(',') + '}}',
+  skip:[21,22,23,24],
+  title:'for(i=0; i&lt;2; i++)　i = 2，条件为假 → 装回结束',
+  desc:'第 1 行（i = 1）装完后，<code>i++</code> 使 i 变成 <b>2</b>；<br>' +
+       '· 判断 <b>2 &lt; 2</b> 为<b>假</b> → 外层循环结束；<br>' +
+       '· <b>装回完成！</b>二维数组 a 现在装的是排好序的数据：<br>' +
+       '&nbsp;&nbsp;<b>a[0] = {' + A[0].join(', ') + '}</b><br>' +
+       '&nbsp;&nbsp;<b>a[1] = {' + A[1].join(', ') + '}</b>' +
+       '<span class="tip"><b>注意：</b>原来的输入值 4 现在跑到了 a[0][1] 的位置，<br>' +
+       '而 a[1][2] 变成了 10。<b>二维数组的内容被完全重排了。</b></span>'
+});
+
+/* ---------- 输出阶段：第 25~30 行 ---------- */
+for (var i3 = 0; i3 < 2; i3++) {
+  vi = String(i3);
+  push({
+    line:25,
+    ctx:'输出外层 for：i = ' + i3,
+    condOuter:'i = ' + i3 + ' < 2 → 真',
+    expr:'for(i=0; i<2; i++)',
+    exprVal: i3 === 0 ? '先执行 i=0，再判断 0 < 2 成立 → 进入循环体'
+                      : 'i++ 后 i=' + i3 + '，' + i3 + ' < 2 成立 → 继续循环',
+    note:'本轮输出第 ' + i3 + ' 行',
+    title:'for(i=0; i&lt;2; i++)　i = ' + i3 + '，条件为真（输出阶段）',
+    desc:'输出的外层 <code>for</code> 负责<b>逐行</b>输出：i 从 0 到 1。<br>' +
+         '· ' + (i3 === 0
+             ? '先执行 <code>i=0</code>，再判断 <b>0 &lt; 2</b> 成立 → 进入循环体；'
+             : '<code>i++</code> 后 i = <b>' + i3 + '</b>，判断 <b>' + i3 + ' &lt; 2</b> 成立 → 继续循环；') + '<br>' +
+         '· 内层循环会把第 ' + i3 + ' 行的 3 个数逐个打印出来，然后换行。'
+  });
+
+  for (var j3 = 0; j3 < 3; j3++) {
+    vj = String(j3);
+    push({
+      line:26,
+      ctx:'输出内层 for：j = ' + j3,
+      condOuter:'i = ' + i3 + ' < 2 → 真',
+      condInner:'j = ' + j3 + ' < 3 → 真',
+      expr:'for(j=0; j<3; j++)',
+      exprVal: j3 === 0 ? '先执行 j=0，再判断 0 < 3 成立 → 进入循环体'
+                        : 'j++ 后 j=' + j3 + '，' + j3 + ' < 3 成立 → 继续内层循环',
+      note:'准备输出 a[' + i3 + '][' + j3 + '] = ' + A[i3][j3],
+      hlA:[keyA(i3,j3)],
+      title:'for(j=0; j&lt;3; j++)　j = ' + j3 + '，条件为真',
+      desc:'内层 <code>for</code> 负责<b>逐列</b>输出第 ' + i3 + ' 行：j 从 0 到 2。<br>' +
+           '· ' + (j3 === 0
+               ? '每一轮外层循环开始时，内层 <code>for</code> 都会<b>重新执行 <code>j=0</code></b>；'
+               : '<code>j++</code> 后 j = <b>' + j3 + '</b>，判断 <b>' + j3 + ' &lt; 3</b> 成立 → 继续内层循环；') + '<br>' +
+           '· 即将输出 <b>a[' + i3 + '][' + j3 + '] = ' + A[i3][j3] + '</b>。'
+    });
+
+    outText += A[i3][j3] + ' ';
+    CNT.printf++;
+    CNT.outNum++;
+
+    push({
+      line:27,
+      ctx:'printf 输出 a[' + i3 + '][' + j3 + '] = ' + A[i3][j3],
+      condOuter:'i = ' + i3 + ' < 2 → 真',
+      condInner:'j = ' + j3 + ' < 3 → 真',
+      expr:'printf("%d ", a[i][j])',
+      exprVal:'输出 "' + A[i3][j3] + ' "（数字 + 一个空格）',
+      note:'屏幕新增："' + A[i3][j3] + ' "',
+      hlA:[keyA(i3,j3)],
+      title:'printf("%d ", a[' + i3 + '][' + j3 + ']);　→　输出 "' + A[i3][j3] + ' "',
+      desc:'把 a[' + i3 + '][' + j3 + '] 的值打印到屏幕：<br>' +
+           '· <code>%d</code> ← <b>' + A[i3][j3] + '</b>（当前元素值）；<br>' +
+           '· 格式串 <code>"%d "</code> 里<b>数字后面有一个空格</b>，所以每输出一个数就多一个空格；<br>' +
+           '· 因为格式串里<b>没有 <code>\\n</code></b>，所以三个数会打印在<b>同一行</b>。' +
+           '<span class="tip"><b>屏幕当前内容：</b><code>' + outText.replace(/\n/g,'⏎') + '</code></span>'
+    });
+  }
+
+  vj = '3';
+  push({
+    line:26,
+    ctx:'输出内层 for 判断失败：j = 3',
+    condOuter:'i = ' + i3 + ' < 2 → 真',
+    condInner:'j = 3 < 3 → 假',
+    expr:'for(j=0; j<3; j++)',
+    exprVal:'j++ 后 j = 3，3 < 3 不成立 → 退出内层循环',
+    note:'第 ' + i3 + ' 行的 3 个数已全部输出',
+    skip:[27],
+    title:'for(j=0; j&lt;3; j++)　j = 3，条件为假 → 退出内层循环',
+    desc:'第 ' + i3 + ' 行最后一个数（j = 2）打印完后，<code>j++</code> 使 j 变成 <b>3</b>；<br>' +
+         '· 判断 <b>3 &lt; 3</b> 为<b>假</b> → 内层循环结束；<br>' +
+         '· 第 ' + i3 + ' 行的 3 个数已经全部打印在同一行上。'
+  });
+
+  push({
+    line:28,
+    ctx:'内层 for 的右花括号',
+    condOuter:'i = ' + i3 + ' < 2 → 真',
+    expr:'}　// 内层 for 结束',
+    exprVal:'内层循环结束，控制流往下走到第 29 行',
+    note:'第 ' + i3 + ' 行内层输出完毕',
+    title:'<code>}</code>　内层 for 结束',
+    desc:'这是内层 <code>for</code> 的右花括号。<br>' +
+         '· 第 ' + i3 + ' 行的 3 个数字已经全部输出；<br>' +
+         '· 控制流继续往下走到第 29 行，准备换行。'
+  });
+
+  outText += '\n';
+  CNT.printf++;
+  CNT.outNl++;
+
+  push({
+    line:29,
+    ctx:'printf("\\n") 换行',
+    condOuter:'i = ' + i3 + ' < 2 → 真',
+    expr:'printf("\\n")',
+    exprVal:'输出一个换行符 → 光标移到下一行行首',
+    note:'第 ' + i3 + ' 行输出完毕，换行',
+    title:'printf("\\n");　→　输出换行符',
+    desc:'单独调用一次 <code>printf</code> 打印换行符：<br>' +
+         '· 格式串 <code>"\\n"</code> 只有一个转义字符，表示<b>换行</b>；<br>' +
+         '· 它的作用是让第 <b>' + i3 + '</b> 行的 3 个数独占一行，接着输出下一行；<br>' +
+         '· 如果没有这一句，两行的 6 个数会挤在同一行。' +
+         '<span class="tip"><b>屏幕当前内容：</b><br><code>' + outText.replace(/\n/g,'⏎<br>') + '</code></span>'
+  });
+
+  push({
+    line:30,
+    ctx:'输出外层 for 循环体的右花括号',
+    condOuter:'i = ' + i3 + ' < 2 → 真（本轮）',
+    expr:'}　// 外层 for 循环体结束',
+    exprVal:'回到第 25 行执行 i++，再判断新的 i',
+    note:'已完成第 ' + (i3 + 1) + ' 行 / 共 2 行',
+    title:'<code>}</code>　输出外层 for 循环体结束 → 回到第 25 行执行 i++',
+    desc:'这是输出阶段外层 <code>for</code> 的右花括号。<br>' +
+         '· 执行完它之后，控制回到第 25 行：<code>i++</code> 让 i 加 1，再判断新的 i 是否仍小于 2；<br>' +
+         '· 已经输出了 <b>' + (i3 + 1) + '</b> 行，还剩 <b>' + (1 - i3) + '</b> 行。'
+  });
+}
+
+vi = '2';
+push({
+  line:25,
+  ctx:'输出外层 for 判断失败：i = 2',
+  condOuter:'i = 2 < 2 → 假',
+  expr:'for(i=0; i<2; i++)',
+  exprVal:'i++ 后 i = 2，2 < 2 不成立 → 退出外层循环',
+  note:'两行全部输出完毕',
+  skip:[26,27,28,29,30],
+  title:'for(i=0; i&lt;2; i++)　i = 2，条件为假 → 输出结束',
+  desc:'第 1 行（i = 1）输出完后，<code>i++</code> 使 i 变成 <b>2</b>；<br>' +
+       '· 判断 <b>2 &lt; 2</b> 为<b>假</b> → 外层循环结束；<br>' +
+       '· <b>两行数据全部输出完毕。</b>' +
+       '<span class="win">★ 屏幕最终内容：<br>Input number:4<br>3 4 5 <br>7 9 10 </span>'
+});
+
+/* ---------- 第 31 行 ---------- */
+push({
+  line:31, ret:'0', ctx:'main · return 返回',
+  expr:'return 0;',
+  exprVal:'返回 0，程序正常结束',
+  note:'main 返回 0 表示程序正常结束',
+  title:'return 0;　结束 main 函数',
+  desc:'<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。<br>' +
+       '约定返回 <b>0</b> 表示程序<b>正常结束</b>，返回非 0 通常表示出错。'
+});
+
+/* ---------- 第 32 行 ---------- */
+push({
+  line:32, ret:'0', ctx:'程序结束',
+  note:'栈帧销毁，程序退出',
+  title:'main 函数体结束 }',
+  desc:'函数收尾，main 的栈帧被销毁，局部变量 <b>i、j、k、t、b</b> 全部释放' +
+       '（<b>a 是 static，会一直保留到程序结束</b>）。<br>' +
+       '程序共调用 <b>printf 9 次</b>（提示 1 次 + 输出 6 次 + 换行 2 次）、<b>scanf 1 次</b>，返回 0。' +
+       '<span class="tip"><b>本程序要点总结：</b><br>' +
+       '① <b>展平</b>：双层循环按行读取二维数组，存进一维数组 b，<code>b[k++]</code> 边存边推进下标；<br>' +
+       '② <b>冒泡排序</b>：外层控制趟数，内层相邻两两比较，逆序就交换；<br>' +
+       '③ <b>装回</b>：k 必须<b>重新置 0</b>，再按同样的顺序写回二维数组；<br>' +
+       '④ <b>输出</b>：内层循环打印一行，外层每次结束打印 <code>\\n</code> 换行。<br>' +
+       '<b>程序输出：</b><br><code>' + outText.replace(/\n/g,'⏎<br>') + '</code>' +
+       '<b>手动验证：</b>输入 4 后 a = {{10,3,5},{7,9,4}} → 展平 b = {10,3,5,7,9,4} → 升序 {3,4,5,7,9,10} → 装回 a = {{3,4,5},{7,9,10}} ✓<br>' +
+       '<b>常见错误：</b><br>' +
+       '① <code>scanf("%d", a[1][2])</code> 漏掉 <code>&amp;</code>，程序崩溃；<br>' +
+       '② 第 19 行忘记 <code>k=0;</code>，装回时越界读取垃圾值；<br>' +
+       '③ 内层循环写成 <code>i&lt;6-j</code> 而不是 <code>i&lt;5-j</code>，<b>发生 b[6] 越界</b>（本程序的缺陷）；<br>' +
+       '④ <code>b[k++]</code> 写成 <code>b[++k]</code>，b[0] 永远空着；<br>' +
+       '⑤ 交换时忘记用临时变量 t，导致两个值都被覆盖；<br>' +
+       '⑥ 忘记 <code>printf("\\n")</code>，两行数据挤在一行。</span>'
+});
+
+/* ================================================================
+   四、DOM 引用 & 构建
+   ================================================================ */
+var codeStage   = document.getElementById('codeStage');
+var codeInner   = document.getElementById('codeInner');
+var arrGridA    = document.getElementById('arrGridA');
+var arrGridB    = document.getElementById('arrGridB');
+var varTable    = document.getElementById('varTable');
+var consoleBody = document.getElementById('consoleBody');
+var explainBody = document.getElementById('explainBody');
+var stepCounter = document.getElementById('stepCounter');
+var miniContent = document.getElementById('miniContent');
+var miniViewport= document.getElementById('miniViewport');
+
+/* ---- 渲染 32 行代码 ---- */
+(function buildCode(){
+  var h = '';
+  for (var n = 0; n < CODE.length; n++) {
+    h += '<div class="code-line" data-line="' + (n+1) + '">' +
+           '<span class="ln">' + (n+1) + '</span>' +
+           '<span class="src">' + CODE[n] + '</span>' +
+         '</div>';
+  }
+  codeInner.innerHTML = h;
+})();
+var codeLines = Array.prototype.slice.call(codeInner.querySelectorAll('.code-line'));
+
+/* ---- 渲染缩略图 32 行 ---- */
+(function buildMini(){
+  var h = '';
+  for (var n = 0; n < CODE.length; n++) {
+    h += '<div class="mini-line" data-ml="' + (n+1) + '">' + CODE[n] + '</div>';
+  }
+  miniContent.innerHTML = h;
+})();
+var miniLines = Array.prototype.slice.call(miniContent.querySelectorAll('.mini-line'));
+
+/* ---- 数组 a 可视化 ---- */
+(function buildA(){
+  var h = '<div class="arr-head mcol">i \\ j</div>';
+  for (var c = 0; c < 3; c++) h += '<div class="arr-head">[' + c + ']</div>';
+  for (var r = 0; r < 2; r++) {
+    h += '<div class="arr-cell mtag">a[' + r + ']</div>';
+    for (var c2 = 0; c2 < 3; c2++) {
+      h += '<div class="arr-cell" data-key="' + keyA(r,c2) + '">' +
+             '<span class="idx">[' + r + '][' + c2 + ']</span>' +
+             '<span class="val">' + A[r][c2] + '</span></div>';
+    }
+  }
+  arrGridA.innerHTML = h;
+})();
+
+/* ---- 数组 b 可视化 ---- */
+(function buildB(){
+  var h = '<div class="arr-head mcol">b</div>';
+  for (var c = 0; c < 6; c++) h += '<div class="arr-head">[' + c + ']</div>';
+  h += '<div class="arr-cell mtag">&nbsp;</div>';
+  for (var c2 = 0; c2 < 6; c2++) {
+    h += '<div class="arr-cell" data-bi="' + c2 + '">' +
+           '<span class="idx">[' + c2 + ']</span>' +
+           '<span class="val">?</span></div>';
+  }
+  arrGridB.innerHTML = h;
+})();
+
+var cellsA = Array.prototype.slice.call(arrGridA.querySelectorAll('.arr-cell[data-key]'));
+var cellsB = Array.prototype.slice.call(arrGridB.querySelectorAll('.arr-cell[data-bi]'));
+
+/* ---- 变量表 ---- */
+var VAR_ROWS = [
+  {key:'ctx',        name:'当前执行位置',                    kind:'k-ctx'},
+  {key:'i',          name:'i  (int) 循环变量 · 行/内层',      kind:'k-main'},
+  {key:'j',          name:'j  (int) 循环变量 · 列/外层',      kind:'k-main'},
+  {key:'k',          name:'k  (int) 展平/装回计数器',         kind:'k-money'},
+  {key:'t',          name:'t  (int) 交换临时变量',            kind:'k-gold'},
+  {key:'condOuter',  name:'外层条件  i<2 / j<6',             kind:'k-note'},
+  {key:'condInner',  name:'内层条件  j<3 / i<6-j',           kind:'k-note'},
+  {key:'expr',       name:'正在求值的表达式',                 kind:'k-val'},
+  {key:'exprVal',    name:'表达式结果',                      kind:'k-val'},
+  {key:'note',       name:'关键状态提示',                     kind:'k-sw'},
+  {key:'ret',        name:'main 返回值',                     kind:'k-ret'},
+  {key:'c_printf',   name:'printf 调用次数',                 kind:'k-cnt'},
+  {key:'c_scanf',    name:'scanf 调用次数',                  kind:'k-cnt'},
+  {key:'c_flat',     name:'展平赋值 b[k++] 次数',            kind:'k-cnt'},
+  {key:'c_cmp',      name:'比较 if 次数（含 1 次越界）',      kind:'k-cnt'},
+  {key:'c_swap',     name:'交换次数',                        kind:'k-cnt'},
+  {key:'c_restore',  name:'装回赋值 a[i][j]=b[k++] 次数',     kind:'k-cnt'},
+  {key:'c_outNum',   name:'输出元素 printf("%d ") 次数',      kind:'k-cnt'},
+  {key:'c_outNl',    name:'换行 printf("\\n") 次数',          kind:'k-cnt'}
+];
+
+(function buildVarTable(){
+  varTable.innerHTML = VAR_ROWS.map(function(r){
+    return '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+             '<span class="var-name">' + r.name + '</span>' +
+             '<span class="var-value dim">—</span>' +
+           '</div>';
+  }).join('');
+})();
+
+/* ================================================================
+   五、渲染
+   ================================================================ */
+var current = -1, playing = false, timer = null;
+var speed = Number(document.getElementById('speed').value);
+var lastOutText = null;
+
+function valueOf(step, key){
+  if (!step) return '—';
+  if (key === 'ctx') return step.ctx || '—';
+  if (key.slice(0,2) === 'c_') {
+    var k = key.slice(2);
+    return String(step.cnt[k]);
+  }
+  var v = step.vars[key];
+  if (v === undefined) v = step[key];
+  return (v === undefined || v === null) ? '—' : v;
+}
+
+function updateVars(step, prev){
+  VAR_ROWS.forEach(function(r){
+    var row = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+    if (!row) return;
+    var valEl = row.querySelector('.var-value');
+    var val = String(valueOf(step, r.key));
+    var old = String(valueOf(prev, r.key));
+    if (valEl.textContent !== val) {
+      valEl.textContent = val;
+      valEl.title = val;
+      valEl.classList.toggle('dim', val === '—');
+      valEl.classList.remove('flash');
+      void valEl.offsetWidth;
+      valEl.classList.add('flash');
+      if (prev && old !== val) {
+        row.classList.add('changed');
+        setTimeout(function(){ row.classList.remove('changed'); }, 700);
+      }
+    }
+  });
+}
+
+function updateArr(step){
+  var aArr = (step && step.arrA) || A;
+  var bArr = (step && step.arrB) || B;
+  var hlA  = (step && step.hlA)  || [];
+  var hlB  = (step && step.hlB)  || [];
+  var swA  = (step && step.swapA)|| [];
+  var swB  = (step && step.swapB)|| [];
+  var wnA  = (step && step.warnA)|| [];
+  var wnB  = (step && step.warnB)|| [];
+
+  cellsA.forEach(function(cell){
+    var key = cell.getAttribute('data-key');
+    var valEl = cell.querySelector('.val');
+    var rc = key.split(',');
+    var v = String(aArr[Number(rc[0])][Number(rc[1])]);
+    if (valEl.textContent !== v) {
+      valEl.textContent = v;
+      valEl.classList.remove('flash'); void valEl.offsetWidth; valEl.classList.add('flash');
+    }
+    cell.classList.toggle('is-hl',   hlA.indexOf(key) !== -1);
+    cell.classList.toggle('is-swap', swA.indexOf(key) !== -1);
+    cell.classList.toggle('is-warn', wnA.indexOf(key) !== -1);
+  });
+
+  cellsB.forEach(function(cell){
+    var bi = Number(cell.getAttribute('data-bi'));
+    var valEl = cell.querySelector('.val');
+    var v = (bArr[bi] === null || bArr[bi] === undefined) ? '?' : String(bArr[bi]);
+    if (valEl.textContent !== v) {
+      valEl.textContent = v;
+      valEl.classList.remove('flash'); void valEl.offsetWidth; valEl.classList.add('flash');
+    }
+    cell.classList.toggle('is-hl',   hlB.indexOf(bi) !== -1);
+    cell.classList.toggle('is-swap', swB.indexOf(bi) !== -1);
+    cell.classList.toggle('is-warn', wnB.indexOf(bi) !== -1);
+  });
+}
+
+function updateCode(step){
+  var activeLine = step ? step.line : null;
+  var skipLines = (step && step.skip) || [];
+  codeLines.forEach(function(el){
+    var n = Number(el.dataset.line);
+    el.classList.toggle('active', activeLine !== null && n === activeLine);
+    el.classList.toggle('skip', skipLines.indexOf(n) !== -1);
+  });
+  miniLines.forEach(function(el){
+    var n = Number(el.dataset.ml);
+    el.classList.toggle('active', activeLine !== null && n === activeLine);
+    el.classList.toggle('skip', skipLines.indexOf(n) !== -1);
+  });
+}
+
+function centerActiveLine(){
+  var el = codeInner.querySelector('.code-line.active');
+  if (!el) return;
+  var r  = el.getBoundingClientRect();
+  var cr = codeStage.getBoundingClientRect();
+  var delta = (r.top + r.height/2) - (cr.top + cr.height/2);
+  if (Math.abs(delta) > 3) {
+    codeStage.scrollTop = Math.max(0, codeStage.scrollTop + delta);
+  }
+}
+
+function updateOutput(text){
+  if (text === lastOutText) return;
+  lastOutText = text;
+  consoleBody.innerHTML = '';
+  if (text) {
+    var parts = text.split('\n');
+    if (parts.length && parts[parts.length-1] === '') parts.pop();
+    parts.forEach(function(p, i){
+      var d = document.createElement('div');
+      d.className = 'out-line';
+      d.textContent = p;
+      d.style.animationDelay = (i * 0.08) + 's';
+      consoleBody.appendChild(d);
+    });
+  }
+  consoleBody.parentNode.scrollTop = consoleBody.parentNode.scrollHeight;
+}
+
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+  var prev = current > 0 ? STEPS[current-1] : null;
+
+  updateCode(step);
+  updateVars(step, prev);
+  updateArr(step);
+  updateOutput(current >= 0 && STEPS[current] ? STEPS[current].out : '');
+
+  if (step) {
+    var isMv  = (step.line === 9 || step.line === 15 || step.line === 22 || step.line === 27);
+    var isAns = (step.line === 3 || step.line === 4 || step.line === 19 || step.line === 31 || step.line === 32);
+    var cls = (step.skip && step.skip.length > 3) ? ' skip' : (isMv ? ' mv' : (isAns ? ' ans' : ''));
+
+    explainBody.innerHTML =
+      '<span class="ex-line' + cls + '">第 ' + step.line + ' 行</span>' +
+      '<strong>' + step.title + '</strong> —— ' + step.desc;
+    stepCounter.textContent = '步骤 ' + (current+1) + ' / ' + STEPS.length;
+  } else {
+    explainBody.innerHTML =
+      '<em>点击「▶ 播放」或「下一步」，开始逐条执行程序。<br>' +
+      '本程序把 <b>2×3 的二维数组</b> 展平成一维数组，用 <b>冒泡排序</b> 升序排好后，再装回二维数组并按行列输出。<br>' +
+      '· <b>输入</b>：<code>scanf("%d", &amp;a[1][2]);</code> → 本模拟输入 <b>4</b>；<br>' +
+      '· <b>数组</b>：<code>static int a[2][3] = {10,3,5,7,9};</code> → a[1][2] 自动补 0；<br>' +
+      '· <b>展平</b>：<code>for(i=0;i&lt;2;i++) for(j=0;j&lt;3;j++) b[k++]=a[i][j];</code>；<br>' +
+      '· <b>排序</b>：<code>for(j=0;j&lt;6;j++) for(i=0;i&lt;6-j;i++) if(b[i]&gt;b[i+1]) 交换;</code>；<br>' +
+      '· <b>装回</b>：<code>k=0; for(i=0;i&lt;2;i++) for(j=0;j&lt;3;j++) a[i][j]=b[k++];</code>；<br>' +
+      '· <b>输出</b>：每行 3 个数，行末 <code>printf("\\n");</code> 换行。<br>' +
+      '<b>预计输出：</b><code>Input number:4⏎3 4 5 ⏎7 9 10 ⏎</code></em>';
+    stepCounter.textContent = '步骤 — / ' + STEPS.length;
+  }
+
+  document.getElementById('btnPrev').disabled = current < 0;
+  document.getElementById('btnNext').disabled = current >= STEPS.length - 1;
+
+  centerActiveLine();
+  syncMinimap();
+}
+
+/* ================================================================
+   六、缩略图同步（真·视口荧光框）
+   ================================================================ */
+var rafPending = false;
+function syncMinimap(){
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(function(){
+    rafPending = false;
+    var total = codeStage.scrollHeight;
+    var clientH = codeStage.clientHeight;
+    var contentH = miniContent.offsetHeight || 1;
+    var maxScroll = Math.max(1, total - clientH);
+
+    var vpH = Math.max(10, (clientH / total) * contentH);
+    if (vpH > contentH) vpH = contentH;
+
+    var top = (codeStage.scrollTop / maxScroll) * Math.max(0, contentH - vpH);
+    miniViewport.style.top = top + 'px';
+    miniViewport.style.height = vpH + 'px';
+  });
+}
+
+codeStage.addEventListener('scroll', syncMinimap, {passive:true});
+window.addEventListener('resize', function(){ syncMinimap(); });
+if (window.ResizeObserver) {
+  new ResizeObserver(function(){ syncMinimap(); }).observe(codeStage);
+  new ResizeObserver(function(){ syncMinimap(); }).observe(miniContent);
+}
+
+/* 点击缩略图跳转 */
+miniContent.addEventListener('click', function(e){
+  var rect = miniContent.getBoundingClientRect();
+  var y = e.clientY - rect.top;
+  var contentH = miniContent.offsetHeight || 1;
+  var frac = Math.min(1, Math.max(0, y / contentH));
+  var maxScroll = Math.max(1, codeStage.scrollHeight - codeStage.clientHeight);
+  codeStage.scrollTop = frac * maxScroll;
+  syncMinimap();
+});
+
+/* ================================================================
+   七、播放控制
+   ================================================================ */
+var btnPlay  = document.getElementById('btnPlay');
+var btnPrev  = document.getElementById('btnPrev');
+var btnNext  = document.getElementById('btnNext');
+var btnReset = document.getElementById('btnReset');
+var speedInput = document.getElementById('speed');
+var speedLabel = document.getElementById('speedLabel');
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+function pause(){
+  playing = false;
+  clearInterval(timer); timer = null;
+  updatePlayBtn();
+}
+function tick(){
+  if (current >= STEPS.length - 1) { pause(); return; }
+  current++;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length - 1) { current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  clearInterval(timer);
+  timer = setInterval(tick, speed);
+  tick();
+}
+function nextStep(){ pause(); if (current < STEPS.length - 1) { current++; render(); } }
+function prevStep(){ pause(); if (current > -1) { current--; render(); } }
+function resetAll(){
+  pause();
+  current = -1;
+  lastOutText = null;
+  consoleBody.innerHTML = '';
+  codeStage.scrollTop = 0;
+  codeStage.scrollLeft = 0;
+  render();
+}
+
+btnPlay.addEventListener('click', function(){ playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+  if (playing) { clearInterval(timer); timer = setInterval(tick, speed); }
+});
+
+/* ================================================================
+   八、面板：拖动 / 缩放 / 置顶 / 关闭
+   ================================================================ */
+var zTop = 100;
+function bringToFront(el){
+  zTop++;
+  el.style.zIndex = zTop;
+  document.querySelectorAll('[data-panel]').forEach(function(p){
+    p.classList.toggle('active-panel', p === el);
+  });
+}
+
+var panels = Array.prototype.slice.call(document.querySelectorAll('[data-panel]'));
+
+panels.forEach(function(panel){
+  /* ---- 点击置顶 ---- */
+  panel.addEventListener('pointerdown', function(){ bringToFront(panel); }, true);
+
+  /* ---- 拖动 ---- */
+  var head = panel.querySelector('[data-drag]');
+  if (head) {
+    var dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+    head.addEventListener('pointerdown', function(e){
+      if (e.target.closest('[data-close]')) return;
+      if (e.button !== undefined && e.button !== 0) return;
+      var r = panel.getBoundingClientRect();
+      panel.style.left = r.left + 'px';
+      panel.style.top  = r.top  + 'px';
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      dragging = true; ox = r.left; oy = r.top; sx = e.clientX; sy = e.clientY;
+      try { head.setPointerCapture(e.pointerId); } catch(_){}
+      e.preventDefault();
+    });
+    head.addEventListener('pointermove', function(e){
+      if (!dragging) return;
+      panel.style.left = (ox + e.clientX - sx) + 'px';
+      panel.style.top  = (oy + e.clientY - sy) + 'px';
+    });
+    var endDrag = function(e){
+      dragging = false;
+      try { head.releasePointerCapture(e.pointerId); } catch(_){}
+    };
+    head.addEventListener('pointerup', endDrag);
+    head.addEventListener('pointercancel', function(){ dragging = false; });
+  }
+
+  /* ---- 缩放（无最小/最大限制） ---- */
+  var rz = panel.querySelector('[data-resize]');
+  if (rz) {
+    var resizing = false, rsx = 0, rsy = 0, row = 0, roh = 0;
+    rz.addEventListener('pointerdown', function(e){
+      var r = panel.getBoundingClientRect();
+      panel.style.left = r.left + 'px';
+      panel.style.top  = r.top + 'px';
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      resizing = true; row = r.width; roh = r.height;
+      rsx = e.clientX; rsy = e.clientY;
+      try { rz.setPointerCapture(e.pointerId); } catch(_){}
+      e.preventDefault(); e.stopPropagation();
+    });
+    rz.addEventListener('pointermove', function(e){
+      if (!resizing) return;
+      panel.style.width  = Math.max(0, row + e.clientX - rsx) + 'px';
+      panel.style.height = Math.max(0, roh + e.clientY - rsy) + 'px';
+    });
+    var endRz = function(e){
+      resizing = false;
+      try { rz.releasePointerCapture(e.pointerId); } catch(_){}
+      syncMinimap();
+    };
+    rz.addEventListener('pointerup', endRz);
+    rz.addEventListener('pointercancel', function(){ resizing = false; });
+  }
+
+  /* ---- 关闭 ---- */
+  var closeBtn = panel.querySelector('[data-close]');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      panel.dataset.closed = '1';
+      panel.style.display = 'none';
+    });
+  }
+});
+
+/* ---- 显示 / 隐藏切换 ---- */
+var panelsHidden = false;
+var panelTools   = document.getElementById('panelTools');
+var panelVars    = document.getElementById('panelVars');
+var panelOut     = document.getElementById('panelOut');
+var panelExplain = document.getElementById('panelExplain');
+var panelMini    = document.getElementById('panelMini');
+
+function toggleAllPanels(){
+  panelsHidden = !panelsHidden;
+  panels.forEach(function(p){
+    if (panelsHidden) {
+      p.style.display = 'none';
+    } else {
+      p.style.display = (p.dataset.closed === '1') ? 'none' : '';
+    }
+  });
+  syncMinimap();
+}
+
+function toggleMini(){
+  var hidden = (panelMini.style.display === 'none');
+  if (hidden) {
+    panelMini.style.display = '';
+    panelMini.dataset.closed = '0';
+  } else {
+    panelMini.style.display = 'none';
+    panelMini.dataset.closed = '1';
+  }
+  syncMinimap();
+}
+
+document.getElementById('btnPanels').addEventListener('click', toggleAllPanels);
+document.getElementById('btnMini').addEventListener('click', toggleMini);
+
+/* ---- 全屏 ---- */
+document.getElementById('btnFull').addEventListener('click', function(){
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+  } else {
+    document.exitFullscreen && document.exitFullscreen();
+  }
+});
+
+/* ---- 重置布局 ---- */
+function setRect(el, left, top, w, h){
+  el.style.right = 'auto';
+  el.style.bottom = 'auto';
+  el.style.left = left + 'px';
+  el.style.top  = top + 'px';
+  if (w === null) { el.style.width = ''; } else { el.style.width = w + 'px'; }
+  if (h === null) { el.style.height = ''; } else { el.style.height = h + 'px'; }
+}
+
+function resetLayout(){
+  var W = window.innerWidth, H = window.innerHeight;
+
+  setRect(panelTools, 12, 12, null, null);
+
+  var varsW = Math.min(860, Math.round(W * 0.44));
+  setRect(panelVars, W - varsW - 12, 12, varsW, Math.round((H - 36) * 0.55));
+
+  var outTop = 12 + Math.round((H - 36) * 0.55) + 12;
+  setRect(panelOut, W - varsW - 12, outTop, varsW, Math.round((H - 36) * 0.45));
+
+  setRect(panelMini, 12, 220, 220, 320);
+
+  var expW = Math.min(W - varsW - 60, Math.round(W * 0.56));
+  setRect(panelExplain, 12, H - 300, expW, 288);
+
+  panels.forEach(function(p){
+    p.style.display = (p.dataset.closed === '1') ? 'none' : '';
+    p.classList.remove('active-panel');
+  });
+  zTop = 100;
+  panels.forEach(function(p, i){ p.style.zIndex = 100 + i; });
+
+  syncMinimap();
+}
+document.getElementById('btnLayout').addEventListener('click', function(){
+  panels.forEach(function(p){ p.dataset.closed = '0'; });
+  panelsHidden = false;
+  resetLayout();
+});
+
+/* ================================================================
+   九、全局快捷键
+   ================================================================ */
+document.addEventListener('keydown', function(e){
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+  switch (e.code) {
+    case 'Space':       e.preventDefault(); playing ? pause() : play(); break;
+    case 'ArrowRight':  e.preventDefault(); nextStep(); break;
+    case 'ArrowLeft':   e.preventDefault(); prevStep(); break;
+    case 'KeyR':        e.preventDefault(); resetAll(); break;
+    case 'KeyF':        e.preventDefault();
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+      } else {
+        document.exitFullscreen && document.exitFullscreen();
+      }
+      break;
+    case 'KeyM':        e.preventDefault(); toggleMini(); break;
+    case 'KeyH':        e.preventDefault(); toggleAllPanels(); break;
+  }
+});
+
+/* ================================================================
+   十、启动
+   ================================================================ */
+speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+resetLayout();
+render();
+setTimeout(syncMinimap, 120);
+window.addEventListener('load', function(){ setTimeout(syncMinimap, 200); });
+
+})();
+</script>
+</body>
+</html>

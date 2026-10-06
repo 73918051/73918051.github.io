@@ -1,0 +1,1673 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 无限循环 + 奇偶统计 + 交换标记 · 输入整数分析（希沃大屏版）</title>
+<style>
+  :root{
+    --code-font: clamp(44px, 4.2vw, 118px);        /* 1920 下 ≈ 80.6px */
+    --line-h: calc(var(--code-font) * 1.62);
+    --out-font: clamp(40px, 4vw, 100px);           /* 1920 下 ≈ 76.8px */
+    --var-font: clamp(22px, 2.0vw, 42px);
+    --explain-font: clamp(26px, 2.5vw, 56px);
+    --btn-font: clamp(22px, 2.0vw, 42px);
+    --title-font: clamp(26px, 2.8vw, 58px);
+    --mini-font: clamp(5px, 0.42vw, 11px);
+    --bg:#0d1117;
+    --accent:#38bdf8;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;}
+  body{
+    background:var(--bg);
+    color:#dce8f8;
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  }
+
+  /* ============ 全屏代码区 ============ */
+  .code-viewport{
+    position:fixed; inset:0;
+    overflow:auto;
+    background:var(--bg);
+    z-index:1;
+    scrollbar-width:thin;
+    scrollbar-color:#2c3f5e transparent;
+  }
+  .code-viewport::-webkit-scrollbar{width:16px;height:16px;}
+  .code-viewport::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+  .code-viewport::-webkit-scrollbar-track{background:transparent;}
+
+  .code-content{width:max-content;min-width:100%;}
+
+  .code-line{
+    display:flex;
+    align-items:center;
+    height:var(--line-h);
+    white-space:pre;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:var(--code-font);
+    line-height:1;
+    padding:0 1em 0 .35em;
+    border-left:8px solid transparent;
+    transition:background .22s,border-color .22s,opacity .22s;
+  }
+  .code-line .ln{
+    flex:0 0 auto;
+    width:3.6ch;
+    text-align:right;
+    margin-right:.9ch;
+    color:#3f5a7d;
+    font-size:.7em;
+    font-variant-numeric:tabular-nums;
+    user-select:none;
+  }
+  .code-line .src{flex:1 1 auto;}
+
+  .code-line.active{
+    background:linear-gradient(90deg,rgba(56,189,248,.30),rgba(56,189,248,.03));
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 3px rgba(56,189,248,.40);
+  }
+  .code-line.active .src{color:#ffffff;}
+  .code-line.active .ln{color:var(--accent);font-weight:800;}
+
+  .code-line.hit{
+    background:linear-gradient(90deg,rgba(74,222,128,.18),rgba(74,222,128,0));
+    border-left-color:#4ade80;
+  }
+  .code-line.hit .ln{color:#4ade80;}
+
+  .code-line.skip{opacity:.22;}
+
+  /* 语法高亮 */
+  .pp{color:#c084fc;font-weight:700;}
+  .str{color:#4ade80;}
+  .cmt{color:#6b7f99;font-style:italic;}
+  .fn{color:#38bdf8;}
+  .kw{color:#f472b6;font-weight:700;}
+  .num{color:#fbbf24;}
+  .op{color:#fb923c;font-weight:700;}
+
+  /* ============ 悬浮面板通用 ============ */
+  .panel{
+    position:fixed;
+    z-index:100;
+    background:rgba(13,17,23,.82);
+    -webkit-backdrop-filter:blur(14px);
+    backdrop-filter:blur(14px);
+    border:2px solid rgba(56,189,248,.25);
+    border-radius:14px;
+    display:flex;flex-direction:column;
+    overflow:hidden;
+    box-shadow:0 12px 44px rgba(0,0,0,.66);
+    transition:border-color .18s,box-shadow .18s,background .18s;
+  }
+  .panel.active{
+    border-color:var(--accent);
+    box-shadow:0 0 0 4px rgba(56,189,248,.28),0 18px 60px rgba(0,0,0,.82);
+    background:rgba(13,17,23,.96);
+  }
+  .panel.hidden{display:none;}
+
+  .panel-head{
+    flex:0 0 auto;
+    display:flex;align-items:center;gap:.6rem;
+    padding:.32em .7em;
+    background:rgba(30,47,73,.72);
+    cursor:move;
+    user-select:none;
+    touch-action:none;
+    border-bottom:1px solid rgba(56,189,248,.18);
+  }
+  .panel-title{
+    font-size:var(--title-font);
+    font-weight:700;
+    color:#dce8f8;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .panel-close{
+    margin-left:auto;flex:0 0 auto;
+    min-width:48px;min-height:48px;
+    display:flex;align-items:center;justify-content:center;
+    border-radius:10px;
+    border:1px solid rgba(248,113,113,.55);
+    background:rgba(248,113,113,.16);
+    color:#fca5a5;
+    font-size:calc(var(--btn-font) * .9);
+    line-height:1;
+    cursor:pointer;
+    font-family:inherit;
+  }
+  .panel-close:hover{background:rgba(248,113,113,.40);color:#fff;}
+
+  .panel-body{
+    flex:1 1 auto;
+    min-height:0;
+    overflow:auto;
+    padding:.5rem .7rem;
+    scrollbar-width:thin;
+    scrollbar-color:#2c3f5e transparent;
+  }
+  .panel-body::-webkit-scrollbar{width:12px;height:12px;}
+  .panel-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:6px;}
+
+  .resize-handle{
+    position:absolute;right:0;bottom:0;
+    width:52px;height:52px;
+    cursor:nwse-resize;
+    touch-action:none;
+    z-index:6;
+  }
+  .resize-handle::after{
+    content:'';
+    position:absolute;right:9px;bottom:9px;
+    width:22px;height:22px;
+    border-right:4px solid rgba(56,189,248,.85);
+    border-bottom:4px solid rgba(56,189,248,.85);
+    border-radius:0 0 6px 0;
+  }
+
+  /* ============ 控制栏按钮 ============ */
+  .ctl-row{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem;}
+  .ctl-btn{
+    font:inherit;
+    font-size:var(--btn-font);
+    padding:.28em .7em;
+    border-radius:10px;
+    border:1px solid rgba(56,189,248,.35);
+    background:rgba(30,47,73,.82);
+    color:#dce8f8;
+    cursor:pointer;
+    min-height:56px;
+    white-space:nowrap;
+    transition:background .15s,border-color .15s,transform .1s;
+  }
+  .ctl-btn:hover:not(:disabled){background:rgba(56,189,248,.28);border-color:var(--accent);}
+  .ctl-btn:active:not(:disabled){transform:translateY(2px);}
+  .ctl-btn:disabled{opacity:.32;cursor:not-allowed;}
+  .ctl-btn.primary{
+    background:linear-gradient(180deg,#0ea5e9,#0284c7);
+    border-color:#7dd3fc;color:#04121f;font-weight:800;
+  }
+  .ctl-btn.primary.playing{
+    background:linear-gradient(180deg,#f59e0b,#d97706);
+    border-color:#fbbf24;color:#1a1200;
+  }
+  .speed-wrap{
+    display:flex;align-items:center;gap:.45rem;
+    font-size:var(--btn-font);color:#7d93b3;white-space:nowrap;
+  }
+  .speed-wrap input{
+    width:clamp(110px,9vw,240px);
+    accent-color:var(--accent);
+    cursor:pointer;
+    height:42px;
+  }
+  .speed-wrap b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:3.4em;display:inline-block;}
+
+  /* ============ 变量表 ============ */
+  .var-row{
+    display:flex;justify-content:space-between;align-items:center;gap:.6rem;
+    padding:.14em .6em;
+    border-radius:8px;
+    background:rgba(13,23,40,.88);
+    border:1px solid rgba(30,47,73,.95);
+    font-size:var(--var-font);
+    margin-bottom:.14em;
+    transition:background .25s,border-color .25s;
+  }
+  .var-row.k-ctx  {border-left:6px solid rgba(34,211,238,.8);}
+  .var-row.k-main {border-left:6px solid rgba(56,189,248,.8);}
+  .var-row.k-val  {border-left:6px solid rgba(244,114,182,.9);}
+  .var-row.k-sw   {border-left:6px solid rgba(45,212,191,.9);}
+  .var-row.k-money{border-left:6px solid rgba(251,191,36,.95);}
+  .var-row.k-sub  {border-left:6px solid rgba(192,132,252,.9);}
+  .var-row.k-note {border-left:6px solid rgba(45,212,191,.7);}
+  .var-row.k-ret  {border-left:6px solid rgba(251,191,36,.5);}
+  .var-row.changed{border-color:rgba(56,189,248,.95);background:rgba(56,189,248,.16);}
+  .var-name{color:#7d93b3;white-space:nowrap;}
+  .var-value{
+    font-family:ui-monospace,Consolas,monospace;
+    font-weight:800;
+    color:var(--accent);
+    text-align:right;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    max-width:62%;
+  }
+  .var-value.dim{color:#5f7796;font-weight:500;}
+  .var-row.k-ctx   .var-value{color:#4ade80;}
+  .var-row.k-val   .var-value{color:#f472b6;}
+  .var-row.k-sw    .var-value{color:#2dd4bf;}
+  .var-row.k-money .var-value{color:#fbbf24;}
+  .var-row.k-sub   .var-value{color:#c084fc;}
+  .var-row.k-note  .var-value{color:#2dd4bf;font-weight:600;}
+  .var-row.k-ret   .var-value{color:#fbbf24;}
+
+  @keyframes flash{
+    0%{transform:scale(1);}
+    35%{transform:scale(1.22);color:#fff;text-shadow:0 0 18px var(--accent);}
+    100%{transform:scale(1);}
+  }
+  .var-value.flash{animation:flash .55s ease-out;}
+
+  /* ============ 输出区 ============ */
+  .console{
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:var(--out-font);
+    line-height:1.35;
+    font-weight:800;
+    color:#fbbf24;
+    white-space:pre-wrap;
+    word-break:break-all;
+  }
+  .out-line{animation:slideIn .35s ease-out;}
+  @keyframes slideIn{from{opacity:0;transform:translateX(-1rem);}to{opacity:1;transform:none;}}
+
+  /* ============ 说明条 ============ */
+  .explain{font-size:var(--explain-font);line-height:1.5;color:#b8c9e0;}
+  .explain strong{color:#eaf3ff;}
+  .explain code{
+    font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.18);
+    border-radius:6px;
+    padding:0 .3em;
+    color:#e2e8f0;
+  }
+  .ex-tag{
+    display:inline-block;
+    margin-right:.5em;
+    padding:.05em .5em;
+    border-radius:8px;
+    background:rgba(56,189,248,.20);
+    color:var(--accent);
+    font-weight:800;
+    font-size:.8em;
+    vertical-align:middle;
+  }
+  .ex-tag.hit{background:rgba(74,222,128,.22);color:#4ade80;}
+  .ex-tag.ans{background:rgba(251,191,36,.26);color:#fbbf24;}
+  .explain .tip{
+    display:block;margin-top:.5em;padding:.4em .6em;border-radius:8px;
+    background:rgba(45,212,191,.12);border-left:6px solid #2dd4bf;color:#bff5ec;
+  }
+  .explain .warn{
+    display:block;margin-top:.5em;padding:.4em .6em;border-radius:8px;
+    background:rgba(251,191,36,.13);border-left:6px solid #fbbf24;color:#ffe6b0;
+  }
+
+  /* ============ 缩略图（保留缩进） ============ */
+  .mini-body{padding:0 !important;overflow:hidden !important;}
+  .mini-inner{
+    position:relative;width:100%;height:100%;
+    display:flex;flex-direction:column;
+    background:rgba(5,9,18,.55);
+  }
+  .mini-line{
+    flex:1 1 0;
+    min-height:0;
+    overflow:hidden;
+    display:flex;
+    align-items:center;
+    font-family:ui-monospace,Consolas,monospace;
+    font-size:var(--mini-font);
+    line-height:1;
+    padding:0 4px;
+    border-left:3px solid transparent;
+    white-space:nowrap;
+  }
+  .mini-src{
+    flex:1 1 auto;
+    min-width:0;
+    display:block;
+    white-space:pre;
+    overflow:hidden;
+  }
+  .mini-line.cur{
+    background:rgba(56,189,248,.35);
+    border-left-color:#38bdf8;
+    box-shadow:inset 0 0 0 2px rgba(56,189,248,.7);
+  }
+  .mini-viewport{
+    position:absolute;left:0;right:0;
+    pointer-events:none;
+    background:rgba(56,189,248,.16);
+    border-top:3px solid #38bdf8;
+    border-bottom:3px solid #38bdf8;
+    box-shadow:0 0 22px rgba(56,189,248,.55);
+    z-index:3;
+  }
+</style>
+</head>
+<body>
+
+<!-- ================= 全屏代码区 ================= -->
+<div class="code-viewport" id="codeViewport">
+  <div class="code-content" id="codeContent">
+
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span></span></div>
+    <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">int</span> m;                             <span class="cmt">// 定义输入变量（未初始化）</span></span></div>
+    <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">int</span> count<span class="op">=</span><span class="num">0</span>, count1<span class="op">=</span><span class="num">0</span>, count2<span class="op">=</span><span class="num">0</span>;   <span class="cmt">// 三个计数器清零（count 含最后的 0）</span></span></div>
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    <span class="kw">int</span> flag<span class="op">=</span><span class="num">0</span>, temp;                  <span class="cmt">// flag=0（未交换）；temp 未初始化</span></span></div>
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    <span class="fn">printf</span>(<span class="str">"Please input m: \n"</span>);      <span class="cmt">// 输出提示并换行（printf 第 1 次）</span></span></div>
+    <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">    <span class="kw">for</span> ( ; ; ) {                      <span class="cmt">// 无限循环：无终止条件，靠 break 退出</span></span></div>
+    <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">        <span class="fn">scanf</span>(<span class="str">"%d"</span>, <span class="op">&amp;</span>m);               <span class="cmt">// 从输入读入一个整数到 m</span></span></div>
+    <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">        count<span class="op">++</span>;                       <span class="cmt">// 总数加 1（在 if 之前，0 也被计入）</span></span></div>
+    <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">        <span class="kw">if</span> (m) {                       <span class="cmt">// m 非 0 才统计；m=0 走 else break</span></span></div>
+    <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">            <span class="kw">if</span> (m <span class="op">%</span> <span class="num">2</span>) {               <span class="cmt">// 余 1 是奇数，余 0 是偶数</span></span></div>
+    <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">                count1<span class="op">++</span>;              <span class="cmt">// 奇数个数加 1</span></span></div>
+    <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">            } <span class="kw">else</span> {                    <span class="cmt">// 否则（偶数）</span></span></div>
+    <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">                count2<span class="op">++</span>;              <span class="cmt">// 偶数个数加 1</span></span></div>
+    <div class="code-line" data-line="15"><span class="ln">15</span><span class="src">            }                          <span class="cmt">// 结束 if (m % 2)</span></span></div>
+    <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">        } <span class="kw">else</span> {                        <span class="cmt">// m 为 0</span></span></div>
+    <div class="code-line" data-line="17"><span class="ln">17</span><span class="src">            <span class="kw">break</span>;                     <span class="cmt">// 立即跳出 for(;;)（唯一出口）</span></span></div>
+    <div class="code-line" data-line="18"><span class="ln">18</span><span class="src">        }                              <span class="cmt">// 结束 if (m)</span></span></div>
+    <div class="code-line" data-line="19"><span class="ln">19</span><span class="src">        <span class="kw">if</span> ((count<span class="op">-</span><span class="num">1</span>) <span class="op">%</span> <span class="num">2</span>) {            <span class="cmt">// 除 0 外已读个数为奇数 → 交换</span></span></div>
+    <div class="code-line" data-line="20"><span class="ln">20</span><span class="src">            temp <span class="op">=</span> count1;             <span class="cmt">// 交换第 1 步：备份 count1</span></span></div>
+    <div class="code-line" data-line="21"><span class="ln">21</span><span class="src">            count1 <span class="op">=</span> count2;           <span class="cmt">// 交换第 2 步：count1 ← count2</span></span></div>
+    <div class="code-line" data-line="22"><span class="ln">22</span><span class="src">            count2 <span class="op">=</span> temp;            <span class="cmt">// 交换第 3 步：count2 ← temp</span></span></div>
+    <div class="code-line" data-line="23"><span class="ln">23</span><span class="src">            flag <span class="op">=</span> <span class="num">1</span>;                  <span class="cmt">// 标记已交换</span></span></div>
+    <div class="code-line" data-line="24"><span class="ln">24</span><span class="src">        }                              <span class="cmt">// 结束 if ((count-1) % 2)</span></span></div>
+    <div class="code-line" data-line="25"><span class="ln">25</span><span class="src">    }                                  <span class="cmt">// 结束 for(;;)</span></span></div>
+    <div class="code-line" data-line="26"><span class="ln">26</span><span class="src">    <span class="kw">if</span> (flag <span class="op">==</span> <span class="num">0</span>) {                    <span class="cmt">// flag=0：未交换，走正常输出</span></span></div>
+    <div class="code-line" data-line="27"><span class="ln">27</span><span class="src">        <span class="fn">printf</span>(<span class="str">"Total number:%d \n"</span>, count<span class="op">-</span><span class="num">1</span>); <span class="cmt">// 输出总数（不含 0）</span></span></div>
+    <div class="code-line" data-line="28"><span class="ln">28</span><span class="src">        <span class="fn">printf</span>(<span class="str">"Odd number:%d \n"</span>, count1);   <span class="cmt">// 输出奇数个数</span></span></div>
+    <div class="code-line" data-line="29"><span class="ln">29</span><span class="src">        <span class="fn">printf</span>(<span class="str">"Even number:%d \n"</span>, count2);  <span class="cmt">// 输出偶数个数</span></span></div>
+    <div class="code-line" data-line="30"><span class="ln">30</span><span class="src">    } <span class="kw">else</span> {                           <span class="cmt">// flag=1：已交换，走"开玩笑"分支</span></span></div>
+    <div class="code-line" data-line="31"><span class="ln">31</span><span class="src">        <span class="fn">printf</span>(<span class="str">"Hahaha...Odd:%d,Even:%d"</span>, count1, count2); <span class="cmt">// 输出（printf 第 2 次，无换行）</span></span></div>
+    <div class="code-line" data-line="32"><span class="ln">32</span><span class="src">    }                                  <span class="cmt">// 结束 if-else</span></span></div>
+    <div class="code-line" data-line="33"><span class="ln">33</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                          <span class="cmt">// 返回 0，程序正常结束</span></span></div>
+    <div class="code-line" data-line="34"><span class="ln">34</span><span class="src">}                                      <span class="cmt">// main 结束，栈帧销毁</span></span></div>
+
+  </div>
+</div>
+
+<!-- ================= 顶部控制栏 ================= -->
+<div class="panel" id="panelTop">
+  <div class="panel-head">
+    <span class="panel-title">控制台</span>
+    <button class="panel-close" data-close="panelTop">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="ctl-row">
+      <button class="ctl-btn" id="btnReset">⟲ 重置</button>
+      <button class="ctl-btn" id="btnPrev">◀ 上一步</button>
+      <button class="ctl-btn primary" id="btnPlay">▶ 自动播放</button>
+      <button class="ctl-btn" id="btnNext">下一步 ▶</button>
+      <span class="speed-wrap">速度
+        <input type="range" id="speed" min="300" max="3000" step="50" value="1200">
+        <b id="speedLabel">1.20s</b>
+      </span>
+      <button class="ctl-btn" id="btnFull">⛶ 全屏</button>
+      <button class="ctl-btn" id="btnToggleMini">▣ 缩略图</button>
+      <button class="ctl-btn" id="btnToggleAll">☰ 面板</button>
+      <button class="ctl-btn" id="btnResetLayout">↺ 重置布局</button>
+    </div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 变量面板 ================= -->
+<div class="panel" id="panelVars">
+  <div class="panel-head">
+    <span class="panel-title">变量 · 循环条件 · 状态表</span>
+    <button class="panel-close" data-close="panelVars">×</button>
+  </div>
+  <div class="panel-body" id="varTable"></div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 缩略图 ================= -->
+<div class="panel" id="panelMini">
+  <div class="panel-head">
+    <span class="panel-title">代码缩略图</span>
+    <button class="panel-close" data-close="panelMini">×</button>
+  </div>
+  <div class="panel-body mini-body">
+    <div class="mini-inner" id="miniInner">
+      <div class="mini-viewport" id="miniViewport"></div>
+    </div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 输出面板 ================= -->
+<div class="panel" id="panelOut">
+  <div class="panel-head">
+    <span class="panel-title">程序运行结果（屏幕输出）</span>
+    <button class="panel-close" data-close="panelOut">×</button>
+  </div>
+  <div class="panel-body" id="consoleBody">
+    <div class="console" id="consoleText"></div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<!-- ================= 说明条 ================= -->
+<div class="panel" id="panelExplain">
+  <div class="panel-head">
+    <span class="panel-title">当前语句说明</span>
+    <button class="panel-close" data-close="panelExplain">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="explain" id="explainText"></div>
+  </div>
+  <div class="resize-handle"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   一、逐步执行轨迹
+   演示输入：2、4、0
+   真实输出：2 行（Please input m:   +   Hahaha...Odd:2,Even:0）
+   printf 共 2 次；最终 m=0、count=3、count1=2、count2=0、flag=1、temp=0
+   ========================================================= */
+var STEPS = [];
+var consoleLines = [];
+
+function V(o){
+  var base = {
+    ctx:'—', m:'—', count:'—', count1:'—', count2:'—', flag:'—', temp:'—',
+    condLoop:'—', condM:'—', condMod:'—', condFlag:'—',
+    expr:'—', exprVal:'—', note:'—', printfCnt:'0', ret:'—'
+  };
+  if(o){ for(var k in o){ if(Object.prototype.hasOwnProperty.call(o,k)) base[k]=o[k]; } }
+  return base;
+}
+function push(o){
+  STEPS.push({
+    line:o.line, ctx:o.ctx, vars:V(o.vars),
+    out:consoleLines.slice(),
+    hit:o.hit||[], skip:o.skip||[],
+    title:o.title, desc:o.desc
+  });
+}
+
+/* ---------- 第 1 行 ---------- */
+push({
+  line:1, ctx:'预处理阶段',
+  vars:{ note:'预处理指令，编译前处理，不占运行时间' },
+  hit:[], skip:[],
+  title:'#include &lt;stdio.h&gt; —— 引入标准输入输出头文件',
+  desc:'预处理器在编译之前把 <code>stdio.h</code> 的内容引入本文件，让后面的 <code>printf</code> 和 <code>scanf</code> 有函数声明可用。<br>这一行不是可执行语句，不产生任何屏幕输出。'
+});
+
+/* ---------- 第 2 行 ---------- */
+push({
+  line:2, ctx:'main · 程序入口',
+  vars:{ note:'main 是程序入口，从这里开始执行' },
+  hit:[], skip:[],
+  title:'int main() { —— 主函数入口',
+  desc:'操作系统把控制权交给 <code>main</code>，系统为它建立<b>栈帧</b>，变量 m、count、count1、count2、flag、temp 都存放在这个栈帧里。'
+});
+
+/* ---------- 第 3 行 ---------- */
+push({
+  line:3, ctx:'main · 声明输入变量',
+  vars:{ m:'未初始化（不定值）', note:'m 用来存放 scanf 读入的整数' },
+  hit:[3], skip:[],
+  title:'int m; —— 声明输入变量 m',
+  desc:'声明一个 <b>int</b> 变量 m，用来接收 <code>scanf</code> 从键盘读入的整数。<br>此时 m 还没有被赋值，<b>是不定值</b>。'
+});
+
+/* ---------- 第 4 行 ---------- */
+push({
+  line:4, ctx:'main · 声明并初始化三个计数器',
+  vars:{
+    m:'未初始化（不定值）',
+    count:'0', count1:'0', count2:'0',
+    note:'count=总数（含最后的 0）；count1=奇数个数；count2=偶数个数'
+  },
+  hit:[4], skip:[],
+  title:'int count=0, count1=0, count2=0; —— 三个计数器清零',
+  desc:'一次声明 <b>3 个</b>统计变量，并都初始化为 <b>0</b>：<br>· <b>count</b>：输入总个数（<b>包含最后的 0</b>）；<br>· <b>count1</b>：奇数个数；<br>· <b>count2</b>：偶数个数。<span class="tip"><b>为什么 count 要包含 0？</b>因为后面第 9 行 <code>count++</code> 在第 10 行 <code>if(m)</code> 之前，0 也会被计入。等到最后输出总数时会用 <code>count-1</code> 把 0 减掉。</span>'
+});
+
+/* ---------- 第 5 行 ---------- */
+push({
+  line:5, ctx:'main · 声明标记和临时变量',
+  vars:{
+    m:'未初始化（不定值）',
+    count:'0', count1:'0', count2:'0',
+    flag:'0', temp:'未初始化（不定值）',
+    note:'flag=0 表示"还没交换过"；temp 用于三步骤交换'
+  },
+  hit:[5], skip:[],
+  title:'int flag=0, temp; —— 声明 flag 和 temp',
+  desc:'声明两个 <b>int</b> 变量：<br>· <b>flag</b>：初值 <b>0</b>，代表"还没发生过交换"；<br>· <b>temp</b>：未初始化，用来在交换 count1 和 count2 时临时存放数据。'
+});
+
+/* ---------- 第 6 行：printf 提示（第 1 次 printf） ---------- */
+consoleLines.push('Please input m: ');
+push({
+  line:6, ctx:'main · printf 输出提示（第 1 次 printf）',
+  vars:{
+    m:'未初始化（不定值）',
+    count:'0', count1:'0', count2:'0',
+    flag:'0', temp:'未初始化（不定值）',
+    expr:'printf("Please input m: \\n")',
+    exprVal:'向屏幕输出 "Please input m: " 并换行',
+    printfCnt:'1',
+    note:'屏幕出现第 1 行输出'
+  },
+  hit:[6], skip:[],
+  title:'printf("Please input m: \\n")  →  输出 Please input m:',
+  desc:'<code>printf("Please input m: \\n");</code> 向屏幕输出提示文字：<br>· 屏幕出现 <b>Please input m: </b>（<code>\\n</code> 让它换行）；<br>· 这一句只是提示，<b>不读取任何输入</b>；<br>· 这是本程序的<b>第 1 次 printf 调用</b>。'
+});
+
+/* ---------- 第 7 行：进入 for(;;) ---------- */
+push({
+  line:7, ctx:'main · 进入无限循环 for(;;)',
+  vars:{
+    m:'未初始化（不定值）',
+    count:'0', count1:'0', count2:'0',
+    flag:'0', temp:'未初始化（不定值）',
+    condLoop:'for(;;) 无终止条件 → 永远为真',
+    note:'唯一的出口是第 17 行的 break'
+  },
+  hit:[7], skip:[],
+  title:'for ( ; ; ) —— 进入无限循环',
+  desc:'这是一个<b>无限循环</b>：<code>for(;;)</code> 三个表达式都省略，条件永远为真。<br>程序会一轮一轮地读入整数并统计，<b>唯一的出口</b>是当读入 0 时执行第 17 行的 <code>break;</code>。'
+});
+
+/* ---------- 第 8 行：scanf（第 1 次，m=2） ---------- */
+push({
+  line:8, ctx:'main · scanf 读取第 1 个整数（m = 2）',
+  vars:{
+    m:'2',
+    count:'0', count1:'0', count2:'0',
+    flag:'0', temp:'未初始化（不定值）',
+    condLoop:'for(;;) → 真',
+    expr:'scanf("%d", &m)',
+    exprVal:'从输入读入 2，存到 m',
+    printfCnt:'1',
+    note:'第 1 次输入；用户输入 2'
+  },
+  hit:[8], skip:[],
+  title:'scanf("%d", &amp;m)  →  读入 m = 2',
+  desc:'<code>scanf("%d", &amp;m);</code> 从输入读取一个整数到变量 m。<br>· 用户输入 <b>2</b>，所以 m = <b>2</b>；<br>· 读入后的整数会覆盖 m 之前的值（此处 m 之前是不定值）；<br>· <code>&amp;</code> 是<b>取地址运算符</b>，不能省略。'
+});
+
+/* ---------- 第 9 行：count++ ---------- */
+push({
+  line:9, ctx:'main · count 加 1（第 1 轮）',
+  vars:{
+    m:'2',
+    count:'1', count1:'0', count2:'0',
+    flag:'0', temp:'未初始化（不定值）',
+    condLoop:'for(;;) → 真',
+    expr:'count++',
+    exprVal:'count 从 0 变成 1',
+    printfCnt:'1',
+    note:'count++ 在 if(m) 之前，0 也会被计入'
+  },
+  hit:[9], skip:[],
+  title:'count++  →  count = 1',
+  desc:'<code>count++</code> 让 count 从 0 变成 <b>1</b>。<span class="warn">注意：这一句在 <code>if(m)</code> 之前，所以 <b>0 也会被计入 count</b>。这就是为什么最后输出总数时要用 <code>count-1</code> 把 0 减掉。</span>'
+});
+
+/* ---------- 第 10 行：if(m) 真 ---------- */
+push({
+  line:10, ctx:'main · 判断 m 是否为 0（第 1 轮）',
+  vars:{
+    m:'2',
+    count:'1', count1:'0', count2:'0',
+    flag:'0', temp:'未初始化（不定值）',
+    condLoop:'for(;;) → 真',
+    condM:'if (m)  →  m = 2，2 为真',
+    expr:'if (m)',
+    exprVal:'2 非 0 → 真，进入 if 体',
+    printfCnt:'1',
+    note:'m 非 0 才统计奇偶；m = 0 时跳到 else 执行 break'
+  },
+  hit:[10], skip:[],
+  title:'if (m)  →  m = 2 ≠ 0 → 真',
+  desc:'在 C 语言中，非 0 为真、0 为假。<br>· m = <b>2</b>，2 是<b>非 0</b>，条件为真；<br>· 进入 <code>if</code> 体，继续判断奇偶性。'
+});
+
+/* ---------- 第 11 行：if(m%2) 假 ---------- */
+push({
+  line:11, ctx:'main · 判断 m 的奇偶性（第 1 轮）',
+  vars:{
+    m:'2',
+    count:'1', count1:'0', count2:'0',
+    flag:'0', temp:'未初始化（不定值）',
+    condLoop:'for(;;) → 真',
+    condM:'if (m) → 真',
+    condMod:'if (m % 2)  →  2 % 2 = 0 → 假',
+    expr:'if (m % 2)',
+    exprVal:'2 % 2 = 0 → 假，进入 else 分支',
+    printfCnt:'1',
+    note:'m % 2 = 1 表示奇数，= 0 表示偶数'
+  },
+  hit:[11], skip:[12],
+  title:'if (2 % 2)  →  0 → 假，进入 else 分支',
+  desc:'<code>m % 2</code> 是 m 除以 2 的余数：<br>· 余数为 <b>1</b> → m 是<b>奇数</b>；<br>· 余数为 <b>0</b> → m 是<b>偶数</b>；<br>· 2 % 2 = <b>0</b>，条件为假 → <b>跳过第 12 行</b>，进入 else 分支（第 14 行）。'
+});
+
+/* ---------- 第 14 行：count2++ ---------- */
+push({
+  line:14, ctx:'main · 偶数个数加 1（第 1 轮）',
+  vars:{
+    m:'2',
+    count:'1', count1:'0', count2:'1',
+    flag:'0', temp:'未初始化（不定值）',
+    condLoop:'for(;;) → 真',
+    condM:'if (m) → 真',
+    condMod:'if (m % 2) → 假',
+    expr:'count2++',
+    exprVal:'count2 从 0 变成 1',
+    printfCnt:'1',
+    note:'2 是偶数，count2 加 1'
+  },
+  hit:[14], skip:[],
+  title:'count2++  →  count2 = 1（m = 2 是偶数）',
+  desc:'因为 m = 2 是偶数，执行 <code>count2++</code>：count2 从 0 变成 <b>1</b>。'
+});
+
+/* ---------- 第 19 行：(count-1)%2 假 ---------- */
+push({
+  line:19, ctx:'main · 检查是否需要交换（第 1 轮）',
+  vars:{
+    m:'2',
+    count:'1', count1:'0', count2:'1',
+    flag:'0', temp:'未初始化（不定值）',
+    condLoop:'for(;;) → 真',
+    expr:'if ((count-1) % 2)',
+    exprVal:'(1-1) % 2 = 0 % 2 = 0 → 假',
+    printfCnt:'1',
+    note:'count-1 = 0 是偶数，不交换'
+  },
+  hit:[19], skip:[20,21,22,23],
+  title:'if ((1-1) % 2)  →  0 → 假，不交换',
+  desc:'<code>count-1</code> 表示"<b>除 0 以外已读入的整数个数</b>"（因为 count 里包含了 0）。<br>· 这里 count = 1，count-1 = <b>0</b>；<br>· 0 % 2 = <b>0</b> → 条件为假 → <b>跳过交换块（第 20~23 行）</b>。'
+});
+
+/* ---------- 第 7 行：循环回到 for(;;) ---------- */
+push({
+  line:7, ctx:'main · 循环回到 for(;;) 开头（第 1 轮结束）',
+  vars:{
+    m:'2',
+    count:'1', count1:'0', count2:'1',
+    flag:'0', temp:'未初始化（不定值）',
+    condLoop:'for(;;) → 真（永远为真）',
+    printfCnt:'1',
+    note:'没有 break，继续下一轮'
+  },
+  hit:[7], skip:[],
+  title:'循环回到 for(;;)，条件永远为真 → 继续',
+  desc:'第 24 行的 <code>}</code>、第 25 行的 <code>}</code>（for 的闭括号）执行完后，控制流回到第 7 行的 <code>for(;;)</code>。<br>因为没有执行 break，循环继续，准备读入下一个数。'
+});
+
+/* ---------- 第 8 行：scanf（第 2 次，m=4） ---------- */
+push({
+  line:8, ctx:'main · scanf 读取第 2 个整数（m = 4）',
+  vars:{
+    m:'4',
+    count:'1', count1:'0', count2:'1',
+    flag:'0', temp:'未初始化（不定值）',
+    condLoop:'for(;;) → 真',
+    expr:'scanf("%d", &m)',
+    exprVal:'从输入读入 4，存到 m',
+    printfCnt:'1',
+    note:'第 2 次输入；用户输入 4'
+  },
+  hit:[8], skip:[],
+  title:'scanf("%d", &amp;m)  →  读入 m = 4',
+  desc:'<code>scanf</code> 读入第 2 个整数 <b>4</b>，覆盖 m 之前的 2。'
+});
+
+/* ---------- 第 9 行：count++ ---------- */
+push({
+  line:9, ctx:'main · count 加 1（第 2 轮）',
+  vars:{
+    m:'4',
+    count:'2', count1:'0', count2:'1',
+    flag:'0', temp:'未初始化（不定值）',
+    condLoop:'for(;;) → 真',
+    expr:'count++',
+    exprVal:'count 从 1 变成 2',
+    printfCnt:'1'
+  },
+  hit:[9], skip:[],
+  title:'count++  →  count = 2',
+  desc:'count 从 1 变成 <b>2</b>。'
+});
+
+/* ---------- 第 10 行：if(m) 真 ---------- */
+push({
+  line:10, ctx:'main · 判断 m 是否为 0（第 2 轮）',
+  vars:{
+    m:'4',
+    count:'2', count1:'0', count2:'1',
+    flag:'0', temp:'未初始化（不定值）',
+    condLoop:'for(;;) → 真',
+    condM:'if (m)  →  m = 4，4 为真',
+    printfCnt:'1'
+  },
+  hit:[10], skip:[],
+  title:'if (m)  →  m = 4 ≠ 0 → 真',
+  desc:'m = 4 非 0，条件为真，进入 if 体。'
+});
+
+/* ---------- 第 11 行：if(m%2) 假 ---------- */
+push({
+  line:11, ctx:'main · 判断 m 的奇偶性（第 2 轮）',
+  vars:{
+    m:'4',
+    count:'2', count1:'0', count2:'1',
+    flag:'0', temp:'未初始化（不定值）',
+    condLoop:'for(;;) → 真',
+    condM:'if (m) → 真',
+    condMod:'if (m % 2)  →  4 % 2 = 0 → 假',
+    printfCnt:'1'
+  },
+  hit:[11], skip:[12],
+  title:'if (4 % 2)  →  0 → 假，进入 else 分支',
+  desc:'4 % 2 = <b>0</b>，说明 m = 4 是<b>偶数</b>，条件为假，跳过第 12 行。'
+});
+
+/* ---------- 第 14 行：count2++ ---------- */
+push({
+  line:14, ctx:'main · 偶数个数加 1（第 2 轮）',
+  vars:{
+    m:'4',
+    count:'2', count1:'0', count2:'2',
+    flag:'0', temp:'未初始化（不定值）',
+    expr:'count2++',
+    exprVal:'count2 从 1 变成 2',
+    printfCnt:'1'
+  },
+  hit:[14], skip:[],
+  title:'count2++  →  count2 = 2（m = 4 是偶数）',
+  desc:'m = 4 是偶数，count2 从 1 变成 <b>2</b>。'
+});
+
+/* ---------- 第 19 行：(count-1)%2 真 → 交换 ---------- */
+push({
+  line:19, ctx:'main · 检查是否需要交换（第 2 轮）★',
+  vars:{
+    m:'4',
+    count:'2', count1:'0', count2:'2',
+    flag:'0', temp:'未初始化（不定值）',
+    expr:'if ((count-1) % 2)',
+    exprVal:'(2-1) % 2 = 1 % 2 = 1 → 真',
+    printfCnt:'1',
+    note:'count-1 = 1 是奇数，触发交换'
+  },
+  hit:[19], skip:[],
+  title:'if ((2-1) % 2)  →  1 → 真！开始交换',
+  desc:'· count = 2，count-1 = <b>1</b>；<br>· 1 % 2 = <b>1</b> → 条件为真，<b>进入交换块</b>。<span class="tip"><b>这个交换在做什么？</b>代码用一个"奇偶交换"来混淆视听——每当已经统计的个数是奇数时，就把 count1 和 count2 的值互换一次。经过一次交换后，"count1 存的其实是偶数个数，count2 存的其实是奇数个数"。</span>'
+});
+
+/* ---------- 第 20 行：temp = count1 ---------- */
+push({
+  line:20, ctx:'main · 交换第 1 步：备份 count1',
+  vars:{
+    m:'4',
+    count:'2', count1:'0', count2:'2',
+    flag:'0', temp:'0',
+    expr:'temp = count1',
+    exprVal:'temp = 0（先备份 count1 的值）',
+    printfCnt:'1'
+  },
+  hit:[20], skip:[],
+  title:'temp = count1  →  temp = 0',
+  desc:'把 count1 当前的值 <b>0</b> 暂存到 temp，<b>这是交换三步骤的第 1 步</b>。<br>经典交换：需要一个中间变量 temp 先保存一个值，否则会被覆盖。'
+});
+
+/* ---------- 第 21 行：count1 = count2 ---------- */
+push({
+  line:21, ctx:'main · 交换第 2 步：count1 ← count2',
+  vars:{
+    m:'4',
+    count:'2', count1:'2', count2:'2',
+    flag:'0', temp:'0',
+    expr:'count1 = count2',
+    exprVal:'count1 = 2',
+    printfCnt:'1'
+  },
+  hit:[21], skip:[],
+  title:'count1 = count2  →  count1 = 2',
+  desc:'把 count2 的值 <b>2</b> 赋给 count1。<br>此时 count1 = 2，count2 = 2（暂时重复）。'
+});
+
+/* ---------- 第 22 行：count2 = temp ---------- */
+push({
+  line:22, ctx:'main · 交换第 3 步：count2 ← temp',
+  vars:{
+    m:'4',
+    count:'2', count1:'2', count2:'0',
+    flag:'0', temp:'0',
+    expr:'count2 = temp',
+    exprVal:'count2 = 0',
+    printfCnt:'1'
+  },
+  hit:[22], skip:[],
+  title:'count2 = temp  →  count2 = 0（交换完成）',
+  desc:'把 temp 里备份的原始 count1 值 <b>0</b> 赋给 count2。<br><b>交换完成：count1 = 2，count2 = 0。</b><br>注意：此时 count1、count2 的<b>字面含义已经被交换了</b>——它们本身不知道这一点。'
+});
+
+/* ---------- 第 23 行：flag = 1 ---------- */
+push({
+  line:23, ctx:'main · 标记已交换',
+  vars:{
+    m:'4',
+    count:'2', count1:'2', count2:'0',
+    flag:'1', temp:'0',
+    expr:'flag = 1',
+    exprVal:'flag 从 0 变成 1',
+    printfCnt:'1'
+  },
+  hit:[23], skip:[],
+  title:'flag = 1; —— 标记"已交换"',
+  desc:'<code>flag = 1;</code> 把标记从 <b>0</b> 改成 <b>1</b>。<br>flag 的作用是：<b>告诉程序最后一段输出"发生过交换"</b>，从而走"开玩笑"分支（第 31 行）。'
+});
+
+/* ---------- 第 7 行：循环回到 for(;;) ---------- */
+push({
+  line:7, ctx:'main · 循环回到 for(;;) 开头（第 2 轮结束）',
+  vars:{
+    m:'4',
+    count:'2', count1:'2', count2:'0',
+    flag:'1', temp:'0',
+    condLoop:'for(;;) → 真',
+    printfCnt:'1',
+    note:'继续下一轮，等待读入 0'
+  },
+  hit:[7], skip:[],
+  title:'循环回到 for(;;)，继续下一轮',
+  desc:'第 24 行的 <code>}</code> 和 for 的闭括号执行完后，控制流回到第 7 行，继续下一轮循环。'
+});
+
+/* ---------- 第 8 行：scanf（第 3 次，m=0） ---------- */
+push({
+  line:8, ctx:'main · scanf 读取第 3 个整数（m = 0）',
+  vars:{
+    m:'0',
+    count:'2', count1:'2', count2:'0',
+    flag:'1', temp:'0',
+    condLoop:'for(;;) → 真',
+    expr:'scanf("%d", &m)',
+    exprVal:'从输入读入 0，存到 m',
+    printfCnt:'1',
+    note:'0 是结束标志'
+  },
+  hit:[8], skip:[],
+  title:'scanf("%d", &amp;m)  →  读入 m = 0',
+  desc:'<code>scanf</code> 读入第 3 个整数 <b>0</b>。0 是"输入结束"的标志，用来结束循环。'
+});
+
+/* ---------- 第 9 行：count++ ---------- */
+push({
+  line:9, ctx:'main · count 加 1（第 3 轮，0 也被计入）',
+  vars:{
+    m:'0',
+    count:'3', count1:'2', count2:'0',
+    flag:'1', temp:'0',
+    expr:'count++',
+    exprVal:'count 从 2 变成 3（0 也被计入）',
+    printfCnt:'1'
+  },
+  hit:[9], skip:[],
+  title:'count++  →  count = 3（0 也被计入）',
+  desc:'<code>count++</code> 让 count 从 2 变成 <b>3</b>。<br><span class="warn">即使读入的是 0，count 也会自增——因为这一句在 <code>if(m)</code> 之前。所以 count 最终 = <b>3</b>，但实际的"有效整数"只有 2 个（2 和 4）。</span>'
+});
+
+/* ---------- 第 10 行：if(m) 假 ---------- */
+push({
+  line:10, ctx:'main · 判断 m 是否为 0（第 3 轮）',
+  vars:{
+    m:'0',
+    count:'3', count1:'2', count2:'0',
+    flag:'1', temp:'0',
+    condLoop:'for(;;) → 真',
+    condM:'if (m)  →  m = 0 → 假',
+    expr:'if (m)',
+    exprVal:'0 为假，进入 else 分支',
+    printfCnt:'1',
+    note:'m = 0 是"输入结束"信号'
+  },
+  hit:[10], skip:[],
+  title:'if (m)  →  m = 0 → 假，进入 else 分支',
+  desc:'m = <b>0</b>，在 C 语言中 0 代表假，条件为假。<br>进入 <code>else</code> 分支，也就是第 17 行的 <code>break;</code>。'
+});
+
+/* ---------- 第 17 行：break ---------- */
+push({
+  line:17, ctx:'main · break 跳出无限循环',
+  vars:{
+    m:'0',
+    count:'3', count1:'2', count2:'0',
+    flag:'1', temp:'0',
+    condLoop:'即将退出',
+    expr:'break;',
+    exprVal:'立即跳出 for(;;)，到第 26 行继续',
+    printfCnt:'1',
+    note:'for(;;) 唯一的出口'
+  },
+  hit:[17], skip:[],
+  title:'break; —— 退出 for(;;) 循环',
+  desc:'<code>break;</code> 立即<b>跳出无限循环</b>，控制流跳到第 26 行（for 的闭括号之后）。<br>这是 <code>for(;;)</code> 唯一的出口——没有 break，程序将永远循环下去。'
+});
+
+/* ---------- 第 26 行：if(flag==0) 假 ---------- */
+push({
+  line:26, ctx:'main · 判断是否发生过交换 ★',
+  vars:{
+    m:'0',
+    count:'3', count1:'2', count2:'0',
+    flag:'1', temp:'0',
+    condFlag:'if (flag == 0)  →  1 == 0 → 假',
+    expr:'if (flag == 0)',
+    exprVal:'假，进入 else 分支（第 31 行）',
+    printfCnt:'1',
+    note:'发生过交换（flag=1）→ 走"开玩笑"分支'
+  },
+  hit:[26], skip:[27,28,29],
+  title:'if (flag == 0)  →  1 == 0 → 假，进入 else 分支',
+  desc:'检查 <code>flag == 0</code>：<br>· flag 现在是 <b>1</b>，1 == 0 为<b>假</b>；<br>· 所以 <b>跳过 27~29 三行</b>正常输出，直接进入 <code>else</code> 分支（第 31 行）。'
+});
+
+/* ---------- 第 31 行：printf 输出"开玩笑"（第 2 次 printf） ---------- */
+consoleLines.push('Hahaha...Odd:2,Even:0');
+push({
+  line:31, ctx:'main · printf 输出"开玩笑"结果（第 2 次 printf）★',
+  vars:{
+    m:'0',
+    count:'3', count1:'2', count2:'0',
+    flag:'1', temp:'0',
+    expr:'printf("Hahaha...Odd:%d,Even:%d", count1, count2)',
+    exprVal:'输出 "Hahaha...Odd:2,Even:0"（不带换行）',
+    printfCnt:'2',
+    note:'屏幕出现第 2 行输出（无换行）'
+  },
+  hit:[31], skip:[],
+  title:'printf("Hahaha...Odd:%d,Even:%d", count1, count2)  →  输出 Hahaha...Odd:2,Even:0',
+  desc:'<code>printf("Hahaha...Odd:%d,Even:%d", count1, count2);</code> 输出带"开玩笑"字样的结果：<br>· 第一个 <code>%d</code> 被实参 <b>count1 = 2</b> 替换；<br>· 第二个 <code>%d</code> 被实参 <b>count2 = 0</b> 替换；<br>· 屏幕上出现 <b>Hahaha...Odd:2,Even:0</b>（注意最后没有换行）；<br>· 这是本程序的<b>第 2 次 printf 调用</b>。<br><b>实际输入是 2 和 4，都是偶数——但输出说 Odd:2,Even:0，这就是程序"恶作剧"的效果。</b>'
+});
+
+/* ---------- 第 33 行：return 0 ---------- */
+push({
+  line:33, ctx:'main · return',
+  vars:{
+    m:'0',
+    count:'3', count1:'2', count2:'0',
+    flag:'1', temp:'0',
+    printfCnt:'2',
+    ret:'0',
+    expr:'return 0;',
+    exprVal:'返回 0，程序结束'
+  },
+  hit:[33], skip:[],
+  title:'return 0; —— 结束 main 函数',
+  desc:'<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。约定返回 0 表示程序正常结束。'
+});
+
+/* ---------- 第 34 行：} ---------- */
+push({
+  line:34, ctx:'程序结束',
+  vars:{
+    m:'0',
+    count:'3', count1:'2', count2:'0',
+    flag:'1', temp:'0',
+    printfCnt:'2',
+    ret:'0',
+    note:'栈帧销毁，程序退出'
+  },
+  hit:[], skip:[],
+  title:'main 函数体结束 }',
+  desc:'函数收尾，main 的栈帧被销毁，变量 m、count、count1、count2、flag、temp 随栈帧一起释放。<br>程序共调用 <b>2 次 printf</b>，返回值 0。<span class="tip"><b>本程序要点总结：</b><br>① <b>无限循环 <code>for(;;)</code></b>：没有终止条件，靠 <code>break</code> 退出；<br>② <b>scanf 交互</b>：逐次读入整数，读入 0 时跳出循环；<br>③ <b>count++ 在 if 之前</b>：0 也会被计入 count，最后要减 1；<br>④ <b>奇偶判断</b> <code>m % 2</code>：为 1 是奇数（count1++），为 0 是偶数（count2++）；<br>⑤ <b>交换触发条件</b> <code>(count-1) % 2 == 1</code>：即除 0 外已读入个数为奇数时，交换 count1/count2；<br>⑥ <b>flag 标记</b>：一旦发生过交换就置 1，最后决定走正常输出还是"开玩笑"分支。<br><b>演示输入 2 4 0 的输出：</b><br>· 第 1 行：<code>Please input m: </code><br>· 第 2 行：<code>Hahaha...Odd:2,Even:0</code><br><b>常见错误：</b>① 把 <code>count++</code> 写到 <code>if(m)</code> 里面，0 就不会被计入（其实这样反而更合理，但和原程序不符）；② 交换时忘记用 temp，直接 <code>count1=count2; count2=count1;</code> 会让两个变量都变成同一个值；③ 把 <code>flag=0</code> 和 <code>flag=1</code> 的判断写反；④ 忘记最后的 <code>\\n</code> 或漏写。</span>'
+});
+
+/* =========================================================
+   二、DOM 引用
+   ========================================================= */
+var codeViewport = document.getElementById('codeViewport');
+var codeContent  = document.getElementById('codeContent');
+var codeLines    = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+var varTable     = document.getElementById('varTable');
+var consoleText  = document.getElementById('consoleText');
+var explainText  = document.getElementById('explainText');
+var miniInner    = document.getElementById('miniInner');
+var miniViewport = document.getElementById('miniViewport');
+
+var panelTop     = document.getElementById('panelTop');
+var panelVars    = document.getElementById('panelVars');
+var panelMini    = document.getElementById('panelMini');
+var panelOut     = document.getElementById('panelOut');
+var panelExplain = document.getElementById('panelExplain');
+var ALL_PANELS   = [panelTop, panelVars, panelMini, panelOut, panelExplain];
+
+var btnReset       = document.getElementById('btnReset');
+var btnPrev        = document.getElementById('btnPrev');
+var btnPlay        = document.getElementById('btnPlay');
+var btnNext        = document.getElementById('btnNext');
+var btnFull        = document.getElementById('btnFull');
+var btnToggleMini  = document.getElementById('btnToggleMini');
+var btnToggleAll   = document.getElementById('btnToggleAll');
+var btnResetLayout = document.getElementById('btnResetLayout');
+var speedInput     = document.getElementById('speed');
+var speedLabel     = document.getElementById('speedLabel');
+
+/* =========================================================
+   三、变量面板行定义
+   ========================================================= */
+var VAR_ROWS = [
+  { key:'ctx',       name:'当前执行位置',                          kind:'k-ctx'   },
+  { key:'m',         name:'m      (int) 输入的整数',                kind:'k-main'  },
+  { key:'count',     name:'count  (int) 总数（含0）',               kind:'k-main'  },
+  { key:'count1',    name:'count1 (int) 奇数个数',                  kind:'k-money' },
+  { key:'count2',    name:'count2 (int) 偶数个数',                  kind:'k-money' },
+  { key:'flag',      name:'flag   (int) 交换标记（1已交换）',        kind:'k-val'   },
+  { key:'temp',      name:'temp   (int) 交换临时变量',              kind:'k-val'   },
+  { key:'condLoop',  name:'循环条件 for(;;)',                       kind:'k-sw'    },
+  { key:'condM',     name:'条件 if (m)',                            kind:'k-sw'    },
+  { key:'condMod',   name:'条件 if (m % 2)',                        kind:'k-sw'    },
+  { key:'condFlag',  name:'条件 if (flag == 0)',                    kind:'k-sw'    },
+  { key:'expr',      name:'正在求值的表达式',                       kind:'k-sub'   },
+  { key:'exprVal',   name:'表达式结果',                             kind:'k-val'   },
+  { key:'note',      name:'关键规则提示',                           kind:'k-note'  },
+  { key:'printfCnt', name:'printf 调用次数',                        kind:'k-ret'   },
+  { key:'ret',       name:'main 返回值',                            kind:'k-ret'   }
+];
+
+function buildVarTable(){
+  varTable.innerHTML = VAR_ROWS.map(function(r){
+    return '<div class="var-row '+r.kind+'" data-key="'+r.key+'">'+
+             '<span class="var-name">'+r.name+'</span>'+
+             '<span class="var-value dim">—</span>'+
+           '</div>';
+  }).join('');
+}
+
+/* =========================================================
+   四、缩略图生成（保留缩进 + 语法高亮轮廓）
+   ========================================================= */
+var miniMaxUnits = 1;
+
+function computeMiniMaxUnits(){
+  var maxU = 0;
+  codeLines.forEach(function(el){
+    var clone = el.querySelector('.src').cloneNode(true);
+    var cmts = clone.querySelectorAll('.cmt');
+    Array.prototype.forEach.call(cmts, function(c){
+      if(c.parentNode) c.parentNode.removeChild(c);
+    });
+    var t = clone.textContent || '';
+    var u = 0;
+    for(var i = 0; i < t.length; i++){
+      u += (t.charCodeAt(i) > 255) ? 2 : 1;
+    }
+    if(u > maxU) maxU = u;
+  });
+  miniMaxUnits = maxU || 1;
+}
+
+function buildMinimap(){
+  var html = '';
+  codeLines.forEach(function(el){
+    var srcHTML = el.querySelector('.src').innerHTML;
+    /* 关键：用 mini-src（white-space:pre）包住整行，保留行首缩进 */
+    html += '<div class="mini-line"><span class="mini-src">'+srcHTML+'</span></div>';
+  });
+  miniViewport.insertAdjacentHTML('beforebegin', html);
+  computeMiniMaxUnits();
+}
+buildMinimap();
+var miniLines = Array.prototype.slice.call(miniInner.querySelectorAll('.mini-line'));
+
+/* =========================================================
+   五、渲染逻辑
+   ========================================================= */
+var current = -1;
+var playing = false;
+var timer   = null;
+var speed   = Number(speedInput.value);
+var lastOutSig = '';
+
+function valueOf(step, key){
+  if(!step) return '—';
+  if(key === 'ctx') return step.ctx;
+  var v = step.vars[key];
+  return (v === undefined || v === null) ? '—' : v;
+}
+
+function updateVars(step, prevStep){
+  VAR_ROWS.forEach(function(r){
+    var row = varTable.querySelector('.var-row[data-key="'+r.key+'"]');
+    if(!row) return;
+    var valEl = row.querySelector('.var-value');
+    var val = String(valueOf(step, r.key));
+    var old = String(valueOf(prevStep, r.key));
+    if(valEl.textContent !== val){
+      valEl.textContent = val;
+      valEl.classList.toggle('dim', val === '—');
+      valEl.title = val;
+      valEl.classList.remove('flash');
+      void valEl.offsetWidth;
+      valEl.classList.add('flash');
+      if(prevStep && old !== val){
+        row.classList.add('changed');
+        window.setTimeout(function(){ row.classList.remove('changed'); }, 700);
+      }
+    }
+  });
+}
+
+function updateCode(step){
+  var activeLine = step ? step.line : null;
+  var hitLines   = (step && step.hit)  || [];
+  var skipLines  = (step && step.skip) || [];
+  codeLines.forEach(function(el){
+    var n = Number(el.dataset.line);
+    el.classList.toggle('active', activeLine !== null && n === activeLine);
+    el.classList.toggle('hit',    hitLines.indexOf(n)  !== -1 && n !== activeLine);
+    el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+  });
+  /* 当前执行行如果在视野外，滚动到中间 */
+  if(activeLine !== null){
+    var el = codeLines[activeLine - 1];
+    if(el){
+      var lineH = el.offsetHeight || 1;
+      var top = el.offsetTop;
+      var bottom = top + lineH;
+      var vTop = codeViewport.scrollTop;
+      var vBottom = vTop + codeViewport.clientHeight;
+      if(top < vTop + 20 || bottom > vBottom - 20){
+        var target = top - (codeViewport.clientHeight - lineH) / 2;
+        var maxScroll = Math.max(0, codeContent.scrollHeight - codeViewport.clientHeight);
+        target = Math.max(0, Math.min(maxScroll, target));
+        try{
+          codeViewport.scrollTo({ top: target, behavior:'smooth' });
+        }catch(e){
+          codeViewport.scrollTop = target;
+        }
+      }
+    }
+  }
+}
+
+function updateOutput(){
+  var lines = (current >= 0 && STEPS[current]) ? STEPS[current].out : [];
+  var sig = lines.length + ':' + (lines.length ? lines[lines.length - 1] : '');
+  if(sig === lastOutSig) return;
+  lastOutSig = sig;
+  if(!lines.length){
+    consoleText.innerHTML = '<span style="color:#3d5474">（等待程序输出…）</span>';
+    return;
+  }
+  consoleText.innerHTML = lines.map(function(t){
+    return '<div class="out-line">'+t.replace(/&/g,'&amp;').replace(/</g,'&lt;')+'</div>';
+  }).join('');
+}
+
+function updateExplain(step){
+  if(!step){
+    explainText.innerHTML =
+      '<em>点击「自动播放」或「下一步」，开始逐条执行程序。<br>'+
+      '本程序用<b>无限循环 for(;;)</b> 不断读入整数：每读一个就 <code>count++</code>，'+
+      '若 m ≠ 0 则根据 <code>m % 2</code> 统计奇偶个数，然后检查是否需要<b>交换</b>；'+
+      '读入 0 时 <code>break</code> 退出循环。<br>'+
+      '最后按 <b>flag</b> 的值决定输出：flag=0 输出正常统计；flag=1 输出"开玩笑"。<br>'+
+      '<b>演示输入：2 4 0</b>（两个偶数，触发交换，输出 Hahaha...Odd:2,Even:0）。</em>';
+    return;
+  }
+  var isHit = step.hit && step.hit.length > 0;
+  var isKey = step.title.indexOf('★') !== -1;
+  var cls = isKey ? 'ans' : (isHit ? 'hit' : '');
+  explainText.innerHTML =
+    '<span class="ex-tag '+cls+'">第 '+step.line+' 行</span>'+
+    '<strong>'+step.title+'</strong> —— '+step.desc;
+}
+
+function updateMiniCurrent(lineNo){
+  miniLines.forEach(function(el, i){
+    el.classList.toggle('cur', lineNo !== null && (i + 1) === lineNo);
+  });
+}
+
+/* =========================================================
+   六、缩略图荧光框（与全屏可见区域严格同步）+ 字体自适应
+   ========================================================= */
+var syncPending = false;
+var miniFontCache = -1;
+
+function getLineHeight(){
+  if(!codeLines.length) return 1;
+  var h = codeContent.scrollHeight / codeLines.length;
+  return h > 0 ? h : (codeLines[0].offsetHeight || 1);
+}
+
+function fitMiniFont(bodyH, bodyW){
+  var avail = bodyW - 10;
+  if(avail <= 0 || bodyH <= 0) return;
+  var thumbLineH = bodyH / codeLines.length;
+  var fsByWidth  = avail / miniMaxUnits / 0.6;
+  var fsByHeight = thumbLineH * 0.82;
+  var fs = Math.min(fsByWidth, fsByHeight);
+  fs = Math.max(3, Math.min(16, fs));
+  fs = Math.round(fs * 100) / 100;
+  if(Math.abs(fs - miniFontCache) < 0.05) return;
+  miniFontCache = fs;
+  miniInner.style.setProperty('--mini-font', fs + 'px');
+}
+
+function updateMinimapViewport(){
+  var lineH = getLineHeight();
+  var bodyH = miniInner.clientHeight;
+  var bodyW = miniInner.clientWidth;
+  if(bodyH <= 0 || bodyW <= 0) return;
+
+  var totalLines = codeLines.length;                 /* 34 */
+  var thumbLineH = bodyH / totalLines;
+
+  fitMiniFont(bodyH, bodyW);
+
+  var scrollTop  = codeViewport.scrollTop;
+  var visibleRows = codeViewport.clientHeight / lineH;
+  if(visibleRows > totalLines) visibleRows = totalLines;
+
+  var top = (scrollTop / lineH) * thumbLineH;
+  var h   = visibleRows * thumbLineH;
+  if(top < 0) top = 0;
+  if(top + h > bodyH) top = Math.max(0, bodyH - h);
+
+  miniViewport.style.top    = top + 'px';
+  miniViewport.style.height = h + 'px';
+  miniViewport.style.left   = '0px';
+  miniViewport.style.right  = '0px';
+}
+
+function requestMiniSync(){
+  if(syncPending) return;
+  syncPending = true;
+  window.requestAnimationFrame(function(){
+    syncPending = false;
+    updateMinimapViewport();
+  });
+}
+
+/* 滚动同步 */
+codeViewport.addEventListener('scroll', requestMiniSync, { passive:true });
+
+/* 尺寸变化同步 */
+if(window.ResizeObserver){
+  var ro = new ResizeObserver(function(){
+    requestMiniSync();
+  });
+  ro.observe(codeViewport);
+  ro.observe(miniInner);
+}
+window.addEventListener('resize', function(){
+  requestMiniSync();
+  clampAllPanels();
+});
+window.addEventListener('orientationchange', function(){ requestMiniSync(); });
+if(document.fonts && document.fonts.ready){
+  document.fonts.ready.then(function(){ requestMiniSync(); });
+}
+window.addEventListener('load', requestMiniSync);
+
+/* 点击缩略图跳转 */
+miniInner.addEventListener('pointerdown', function(e){
+  if(e.target.closest('.resize-handle')) return;
+  var r = miniInner.getBoundingClientRect();
+  var y = e.clientY - r.top;
+  var totalLines = codeLines.length;
+  var thumbLineH = r.height / totalLines;
+  var row = Math.floor(y / thumbLineH);
+  row = Math.max(0, Math.min(totalLines - 1, row));
+
+  var lineH = getLineHeight();
+  var target = row * lineH - (codeViewport.clientHeight - lineH) / 2;
+  var maxScroll = Math.max(0, codeContent.scrollHeight - codeViewport.clientHeight);
+  target = Math.max(0, Math.min(maxScroll, target));
+  try{
+    codeViewport.scrollTo({ top: target, behavior:'smooth' });
+  }catch(err){
+    codeViewport.scrollTop = target;
+  }
+  requestMiniSync();
+});
+
+/* =========================================================
+   七、主渲染
+   ========================================================= */
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+  var prev = current > 0 ? STEPS[current - 1] : null;
+
+  updateCode(step);
+  updateVars(step, prev);
+  updateOutput();
+  updateExplain(step);
+  updateMiniCurrent(step ? step.line : null);
+  requestMiniSync();
+
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+}
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+
+function tick(){
+  if(current >= STEPS.length - 1){ pause(); return; }
+  current += 1;
+  render();
+  if(current >= STEPS.length - 1) pause();
+}
+
+function play(){
+  if(playing) return;
+  if(current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){
+  pause();
+  if(current < STEPS.length - 1){ current += 1; render(); }
+}
+
+function prevStep(){
+  pause();
+  if(current > -1){ current -= 1; render(); }
+}
+
+function resetAll(){
+  pause();
+  current = -1;
+  lastOutSig = '';
+  codeViewport.scrollTop = 0;
+  render();
+}
+
+/* =========================================================
+   八、面板：拖动 / 调整大小 / 置顶 / 关闭 / 重置布局
+   ========================================================= */
+var zTop = 100;
+
+function activatePanel(p){
+  zTop += 1;
+  p.style.zIndex = zTop;
+  ALL_PANELS.forEach(function(x){
+    x.classList.toggle('active', x === p);
+  });
+}
+
+function setPanel(p, left, top, width, height){
+  p.style.left   = (typeof left   === 'number') ? left + 'px'   : left;
+  p.style.top    = (typeof top    === 'number') ? top + 'px'    : top;
+  p.style.width  = (typeof width  === 'number') ? width + 'px'  : width;
+  p.style.height = (typeof height === 'number') ? height + 'px' : height;
+  p.style.right  = 'auto';
+  p.style.bottom = 'auto';
+}
+
+var DEFAULTS = {};
+function computeDefaults(){
+  var W = window.innerWidth, H = window.innerHeight;
+  DEFAULTS = {
+    panelTop:     { left: 16,            top: 16,               width:'auto', height:'auto' },
+    panelVars:    { left: Math.max(16, W - 720), top: 16,        width: 700,  height: Math.min(640, H * 0.62) },
+    panelMini:    { left: 16,            top: Math.max(16, H*0.16), width: 280, height: Math.min(700, H * 0.66) },
+    panelOut:     { left: Math.max(16, W - 720), top: Math.max(16, H - 320), width: 700, height: 300 },
+    panelExplain: { left: Math.max(16, W*0.18), top: Math.max(16, H - 430), width: Math.min(960, W*0.62), height: 410 }
+  };
+}
+
+function resetLayout(){
+  computeDefaults();
+  setPanel(panelTop,     DEFAULTS.panelTop.left,     DEFAULTS.panelTop.top,     DEFAULTS.panelTop.width,     DEFAULTS.panelTop.height);
+  setPanel(panelVars,    DEFAULTS.panelVars.left,    DEFAULTS.panelVars.top,    DEFAULTS.panelVars.width,    DEFAULTS.panelVars.height);
+  setPanel(panelMini,    DEFAULTS.panelMini.left,    DEFAULTS.panelMini.top,    DEFAULTS.panelMini.width,    DEFAULTS.panelMini.height);
+  setPanel(panelOut,     DEFAULTS.panelOut.left,     DEFAULTS.panelOut.top,     DEFAULTS.panelOut.width,     DEFAULTS.panelOut.height);
+  setPanel(panelExplain, DEFAULTS.panelExplain.left, DEFAULTS.panelExplain.top, DEFAULTS.panelExplain.width, DEFAULTS.panelExplain.height);
+
+  ALL_PANELS.forEach(function(p){
+    p.classList.remove('hidden');
+    p.classList.remove('active');
+  });
+  zTop = 100;
+  panelTop.style.zIndex     = (++zTop);
+  panelVars.style.zIndex    = (++zTop);
+  panelMini.style.zIndex    = (++zTop);
+  panelOut.style.zIndex     = (++zTop);
+  panelExplain.style.zIndex = (++zTop);
+
+  miniFontCache = -1;
+  requestMiniSync();
+}
+
+function clampAllPanels(){
+  ALL_PANELS.forEach(function(p){
+    if(p.classList.contains('hidden')) return;
+    var r = p.getBoundingClientRect();
+    var left = r.left, top = r.top;
+    var maxL = window.innerWidth  - 60;
+    var maxT = window.innerHeight - 40;
+    if(left > maxL){ p.style.left = maxL + 'px'; }
+    if(top  > maxT){ p.style.top  = maxT + 'px'; }
+    if(left + r.width  < 60){ p.style.left = (60 - r.width) + 'px'; }
+    if(top  + r.height < 40){ p.style.top  = '8px'; }
+  });
+}
+
+function startDrag(panel, e){
+  e.preventDefault();
+  var r = panel.getBoundingClientRect();
+  if(getComputedStyle(panel).width === 'auto' || panel.style.width === 'auto' || !panel.style.width){
+    panel.style.width  = r.width + 'px';
+  }
+  if(panel.style.height === 'auto' || !panel.style.height){
+    panel.style.height = r.height + 'px';
+  }
+  var ox = e.clientX - r.left;
+  var oy = e.clientY - r.top;
+
+  function move(ev){
+    var nl = ev.clientX - ox;
+    var nt = ev.clientY - oy;
+    var w = panel.offsetWidth, h = panel.offsetHeight;
+    nl = Math.max(-w + 80, Math.min(window.innerWidth - 80, nl));
+    nt = Math.max(0, Math.min(window.innerHeight - 40, nt));
+    panel.style.left = nl + 'px';
+    panel.style.top  = nt + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+  }
+  function up(){
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    document.removeEventListener('pointercancel', up);
+    requestMiniSync();
+  }
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+  document.addEventListener('pointercancel', up);
+}
+
+function startResize(panel, e){
+  e.preventDefault();
+  e.stopPropagation();
+  var r = panel.getBoundingClientRect();
+  var startW = r.width, startH = r.height;
+  var sx = e.clientX, sy = e.clientY;
+
+  function move(ev){
+    var nw = startW + (ev.clientX - sx);
+    var nh = startH + (ev.clientY - sy);
+    panel.style.width  = nw + 'px';
+    panel.style.height = nh + 'px';
+    panel.style.right  = 'auto';
+    panel.style.bottom = 'auto';
+    requestMiniSync();
+  }
+  function up(){
+    document.removeEventListener('pointermove', move);
+    document.removeEventListener('pointerup', up);
+    document.removeEventListener('pointercancel', up);
+    requestMiniSync();
+  }
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+  document.addEventListener('pointercancel', up);
+}
+
+ALL_PANELS.forEach(function(p){
+  p.addEventListener('pointerdown', function(){ activatePanel(p); }, true);
+  p.addEventListener('focusin', function(){ activatePanel(p); });
+
+  var head = p.querySelector('.panel-head');
+  head.addEventListener('pointerdown', function(e){
+    if(e.target.closest('button')) return;
+    startDrag(p, e);
+  });
+
+  var rh = p.querySelector('.resize-handle');
+  if(rh){
+    rh.addEventListener('pointerdown', function(e){
+      startResize(p, e);
+    });
+  }
+
+  var closeBtn = p.querySelector('.panel-close');
+  if(closeBtn){
+    closeBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      p.classList.add('hidden');
+    });
+  }
+});
+
+document.querySelectorAll('[data-close]').forEach(function(btn){
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var el = document.getElementById(btn.getAttribute('data-close'));
+    if(el) el.classList.add('hidden');
+  });
+});
+
+/* =========================================================
+   九、按钮与快捷键
+   ========================================================= */
+btnPlay.addEventListener('click', function(){ playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if(playing){
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+btnFull.addEventListener('click', function(){
+  if(!document.fullscreenElement){
+    if(document.documentElement.requestFullscreen){
+      document.documentElement.requestFullscreen().catch(function(){});
+    }
+  }else{
+    if(document.exitFullscreen) document.exitFullscreen();
+  }
+});
+
+btnToggleMini.addEventListener('click', function(){
+  panelMini.classList.toggle('hidden');
+  if(!panelMini.classList.contains('hidden')){
+    activatePanel(panelMini);
+    miniFontCache = -1;
+  }
+  requestMiniSync();
+});
+
+var allHidden = false;
+btnToggleAll.addEventListener('click', function(){
+  allHidden = !allHidden;
+  ALL_PANELS.forEach(function(p){
+    p.classList.toggle('hidden', allHidden);
+  });
+  if(!allHidden){
+    panelTop.classList.remove('hidden');
+    miniFontCache = -1;
+    requestMiniSync();
+  }
+});
+
+btnResetLayout.addEventListener('click', function(){
+  resetLayout();
+});
+
+document.addEventListener('keydown', function(e){
+  if(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  if(e.code === 'Space'){ e.preventDefault(); playing ? pause() : play(); }
+  else if(e.code === 'ArrowRight'){ e.preventDefault(); nextStep(); }
+  else if(e.code === 'ArrowLeft'){ e.preventDefault(); prevStep(); }
+  else if(e.code === 'KeyR'){ e.preventDefault(); resetAll(); }
+  else if(e.code === 'KeyF'){
+    e.preventDefault();
+    if(!document.fullscreenElement){
+      if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(function(){});
+    }else{
+      if(document.exitFullscreen) document.exitFullscreen();
+    }
+  }
+  else if(e.code === 'KeyM'){
+    e.preventDefault();
+    panelMini.classList.toggle('hidden');
+    if(!panelMini.classList.contains('hidden')){
+      activatePanel(panelMini);
+      miniFontCache = -1;
+    }
+    requestMiniSync();
+  }
+  else if(e.code === 'KeyH'){
+    e.preventDefault();
+    var anyVisible = ALL_PANELS.some(function(p){ return !p.classList.contains('hidden'); });
+    ALL_PANELS.forEach(function(p){ p.classList.toggle('hidden', anyVisible); });
+    if(!anyVisible){ panelTop.classList.remove('hidden'); }
+    miniFontCache = -1;
+    requestMiniSync();
+  }
+});
+
+/* =========================================================
+   十、初始化
+   ========================================================= */
+buildVarTable();
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+resetLayout();
+render();
+requestMiniSync();
+window.setTimeout(requestMiniSync, 120);
+window.setTimeout(requestMiniSync, 600);
+
+})();
+</script>
+</body>
+</html>

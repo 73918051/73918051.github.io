@@ -1,0 +1,1533 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>C 程序逐步执行模拟 · 逻辑非 ! 与 if 判断 · 大屏版</title>
+<style>
+/* ============================================================
+   全屏代码 + 可拖动/任意调整大小面板 + 真·缩略图
+   ============================================================
+   对应 C 程序：logic.c（逻辑非 ! · if 条件判断 · 真假值）
+   关键设计：
+   1) 代码区全屏不透明（#0d1117），任何时候都不会被永久遮挡。
+   2) 所有悬浮面板（顶栏 / 变量 / 输出 / 说明 / 缩略图）：
+      - 半透明毛玻璃 + 可拖动 + 可关闭 + localStorage 持久化
+      - 支持鼠标/触控任意调整大小，不设最小/最大限制
+      - H 键整体切换显示/隐藏，M 键单独切换缩略图
+   3) 缩略图真正渲染 9 行缩小版代码文本（8px 等宽 + 语法色）
+   4) 字号：1920×1080 实测 代码≈84px 输出≈77px 变量≈42px
+      说明≈48px 按钮≈40px，后排 10 米可读
+   ============================================================ */
+
+:root{
+  /* ---- 字号 ---- */
+  --code-font:    clamp(80px, 4.4vw, 200px);
+  --out-font:     clamp(72px, 4.0vw, 180px);
+  --var-font:     clamp(40px, 2.2vw, 100px);
+  --varval-font:  clamp(44px, 2.4vw, 110px);
+  --explain-font: clamp(48px, 2.5vw, 120px);
+  --btn-font:     clamp(40px, 2.1vw,  96px);
+  --head-font:    clamp(28px, 1.5vw,  64px);
+
+  /* ---- 颜色 ---- */
+  --bg-code:  #0d1117;
+  --text:     #e6eefb;
+  --muted:    #93a8c6;
+  --accent:   #38bdf8;
+  --accent-2: #7dd3fc;
+  --teal:     #2dd4bf;
+  --panel-bg: rgba(13, 20, 35, 0.85);
+  --panel-bd: rgba(56, 189, 248, 0.35);
+}
+
+*,*::before,*::after{ box-sizing:border-box; margin:0; padding:0; }
+html,body{ height:100%; }
+
+body{
+  background: var(--bg-code);
+  color: var(--text);
+  font-family:"Microsoft YaHei","PingFang SC","Source Han Sans SC","Segoe UI",system-ui,sans-serif;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  user-select: none;
+}
+.code-scroll, .console, .ex-text{ user-select: text; }
+
+/* ==================================================
+   全屏代码层
+   ================================================== */
+.code-layer{
+  position: fixed;
+  inset: 0;
+  background: var(--bg-code);
+  z-index: 1;
+}
+
+.code-scroll{
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 140px 260px 200px 60px;
+  font-family: ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size: var(--code-font);
+  line-height: 1.42;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+.code-scroll::-webkit-scrollbar{ width:14px; }
+.code-scroll::-webkit-scrollbar-thumb{ background:#2c3f5e; border-radius:14px; }
+.code-scroll::-webkit-scrollbar-track{ background:transparent; }
+
+.code-line{
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4em;
+  padding: 0.02em 0.6em 0.02em 0.2em;
+  border-left: 0.22em solid transparent;
+  white-space: pre;
+  border-radius: 0.1em;
+  transition: background .28s, border-color .28s, opacity .28s;
+}
+.code-line .ln{
+  flex: 0 0 auto;
+  width: 1.6em;
+  font-size: 0.62em;
+  line-height: inherit;
+  text-align: right;
+  color: #4a6488;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.code-line .src{ flex: 1 1 auto; }
+
+.code-line.done{ opacity: .34; }
+
+.code-line.active{
+  background: linear-gradient(90deg, rgba(56,189,248,.26), rgba(56,189,248,.02));
+  border-left-color: #38bdf8;
+  animation: pulseGlow 2.2s ease-in-out infinite;
+}
+@keyframes pulseGlow{
+  0%,100%{ box-shadow: inset 0 0 0 3px rgba(56,189,248,.40); }
+  50%    { box-shadow: inset 0 0 0 3px rgba(56,189,248,.66), 0 0 36px rgba(56,189,248,.32); }
+}
+.code-line.active .ln{ color: #7dd3fc; font-weight: 800; }
+.code-line.active .src{ color: #ffffff; text-shadow: 0 0 22px rgba(56,189,248,.55); }
+
+/* 语法高亮 */
+.pp  { color:#c084fc; font-weight:700; }
+.str { color:#4ade80; }
+.esc { color:#fbbf24; font-weight:800; }
+.fn  { color:#38bdf8; font-weight:700; }
+.kw  { color:#f472b6; font-weight:700; }
+.num { color:#fbbf24; }
+.op  { color:#fca5a5; font-weight:700; }
+
+/* ==================================================
+   悬浮面板通用
+   ================================================== */
+.float-panel{
+  position: fixed;
+  z-index: 60;
+  background: var(--panel-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 3px solid var(--panel-bd);
+  border-radius: 14px;
+  box-shadow:
+    0 24px 70px rgba(0,0,0,.78),
+    inset 0 0 0 1px rgba(56,189,248,.10);
+  transition: opacity .28s ease, visibility .28s ease;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.float-panel.dragging{
+  box-shadow:
+    0 32px 90px rgba(0,0,0,.92),
+    0 0 0 4px rgba(56,189,248,.35),
+    inset 0 0 0 1px rgba(56,189,248,.20);
+  transition: none;
+  opacity: 1 !important;
+}
+.float-panel.resizing{
+  box-shadow:
+    0 32px 90px rgba(0,0,0,.92),
+    0 0 0 4px rgba(250,204,21,.55),
+    inset 0 0 0 1px rgba(250,204,21,.30);
+  transition: none;
+  opacity: 1 !important;
+}
+.float-panel.panel-hidden{
+  opacity: 0 !important;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity .28s ease, visibility 0s .28s;
+}
+
+.drag-handle{
+  cursor: grab;
+  touch-action: none;
+  -webkit-user-select: none;
+}
+.drag-handle:active{ cursor: grabbing; }
+.drag-handle .grip{
+  display: inline-block;
+  font-size: 1.1em;
+  line-height: 1;
+  color: rgba(148,163,184,.85);
+  letter-spacing: -0.15em;
+  padding: 0 .15em 0 0;
+}
+
+.panel-head{
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5em;
+  padding: .28em .5em .28em .7em;
+  font-size: var(--head-font);
+  font-weight: 800;
+  letter-spacing: .04em;
+  color: var(--accent-2);
+  background: rgba(22,35,58,.9);
+  border-bottom: 2px solid rgba(56,189,248,.22);
+  white-space: nowrap;
+  border-radius: 11px 11px 0 0;
+}
+.panel-head .head-text{
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: .35em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.close-btn{
+  flex: 0 0 auto;
+  width:  clamp(48px, 1.8vw, 72px);
+  height: clamp(48px, 1.8vw, 72px);
+  border-radius: 50%;
+  border: 3px solid rgba(148,163,184,.55);
+  background: rgba(15,23,42,.8);
+  color: #cbd5e1;
+  font-size: clamp(22px, 0.9vw, 38px);
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s, border-color .15s, color .15s, transform .1s;
+  touch-action: manipulation;
+}
+.close-btn:hover{
+  background: rgba(239,68,68,.35);
+  border-color: rgba(239,68,68,.9);
+  color: #fff;
+}
+.close-btn:active{ transform: scale(.9); }
+
+/* ---- 缩放手柄：任意大小，无限制 ---- */
+.resize-handle{
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 44px;
+  height: 44px;
+  cursor: nwse-resize;
+  touch-action: none;
+  z-index: 10;
+  background:
+    linear-gradient(135deg, transparent 42%, rgba(148,163,184,.65) 43%, rgba(148,163,184,.65) 50%, transparent 51%),
+    linear-gradient(135deg, transparent 57%, rgba(148,163,184,.85) 58%, rgba(148,163,184,.85) 66%, transparent 67%),
+    linear-gradient(135deg, transparent 72%, rgba(148,163,184,.95) 73%, rgba(148,163,184,.95) 82%, transparent 83%);
+  border-radius: 0 0 11px 0;
+  transition: background-color .15s;
+}
+.resize-handle:hover{
+  background-color: rgba(250,204,21,.25);
+}
+
+/* ==================================================
+   顶部控制栏
+   ================================================== */
+.topbar{
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  opacity: .95;
+  transition: opacity .5s ease;
+}
+.topbar .panel-body{
+  display: flex;
+  align-items: center;
+  gap: .45em;
+  padding: .22em .55em;
+  font-size: var(--btn-font);
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  scrollbar-width: none;
+}
+.topbar .panel-body::-webkit-scrollbar{ height: 0; }
+.topbar:hover,
+.topbar.dragging,
+.topbar.resizing{ opacity: 1 !important; }
+.topbar.idle:not(:hover){ opacity: .32; }
+
+.btn{
+  font-family: inherit;
+  font-size: var(--btn-font);
+  font-weight: 800;
+  line-height: 1.1;
+  min-height: 1.7em;
+  padding: .16em .68em;
+  border-radius: .55em;
+  border: 3px solid rgba(56,189,248,.35);
+  background: rgba(27,43,71,.92);
+  color: #e3edfa;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s, transform .08s;
+  touch-action: manipulation;
+}
+.btn:hover:not(:disabled){ background:#24395e; border-color: rgba(56,189,248,.75); }
+.btn:active:not(:disabled){ transform: translateY(2px); }
+.btn:disabled{ opacity:.32; cursor:not-allowed; }
+.btn.primary{
+  background: linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color: #7dd3fc;
+  color: #04121f;
+}
+.btn.primary.playing{
+  background: linear-gradient(180deg,#f59e0b,#d97706);
+  border-color: #fbbf24;
+  color: #1a1200;
+}
+.btn.toggle-off{ opacity: .48; }
+
+.speed{
+  display: flex;
+  align-items: center;
+  gap: .3em;
+  font-size: var(--btn-font);
+  font-weight: 800;
+  color: var(--muted);
+  white-space: nowrap;
+  padding-left: .25em;
+}
+.speed input[type=range]{
+  -webkit-appearance: none;
+  appearance: none;
+  width: 4.2em;
+  height: 1.7em;
+  background: transparent;
+  cursor: pointer;
+}
+.speed input[type=range]::-webkit-slider-runnable-track{
+  height: .30em;
+  border-radius: .18em;
+  background: #22314b;
+  border: 2px solid rgba(56,189,248,.4);
+}
+.speed input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance: none;
+  appearance: none;
+  width: .88em;
+  height: .88em;
+  margin-top: -.30em;
+  border-radius: 50%;
+  background: #38bdf8;
+  border: 4px solid #0a1120;
+  box-shadow: 0 0 0 3px #38bdf8;
+}
+.speed input[type=range]::-moz-range-track{
+  height: .30em; border-radius: .18em; background: #22314b;
+}
+.speed input[type=range]::-moz-range-thumb{
+  width: .88em; height: .88em; border-radius: 50%;
+  background: #38bdf8; border: 4px solid #0a1120;
+}
+.speed b{
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  min-width: 2.4em;
+  display: inline-block;
+  text-align: right;
+}
+
+/* ==================================================
+   变量面板
+   ================================================== */
+.vars-panel{
+  top: 180px;
+  left: 24px;
+  width: max-content;
+  max-width: 36vw;
+  max-height: 72vh;
+}
+.vars-panel .panel-body{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: .2em;
+  padding: .35em .45em;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+.vars-panel .panel-body::-webkit-scrollbar{ width:10px; }
+.vars-panel .panel-body::-webkit-scrollbar-thumb{ background:#2c3f5e; border-radius:10px; }
+
+.var-row{
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .6em;
+  padding: .16em .5em;
+  border-radius: .35em;
+  background: rgba(13,23,40,.85);
+  border: 2px solid rgba(30,41,59,1);
+  transition: background .28s, border-color .28s;
+}
+.var-row.k-ctx  { background:#122844; border-color:#26456b; }
+.var-row.k-main { border-left: 5px solid rgba(34,211,238,.60); }
+.var-row.k-temp { border-left: 5px solid rgba(192,132,252,.60); }
+.var-row.k-ret  { border-left: 5px solid rgba(251,191,36,.60); }
+.var-row.changed{
+  border-color: rgba(56,189,248,.9);
+  background: rgba(56,189,248,.15);
+}
+.var-name{
+  font-size: var(--var-font);
+  font-weight: 800;
+  line-height: 1.15;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: ui-monospace,Consolas,"Courier New",monospace;
+}
+.var-value{
+  font-family: ui-monospace,Consolas,"Courier New",monospace;
+  font-size: var(--varval-font);
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  max-width: 60%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.var-value.dim{ color: #5f7796; font-weight: 500; }
+@keyframes flashVal{
+  0%  { transform: scale(1); }
+  35% { transform: scale(1.28); color:#fff; text-shadow: 0 0 24px #38bdf8; }
+  100%{ transform: scale(1); }
+}
+.var-value.flash{ animation: flashVal .55s ease-out; }
+
+/* ==================================================
+   输出面板
+   ================================================== */
+.out-panel{
+  bottom: 220px;
+  left: 24px;
+  width: max-content;
+  max-width: 50vw;
+  max-height: 45vh;
+}
+.out-panel .panel-body{
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  margin: .3em .35em .35em;
+  padding: .3em .55em;
+  background: rgba(4,10,20,.7);
+  border: 2px solid rgba(56,189,248,.18);
+  border-radius: .4em;
+  font-family: ui-monospace,Consolas,"Courier New",monospace;
+  font-size: var(--out-font);
+  line-height: 1.55;
+  white-space: pre;
+  color: #eef6ff;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+.out-panel .panel-body::-webkit-scrollbar{ width:12px; }
+.out-panel .panel-body::-webkit-scrollbar-thumb{ background:#2c3f5e; border-radius:12px; }
+.out-panel .panel-body:empty::before{
+  content: "（等待程序输出…）";
+  color: #3d5474;
+}
+@keyframes outIn{
+  from{ opacity:0; transform: translateX(-.7em); }
+  to  { opacity:1; transform: none; }
+}
+.out-line{ animation: outIn .42s ease-out; white-space: pre; }
+.out-line .seg-out{ color:#eef6ff; }
+
+/* ==================================================
+   说明面板
+   ================================================== */
+.explain-panel{
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(1300px, 92vw);
+  max-height: 32vh;
+}
+.explain-panel .panel-body{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: .5em;
+  padding: .3em .7em .4em;
+  font-size: var(--explain-font);
+  line-height: 1.42;
+  color: #c8d8ee;
+  overflow: hidden;
+}
+.ex-line{
+  flex: 0 0 auto;
+  align-self: center;
+  padding: .06em .55em;
+  border-radius: .3em;
+  background: rgba(56,189,248,.22);
+  border: 3px solid rgba(56,189,248,.65);
+  color: var(--accent);
+  font-weight: 800;
+  white-space: nowrap;
+}
+.ex-text{
+  flex: 1 1 auto;
+  min-width: 0;
+  max-height: 5em;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+.ex-text::-webkit-scrollbar{ width:8px; }
+.ex-text::-webkit-scrollbar-thumb{ background:#2c3f5e; border-radius:8px; }
+.ex-text strong{ color:#f2f8ff; }
+.ex-text em{ color:#93a8c6; font-style:normal; }
+.ex-text code{
+  font-family: ui-monospace,Consolas,monospace;
+  background: rgba(148,163,184,.16);
+  border-radius: .3em;
+  padding: 0 .3em;
+  color: #e2e8f0;
+}
+
+/* ==================================================
+   缩略图
+   ================================================== */
+.minimap{
+  top: 50%;
+  right: 20px;
+  transform: translateY(-50%);
+  width: 220px;
+  max-height: 85vh;
+  border-width: 2px;
+}
+.minimap .panel-head{
+  font-size: 16px;
+  padding: .25em .4em .25em .55em;
+  border-radius: 9px 9px 0 0;
+}
+.minimap .close-btn{
+  width: 34px;
+  height: 34px;
+  font-size: 18px;
+  border-width: 2px;
+}
+.minimap .resize-handle{
+  width: 34px;
+  height: 34px;
+}
+
+.minimap-body{
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 6px 6px 8px;
+  background: rgba(13,17,23,.72);
+  border-radius: 0 0 9px 9px;
+  font-family: ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size: 8px;
+  line-height: 1.5;
+  cursor: pointer;
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+.minimap-body::-webkit-scrollbar{ width:6px; }
+.minimap-body::-webkit-scrollbar-thumb{ background:#2c3f5e; border-radius:6px; }
+
+.mini-line{
+  display: block;
+  white-space: pre;
+  overflow: hidden;
+  padding: 0 2px;
+  border-radius: 2px;
+  color: #93a8c6;
+  transition: background .2s, opacity .2s, color .2s;
+}
+.mini-line.done{ opacity: .35; }
+.mini-line.active{
+  background: rgba(56,189,248,.35);
+  color: #eaf6ff;
+  font-weight: 700;
+}
+.mini-line .mp { color:#c084fc; font-weight:700; }
+.mini-line .ms { color:#4ade80; }
+.mini-line .mf { color:#38bdf8; font-weight:700; }
+.mini-line .mk { color:#f472b6; font-weight:700; }
+.mini-line .me { color:#fbbf24; font-weight:800; }
+.mini-line .mn { color:#fbbf24; }
+
+.minimap-viewport{
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  top: 0;
+  height: 100%;
+  background: rgba(56,189,248,.10);
+  border: 1.5px solid rgba(56,189,248,.55);
+  border-radius: 5px;
+  pointer-events: none;
+  transition: top .1s linear, height .1s linear;
+}
+
+/* ==================================================
+   全部隐藏时的提示
+   ================================================== */
+.hint{
+  position: fixed;
+  left: 50%;
+  bottom: 30px;
+  transform: translateX(-50%);
+  z-index: 90;
+  font-size: clamp(20px, 1.2vw, 34px);
+  font-weight: 700;
+  color: rgba(148,163,184,.9);
+  background: rgba(13,17,23,.8);
+  padding: .35em 1em;
+  border-radius: .55em;
+  border: 2px solid rgba(56,189,248,.3);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .3s;
+}
+.hint.show{ opacity: 1; }
+</style>
+</head>
+<body>
+
+<!-- ============ 全屏代码层 ============ -->
+<div class="code-layer">
+  <div class="code-scroll" id="codeScroll">
+
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span></span></div>
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {</span></div>
+    <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">int</span> a = <span class="num">6</span>, b = <span class="num">0</span>, c = <span class="num">0</span>, d;</span></div>
+    <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    d = <span class="op">!</span>a <span class="op">+</span> <span class="op">!</span>b <span class="op">+</span> <span class="op">!</span>c;</span></div>
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    <span class="fn">printf</span>(<span class="str">"%d-%d<span class="esc">\n</span>"</span>, <span class="op">!</span>d, d);</span></div>
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    <span class="kw">if</span> (a) <span class="fn">printf</span>(<span class="str">"a is true<span class="esc">\n</span>"</span>);</span></div>
+    <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">    <span class="kw">if</span> (<span class="op">!</span>b) <span class="fn">printf</span>(<span class="str">"b is false<span class="esc">\n</span>"</span>);</span></div>
+    <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;</span></div>
+    <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">}</span></div>
+
+  </div>
+</div>
+
+<!-- ============ 顶部控制栏（可拖动、可调整大小、可关闭） ============ -->
+<header class="float-panel topbar" id="topbar">
+  <div class="panel-head drag-handle" id="topbarHandle">
+    <span class="head-text"><span class="grip">⋮⋮</span> 控制栏</span>
+    <button class="close-btn" data-close="topbar" title="关闭工具栏（按 H 重新显示）">×</button>
+  </div>
+  <div class="panel-body">
+    <button id="btnReset" class="btn" type="button">⟲ 重置</button>
+    <button id="btnPrev"  class="btn" type="button">◀ 上一步</button>
+    <button id="btnPlay"  class="btn primary" type="button">▶ 自动播放</button>
+    <button id="btnNext"  class="btn" type="button">下一步 ▶</button>
+    <button id="btnFull"  class="btn" type="button">⛶ 全屏</button>
+    <button id="btnPanels" class="btn" type="button">☰ 面板</button>
+    <button id="btnMinimap" class="btn" type="button">▤ 缩略图</button>
+    <button id="btnLayout" class="btn" type="button">↺ 重置布局</button>
+    <label class="speed">速度
+      <input type="range" id="speed" min="600" max="3600" step="100" value="1800">
+      <b id="speedLabel">1.8s</b>
+    </label>
+  </div>
+  <div class="resize-handle" data-resize="topbar" title="拖动调整大小"></div>
+</header>
+
+<!-- ============ 变量面板（可拖动、可调整大小、可关闭） ============ -->
+<aside class="float-panel vars-panel" id="varsPanel">
+  <div class="panel-head drag-handle" id="varsHandle">
+    <span class="head-text"><span class="grip">⋮⋮</span> 变量 / 运行状态</span>
+    <button class="close-btn" data-close="varsPanel" title="关闭面板（H 重新显示）">×</button>
+  </div>
+  <div class="panel-body" id="varTable"></div>
+  <div class="resize-handle" data-resize="varsPanel" title="拖动调整大小"></div>
+</aside>
+
+<!-- ============ 输出面板（可拖动、可调整大小、可关闭） ============ -->
+<aside class="float-panel out-panel" id="outPanel">
+  <div class="panel-head drag-handle" id="outHandle">
+    <span class="head-text"><span class="grip">⋮⋮</span> 程序运行结果（屏幕输出）</span>
+    <button class="close-btn" data-close="outPanel" title="关闭面板（H 重新显示）">×</button>
+  </div>
+  <div class="panel-body" id="consoleBody"></div>
+  <div class="resize-handle" data-resize="outPanel" title="拖动调整大小"></div>
+</aside>
+
+<!-- ============ 说明面板（可拖动、可调整大小、可关闭） ============ -->
+<footer class="float-panel explain-panel" id="explainPanel">
+  <div class="panel-head drag-handle" id="explainHandle">
+    <span class="head-text"><span class="grip">⋮⋮</span> 当前语句说明</span>
+    <button class="close-btn" data-close="explainPanel" title="关闭面板（H 重新显示）">×</button>
+  </div>
+  <div class="panel-body">
+    <span class="ex-line" id="exLine">准备就绪</span>
+    <div class="ex-text" id="exText"><em>点击「自动播放」或「下一步」开始逐条执行。快捷键：空格 播放/暂停，← → 上一步/下一步，R 重置，F 全屏，H 面板，M 缩略图。</em></div>
+  </div>
+  <div class="resize-handle" data-resize="explainPanel" title="拖动调整大小"></div>
+</footer>
+
+<!-- ============ 缩略图（真实渲染 9 行代码文本，可拖动/可调整大小/可关闭） ============ -->
+<aside class="float-panel minimap" id="minimap">
+  <div class="panel-head drag-handle" id="minimapHandle">
+    <span class="head-text"><span class="grip">⋮⋮</span> 缩略图</span>
+    <button class="close-btn" data-close="minimap" title="关闭缩略图（M 重新显示）">×</button>
+  </div>
+  <div class="minimap-body" id="minimapBody">
+    <span class="mini-line" data-line="1"><span class="mp">#include</span> <span class="ms">&lt;stdio.h&gt;</span></span>
+    <span class="mini-line" data-line="2"><span class="mk">int</span> <span class="mf">main</span>() {</span>
+    <span class="mini-line" data-line="3">    <span class="mk">int</span> a = <span class="mn">6</span>, b = <span class="mn">0</span>, c = <span class="mn">0</span>, d;</span>
+    <span class="mini-line" data-line="4">    d = !a + !b + !c;</span>
+    <span class="mini-line" data-line="5">    <span class="mf">printf</span>(<span class="ms">"%d-%d<span class="me">\n</span>"</span>, !d, d);</span>
+    <span class="mini-line" data-line="6">    <span class="mk">if</span> (a) <span class="mf">printf</span>(<span class="ms">"a is true<span class="me">\n</span>"</span>);</span>
+    <span class="mini-line" data-line="7">    <span class="mk">if</span> (!b) <span class="mf">printf</span>(<span class="ms">"b is false<span class="me">\n</span>"</span>);</span>
+    <span class="mini-line" data-line="8">    <span class="mk">return</span> <span class="mn">0</span>;</span>
+    <span class="mini-line" data-line="9">}</span>
+    <div class="minimap-viewport" id="minimapViewport"></div>
+  </div>
+  <div class="resize-handle" data-resize="minimap" title="拖动调整大小"></div>
+</aside>
+
+<!-- 全部隐藏时的提示 -->
+<div class="hint" id="hint">按 H 键重新显示面板 · 按 M 键切换缩略图</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ==================================================
+     1. 逐步执行数据（对应 logic.c）
+     ==================================================
+     已核对：
+     - 行号顺序：#include(1) → main(2) → 定义变量(3) → 开始计算 d(4)
+       → !a(4) → !b(4) → !c(4) → 求和赋值 d(4) → !d(5) → printf(5)
+       → if (a) 判断(6) → printf(6) → if (!b) 判断(7) → printf(7)
+       → return 0(8) → main 结束(9)
+     - 关键值：a=6, b=0, c=0 → !a=0, !b=1, !c=1 → d=0+1+1=2
+       → !d=!2=0 → printf 输出 "0-2"
+       → if(a) 因为 a=6 非零为真 → 输出 "a is true"
+       → if(!b) 因为 !b=1 非零为真（等价于 if(b==0)）→ 输出 "b is false"
+     - 输出共 3 行：0-2、a is true、b is false
+     ================================================== */
+  var STEPS = [
+    {
+      line: 1, ctx: '预处理阶段',
+      vars: { a:'—', b:'—', c:'—', d:'—', notA:'—', notB:'—', notC:'—', notD:'—', prints:0, ret:'—' },
+      out: null,
+      title: '预处理指令 #include <stdio.h>',
+      desc: '预处理器把标准输入输出头文件 stdio.h 的内容引入源文件，使后面的 printf 获得正确的函数声明。这一行不产生任何屏幕输出。'
+    },
+    {
+      line: 2, ctx: 'main',
+      vars: { a:'—', b:'—', c:'—', d:'—', notA:'—', notB:'—', notC:'—', notD:'—', prints:0, ret:'—' },
+      out: null,
+      title: '程序入口 int main() {',
+      desc: '操作系统把控制权交给 main，程序正式开始执行。系统为 main 建立栈帧，接下来定义的 a、b、c、d 都存放在这个栈帧里。'
+    },
+    {
+      line: 3, ctx: 'main',
+      vars: { a:'6', b:'0', c:'0', d:'不确定', notA:'—', notB:'—', notC:'—', notD:'—', prints:0, ret:'—' },
+      out: null,
+      title: 'int a = 6, b = 0, c = 0, d;',
+      desc: '一条语句定义四个整型变量：a 初始化为 6，b 初始化为 0，c 初始化为 0；而 d 没有给出初始值，里面是"不确定"的残留数据，不能直接参与运算。'
+    },
+    {
+      line: 4, ctx: 'main（子表达式）',
+      vars: { a:'6', b:'0', c:'0', d:'不确定', notA:'—', notB:'—', notC:'—', notD:'—', prints:0, ret:'—' },
+      out: null,
+      title: '开始执行 d = !a + !b + !c;  先算右边',
+      desc: '赋值运算符 = 的优先级最低，所以先把右边三个逻辑非相加，再把结果赋给 d。逻辑非 ! 的规则是：操作数为 0 时结果为 1，操作数非 0 时结果为 0。C 语言中"非 0 即真、0 即假"。'
+    },
+    {
+      line: 4, ctx: 'main（子表达式）',
+      vars: { a:'6', b:'0', c:'0', d:'不确定', notA:'0', notB:'—', notC:'—', notD:'—', prints:0, ret:'—' },
+      out: null,
+      title: '计算 !a：a = 6 → 非零 → 结果 0',
+      desc: 'a 的值是 6，非 0，按 C 的规则算"真"，取逻辑非后变成"假"，也就是整数 0。所以 !a = 0。'
+    },
+    {
+      line: 4, ctx: 'main（子表达式）',
+      vars: { a:'6', b:'0', c:'0', d:'不确定', notA:'0', notB:'1', notC:'—', notD:'—', prints:0, ret:'—' },
+      out: null,
+      title: '计算 !b：b = 0 → 零 → 结果 1',
+      desc: 'b 的值是 0，按 C 的规则算"假"，取逻辑非后变成"真"，也就是整数 1。所以 !b = 1。'
+    },
+    {
+      line: 4, ctx: 'main（子表达式）',
+      vars: { a:'6', b:'0', c:'0', d:'不确定', notA:'0', notB:'1', notC:'1', notD:'—', prints:0, ret:'—' },
+      out: null,
+      title: '计算 !c：c = 0 → 零 → 结果 1',
+      desc: 'c 同样是 0，!c 也是 1。到这里三个子表达式的值分别是 0、1、1，接下来做加法。'
+    },
+    {
+      line: 4, ctx: 'main',
+      vars: { a:'6', b:'0', c:'0', d:'2', notA:'0', notB:'1', notC:'1', notD:'—', prints:0, ret:'—' },
+      out: null,
+      title: '求和并赋值：d = 0 + 1 + 1 = 2',
+      desc: '三个逻辑非的结果相加：0 + 1 + 1 = 2，把 2 赋给 d。d 从"不确定"变成 2，第 4 行执行完毕。'
+    },
+    {
+      line: 5, ctx: 'main（子表达式）',
+      vars: { a:'6', b:'0', c:'0', d:'2', notA:'0', notB:'1', notC:'1', notD:'0', prints:0, ret:'—' },
+      out: null,
+      title: '计算 !d：d = 2 → 非零 → 结果 0',
+      desc: 'printf 有两个实参 !d 和 d，先把 !d 算出来。d 是 2，非 0 为真，取逻辑非后为 0。所以 !d = 0，而 d 本身仍是 2。'
+    },
+    {
+      line: 5, ctx: 'main',
+      vars: { a:'6', b:'0', c:'0', d:'2', notA:'0', notB:'1', notC:'1', notD:'0', prints:1, ret:'—' },
+      out: [[{ t:'0-2', c:'out' }]],
+      title: 'printf("%d-%d\\n", !d, d);',
+      desc: '按格式串把两个 %d 依次替换：第一个用 !d 的值 0，第二个用 d 的值 2，中间的短横线是字面量原样输出，末尾 \\n 换行。屏幕上出现 0-2。'
+    },
+    {
+      line: 6, ctx: 'main',
+      vars: { a:'6', b:'0', c:'0', d:'2', notA:'0', notB:'1', notC:'1', notD:'0', prints:1, ret:'—' },
+      out: null,
+      title: 'if (a) 判断：a = 6 → 真',
+      desc: 'if 的条件直接写变量 a。C 语言规定非 0 为真、0 为假：a = 6 非 0，条件成立，于是执行 if 后面的 printf。如果 a 恰好是 0，这条 printf 就会被整个跳过。'
+    },
+    {
+      line: 6, ctx: 'main',
+      vars: { a:'6', b:'0', c:'0', d:'2', notA:'0', notB:'1', notC:'1', notD:'0', prints:2, ret:'—' },
+      out: [[{ t:'0-2', c:'out' }], [{ t:'a is true', c:'out' }]],
+      title: 'printf("a is true\\n");',
+      desc: '条件为真，输出字符串 a is true 并换行。屏幕现在有两行内容。'
+    },
+    {
+      line: 7, ctx: 'main（子表达式）',
+      vars: { a:'6', b:'0', c:'0', d:'2', notA:'0', notB:'1', notC:'1', notD:'0', prints:2, ret:'—' },
+      out: null,
+      title: 'if (!b) 判断：!b = 1 → 真',
+      desc: '条件写成 !b，先对 b 取逻辑非。b = 0，所以 !b = 1，条件成立。这种写法等价于 if (b == 0)，意思是"b 等于 0 时执行"，两种写法效果完全一样。'
+    },
+    {
+      line: 7, ctx: 'main',
+      vars: { a:'6', b:'0', c:'0', d:'2', notA:'0', notB:'1', notC:'1', notD:'0', prints:3, ret:'—' },
+      out: [[{ t:'0-2', c:'out' }], [{ t:'a is true', c:'out' }], [{ t:'b is false', c:'out' }]],
+      title: 'printf("b is false\\n");',
+      desc: '条件为真，输出字符串 b is false 并换行。屏幕现在有三行内容，三条 printf 全部执行完毕。'
+    },
+    {
+      line: 8, ctx: 'main',
+      vars: { a:'6', b:'0', c:'0', d:'2', notA:'0', notB:'1', notC:'1', notD:'0', prints:3, ret:'0' },
+      out: null,
+      title: 'return 0;',
+      desc: '结束 main 函数并把整数 0 交还操作系统。约定返回 0 表示程序正常结束，非 0 通常表示出错。这条语句不产生屏幕输出。'
+    },
+    {
+      line: 9, ctx: '程序结束',
+      vars: { a:'6', b:'0', c:'0', d:'2', notA:'0', notB:'1', notC:'1', notD:'0', prints:3, ret:'0' },
+      out: null,
+      title: 'main 函数体结束 }',
+      desc: '函数体收尾，main 的栈帧被销毁，a、b、c、d 全部随栈帧释放，控制权交还操作系统。程序运行完毕：3 次 printf 调用、3 行输出，返回值 0。'
+    }
+  ];
+
+  /* ==================================================
+     2. DOM 引用
+     ================================================== */
+  var codeScroll       = document.getElementById('codeScroll');
+  var codeLines        = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+  var varTable         = document.getElementById('varTable');
+  var consoleBody      = document.getElementById('consoleBody');
+  var exLine           = document.getElementById('exLine');
+  var exText           = document.getElementById('exText');
+  var topbar           = document.getElementById('topbar');
+  var varsPanel        = document.getElementById('varsPanel');
+  var outPanel         = document.getElementById('outPanel');
+  var explainPanel     = document.getElementById('explainPanel');
+  var minimap          = document.getElementById('minimap');
+  var minimapBody      = document.getElementById('minimapBody');
+  var minimapViewport  = document.getElementById('minimapViewport');
+  var hint             = document.getElementById('hint');
+
+  var btnPlay    = document.getElementById('btnPlay');
+  var btnPrev    = document.getElementById('btnPrev');
+  var btnNext    = document.getElementById('btnNext');
+  var btnReset   = document.getElementById('btnReset');
+  var btnFull    = document.getElementById('btnFull');
+  var btnPanels  = document.getElementById('btnPanels');
+  var btnMinimap = document.getElementById('btnMinimap');
+  var btnLayout  = document.getElementById('btnLayout');
+  var speedInput = document.getElementById('speed');
+  var speedLabel = document.getElementById('speedLabel');
+
+  /* ==================================================
+     3. 状态
+     ================================================== */
+  var current = -1;
+  var playing = false;
+  var timer   = null;
+  var speed   = Number(speedInput.value);
+  var STORAGE_KEY = 'c-sim-logic-layout-v1';
+  var lastOutSig = '';
+
+  /* ==================================================
+     4. 变量表
+     ================================================== */
+  var VAR_ROWS = [
+    { key:'ctx',    name:'当前执行位置',       kind:'k-ctx'  },
+    { key:'a',      name:'a  (int, main)',     kind:'k-main' },
+    { key:'b',      name:'b  (int, main)',     kind:'k-main' },
+    { key:'c',      name:'c  (int, main)',     kind:'k-main' },
+    { key:'d',      name:'d  (int, main)',     kind:'k-main' },
+    { key:'notA',   name:'!a  (逻辑非结果)',   kind:'k-temp' },
+    { key:'notB',   name:'!b  (逻辑非结果)',   kind:'k-temp' },
+    { key:'notC',   name:'!c  (逻辑非结果)',   kind:'k-temp' },
+    { key:'notD',   name:'!d  (逻辑非结果)',   kind:'k-temp' },
+    { key:'prints', name:'printf 调用次数',    kind:'k-ctx'  },
+    { key:'ret',    name:'main 返回值',        kind:'k-ret'  }
+  ];
+
+  function buildVarTable() {
+    varTable.innerHTML = VAR_ROWS.map(function (r) {
+      return '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+               '<span class="var-name">' + r.name + '</span>' +
+               '<span class="var-value dim">—</span>' +
+             '</div>';
+    }).join('');
+  }
+
+  function valueOf(step, key) {
+    if (!step) return '—';
+    if (key === 'ctx') return step.ctx;
+    return step.vars[key];
+  }
+
+  function updateVars(step, prevStep) {
+    VAR_ROWS.forEach(function (r) {
+      var row   = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+      if (!row) return;
+      var valEl = row.querySelector('.var-value');
+      var val   = String(valueOf(step, r.key));
+      var old   = String(valueOf(prevStep, r.key));
+
+      if (valEl.textContent !== val) {
+        valEl.textContent = val;
+        valEl.classList.toggle('dim', val === '—');
+        valEl.title = val;
+        valEl.classList.remove('flash');
+        void valEl.offsetWidth;
+        valEl.classList.add('flash');
+        if (prevStep && old !== val) {
+          row.classList.add('changed');
+          window.setTimeout(function () { row.classList.remove('changed'); }, 700);
+        }
+      }
+    });
+  }
+
+  /* ==================================================
+     5. 代码高亮 + 智能自动滚动
+     ================================================== */
+  function scrollActiveIntoView(el) {
+    if (!el) return;
+    requestAnimationFrame(function () {
+      var cr = codeScroll.getBoundingClientRect();
+      var er = el.getBoundingClientRect();
+      if (er.top >= cr.top + 100 && er.bottom <= cr.bottom - 100) return;
+      var target = el.offsetTop - (codeScroll.clientHeight - el.offsetHeight) / 2;
+      codeScroll.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+    });
+  }
+
+  function updateCode(step) {
+    var line = step ? step.line : null;
+    codeLines.forEach(function (el) {
+      var n = Number(el.dataset.line);
+      el.classList.toggle('active', line !== null && n === line);
+      el.classList.toggle('done', line !== null && n < line);
+    });
+    scrollActiveIntoView(document.querySelector('.code-line.active'));
+    updateMinimap(step);
+  }
+
+  /* ==================================================
+     6. 缩略图
+     ================================================== */
+  var miniLines = Array.prototype.slice.call(minimapBody.querySelectorAll('.mini-line'));
+
+  function updateMinimap(step) {
+    var line = step ? step.line : null;
+    miniLines.forEach(function (el) {
+      var n = Number(el.dataset.line);
+      el.classList.toggle('active', line !== null && n === line);
+      el.classList.toggle('done', line !== null && n < line);
+    });
+    updateMinimapViewport();
+  }
+
+  function updateMinimapViewport() {
+    if (minimap.classList.contains('panel-hidden')) return;
+    var sh = codeScroll.scrollHeight;
+    var ch = codeScroll.clientHeight;
+    var st = codeScroll.scrollTop;
+    var mh = minimapBody.clientHeight;
+    if (sh <= ch || mh <= 0) {
+      minimapViewport.style.top = '0px';
+      minimapViewport.style.height = mh + 'px';
+      return;
+    }
+    var ratio = ch / sh;
+    var vpH = Math.max(24, ratio * mh);
+    var vpTop = (st / sh) * mh;
+    vpTop = Math.max(0, Math.min(mh - vpH, vpTop));
+    minimapViewport.style.top = vpTop + 'px';
+    minimapViewport.style.height = vpH + 'px';
+  }
+
+  minimapBody.addEventListener('click', function (e) {
+    var rect = minimapBody.getBoundingClientRect();
+    var ratio = (e.clientY - rect.top) / rect.height;
+    ratio = Math.max(0, Math.min(1, ratio));
+    var target = ratio * codeScroll.scrollHeight - codeScroll.clientHeight / 2;
+    codeScroll.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+  });
+
+  codeScroll.addEventListener('scroll', updateMinimapViewport, { passive: true });
+  window.addEventListener('resize', function () {
+    updateMinimapViewport();
+    keepPanelsInView();
+  });
+
+  /* ==================================================
+     7. 输出区（快照重建）
+     ================================================== */
+  function resolveOut(upto) {
+    for (var i = upto; i >= 0; i--) {
+      if (STEPS[i] && STEPS[i].out) return STEPS[i].out;
+    }
+    return null;
+  }
+
+  function updateOutput(upto) {
+    var lines = resolveOut(upto);
+    var sig = lines ? JSON.stringify(lines) : '';
+
+    if (sig === lastOutSig) return;
+    lastOutSig = sig;
+
+    consoleBody.innerHTML = '';
+    if (!lines) return;
+
+    lines.forEach(function (segs) {
+      var div = document.createElement('div');
+      div.className = 'out-line';
+      segs.forEach(function (seg) {
+        var span = document.createElement('span');
+        span.className = 'seg-' + (seg.c || 'out');
+        span.textContent = seg.t;
+        div.appendChild(span);
+      });
+      consoleBody.appendChild(div);
+    });
+
+    consoleBody.scrollTop = consoleBody.scrollHeight;
+  }
+
+  /* ==================================================
+     8. 总渲染
+     ================================================== */
+  function render() {
+    var step = current >= 0 ? STEPS[current] : null;
+    var prev = current > 0 ? STEPS[current - 1] : null;
+
+    updateCode(step);
+    updateVars(step, prev);
+    updateOutput(current);
+
+    if (step) {
+      exLine.textContent = '第 ' + step.line + ' 行';
+      exText.innerHTML = '<strong>' + step.title + '</strong> —— ' + step.desc;
+    } else {
+      exLine.textContent = '准备就绪';
+      exText.innerHTML = '<em>点击「自动播放」或「下一步」开始逐条执行。快捷键：空格 播放/暂停，← → 上一步/下一步，R 重置，F 全屏，H 面板，M 缩略图。</em>';
+    }
+
+    btnPrev.disabled = current < 0;
+    btnNext.disabled = current >= STEPS.length - 1;
+
+    requestAnimationFrame(updateMinimapViewport);
+  }
+
+  /* ==================================================
+     9. 播放控制
+     ================================================== */
+  function updatePlayBtn() {
+    btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+    btnPlay.classList.toggle('playing', playing);
+  }
+
+  function tick() {
+    if (current >= STEPS.length - 1) { pause(); return; }
+    current += 1;
+    render();
+    if (current >= STEPS.length - 1) pause();
+  }
+
+  function play() {
+    if (playing) return;
+    if (current >= STEPS.length - 1) { current = -1; render(); }
+    playing = true;
+    updatePlayBtn();
+    clearInterval(timer);
+    timer = setInterval(tick, speed);
+    tick();
+  }
+
+  function pause() {
+    playing = false;
+    clearInterval(timer);
+    timer = null;
+    updatePlayBtn();
+  }
+
+  function togglePlay() { playing ? pause() : play(); }
+
+  function nextStep() {
+    pause();
+    if (current < STEPS.length - 1) { current += 1; render(); }
+  }
+
+  function prevStep() {
+    pause();
+    if (current > -1) { current -= 1; render(); }
+  }
+
+  function resetAll() {
+    pause();
+    current = -1;
+    lastOutSig = '';
+    consoleBody.innerHTML = '';
+    render();
+  }
+
+  /* ==================================================
+     10. 全屏
+     ================================================== */
+  function isFullscreen() {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement);
+  }
+  function updateFullBtn() {
+    btnFull.textContent = isFullscreen() ? '⛶ 退出全屏' : '⛶ 全屏';
+  }
+  function toggleFullscreen() {
+    var el = document.documentElement;
+    if (!isFullscreen()) {
+      var req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+      if (req) req.call(el);
+    } else {
+      var exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+      if (exit) exit.call(document);
+    }
+  }
+  document.addEventListener('fullscreenchange', updateFullBtn);
+  document.addEventListener('webkitfullscreenchange', updateFullBtn);
+
+  /* ==================================================
+     11. 拖动 + 任意调整大小（指针事件 = 鼠标 + 触控）
+     ================================================== */
+  var PANELS = [
+    { el: topbar,       handle: 'topbarHandle'  },
+    { el: varsPanel,    handle: 'varsHandle'    },
+    { el: outPanel,     handle: 'outHandle'     },
+    { el: explainPanel, handle: 'explainHandle' },
+    { el: minimap,      handle: 'minimapHandle' }
+  ];
+
+  /* --- 拖动 --- */
+  function makeDraggable(panel, handleId) {
+    var handle = document.getElementById(handleId);
+    if (!handle) return;
+
+    var isDragging = false;
+    var startX = 0, startY = 0, startLeft = 0, startTop = 0;
+    var panelW = 0, panelH = 0, vw = 0, vh = 0;
+
+    handle.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('button, input, a, label, .close-btn, .resize-handle')) return;
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+      var rect = panel.getBoundingClientRect();
+      panelW = rect.width;
+      panelH = rect.height;
+      vw = window.innerWidth;
+      vh = window.innerHeight;
+
+      panel.style.left   = rect.left + 'px';
+      panel.style.top    = rect.top  + 'px';
+      panel.style.right  = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.transform = 'none';
+
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = rect.left;
+      startTop  = rect.top;
+      isDragging = true;
+      panel.classList.add('dragging');
+
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault();
+    });
+
+    handle.addEventListener('pointermove', function (e) {
+      if (!isDragging) return;
+      var dx = e.clientX - startX;
+      var dy = e.clientY - startY;
+      var newLeft = Math.max(0, Math.min(vw - panelW, startLeft + dx));
+      var newTop  = Math.max(0, Math.min(vh - panelH, startTop + dy));
+      panel.style.left = newLeft + 'px';
+      panel.style.top  = newTop + 'px';
+    });
+
+    function endDrag(e) {
+      if (!isDragging) return;
+      isDragging = false;
+      panel.classList.remove('dragging');
+      try {
+        if (e && e.pointerId !== undefined &&
+            handle.hasPointerCapture && handle.hasPointerCapture(e.pointerId)) {
+          handle.releasePointerCapture(e.pointerId);
+        }
+      } catch (_) {}
+      saveLayout();
+    }
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+    handle.addEventListener('lostpointercapture', endDrag);
+  }
+
+  /* --- 任意大小调整（不设最小/最大限制） --- */
+  function makeResizable(panel) {
+    var handle = panel.querySelector('.resize-handle');
+    if (!handle) return;
+
+    var isResizing = false;
+    var startX = 0, startY = 0, startW = 0, startH = 0;
+
+    handle.addEventListener('pointerdown', function (e) {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+
+      var rect = panel.getBoundingClientRect();
+
+      panel.style.left   = rect.left + 'px';
+      panel.style.top    = rect.top  + 'px';
+      panel.style.right  = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.transform = 'none';
+      panel.style.width  = rect.width  + 'px';
+      panel.style.height = rect.height + 'px';
+
+      startX = e.clientX;
+      startY = e.clientY;
+      startW = rect.width;
+      startH = rect.height;
+      isResizing = true;
+      panel.classList.add('resizing');
+
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    handle.addEventListener('pointermove', function (e) {
+      if (!isResizing) return;
+      var dx = e.clientX - startX;
+      var dy = e.clientY - startY;
+      /* ⚠ 不设最小/最大限制，允许任意大小 */
+      var newW = Math.max(20, startW + dx);
+      var newH = Math.max(20, startH + dy);
+      panel.style.width  = newW + 'px';
+      panel.style.height = newH + 'px';
+    });
+
+    function endResize(e) {
+      if (!isResizing) return;
+      isResizing = false;
+      panel.classList.remove('resizing');
+      try {
+        if (e && e.pointerId !== undefined &&
+            handle.hasPointerCapture && handle.hasPointerCapture(e.pointerId)) {
+          handle.releasePointerCapture(e.pointerId);
+        }
+      } catch (_) {}
+      saveLayout();
+      requestAnimationFrame(updateMinimapViewport);
+    }
+    handle.addEventListener('pointerup', endResize);
+    handle.addEventListener('pointercancel', endResize);
+    handle.addEventListener('lostpointercapture', endResize);
+  }
+
+  PANELS.forEach(function (p) {
+    makeDraggable(p.el, p.handle);
+    makeResizable(p.el);
+  });
+
+  /* --- 布局持久化 --- */
+  function saveLayout() {
+    var data = {};
+    PANELS.forEach(function (p) {
+      if (!p.el.id) return;
+      data[p.el.id] = {
+        left:   p.el.style.left,
+        top:    p.el.style.top,
+        width:  p.el.style.width,
+        height: p.el.style.height
+      };
+    });
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (_) {}
+  }
+
+  function restoreLayout() {
+    try {
+      var data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      PANELS.forEach(function (p) {
+        var saved = data[p.el.id];
+        if (!saved) return;
+        if (saved.left) { p.el.style.left = saved.left; p.el.style.right = 'auto'; }
+        if (saved.top)  { p.el.style.top  = saved.top;  p.el.style.bottom = 'auto'; }
+        if (saved.width)  p.el.style.width  = saved.width;
+        if (saved.height) p.el.style.height = saved.height;
+        if (saved.left || saved.top) p.el.style.transform = 'none';
+      });
+    } catch (_) {}
+    keepPanelsInView();
+  }
+
+  function resetLayout() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+    PANELS.forEach(function (p) {
+      p.el.style.left = '';
+      p.el.style.top = '';
+      p.el.style.right = '';
+      p.el.style.bottom = '';
+      p.el.style.width = '';
+      p.el.style.height = '';
+      p.el.style.transform = '';
+    });
+    requestAnimationFrame(function () {
+      keepPanelsInView();
+      updateMinimapViewport();
+    });
+  }
+
+  function keepPanelsInView() {
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    PANELS.forEach(function (p) {
+      if (!p.el.style.left) return;
+      var rect = p.el.getBoundingClientRect();
+      /* 只有当面板完全跑出视口时才拉回，避免强制修改用户调整的尺寸 */
+      if (rect.right < 40 || rect.bottom < 40 ||
+          rect.left > vw - 40 || rect.top > vh - 40) {
+        var left = Math.max(0, Math.min(vw - rect.width,  rect.left));
+        var top  = Math.max(0, Math.min(vh - rect.height, rect.top));
+        p.el.style.left = left + 'px';
+        p.el.style.top  = top + 'px';
+      }
+    });
+  }
+
+  /* ==================================================
+     12. 面板显示 / 隐藏
+     ================================================== */
+  function hidePanel(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.add('panel-hidden');
+    updatePanelToggleState();
+    updateHint();
+  }
+
+  function toggleAllPanels() {
+    var mainPanels = [topbar, varsPanel, outPanel, explainPanel];
+    var anyVisible = mainPanels.some(function (p) {
+      return !p.classList.contains('panel-hidden');
+    });
+    mainPanels.forEach(function (p) {
+      p.classList.toggle('panel-hidden', anyVisible);
+    });
+    updatePanelToggleState();
+    updateHint();
+    if (!anyVisible) {
+      requestAnimationFrame(updateMinimapViewport);
+    }
+  }
+
+  function toggleMinimap() {
+    minimap.classList.toggle('panel-hidden');
+    updatePanelToggleState();
+    updateHint();
+    if (!minimap.classList.contains('panel-hidden')) {
+      requestAnimationFrame(updateMinimapViewport);
+    }
+  }
+
+  function updatePanelToggleState() {
+    var mainPanels = [topbar, varsPanel, outPanel, explainPanel];
+    var anyVisible = mainPanels.some(function (p) {
+      return !p.classList.contains('panel-hidden');
+    });
+    btnPanels.classList.toggle('toggle-off', !anyVisible);
+    btnPanels.textContent = anyVisible ? '☰ 面板' : '☰ 面板已隐藏';
+
+    var mmVisible = !minimap.classList.contains('panel-hidden');
+    btnMinimap.classList.toggle('toggle-off', !mmVisible);
+    btnMinimap.textContent = mmVisible ? '▤ 缩略图' : '▤ 缩略图已隐藏';
+  }
+
+  function updateHint() {
+    var mainPanels = [topbar, varsPanel, outPanel, explainPanel];
+    var anyVisible = mainPanels.some(function (p) {
+      return !p.classList.contains('panel-hidden');
+    });
+    var mmVisible = !minimap.classList.contains('panel-hidden');
+    hint.classList.toggle('show', !anyVisible && !mmVisible);
+  }
+
+  document.querySelectorAll('[data-close]').forEach(function (btn) {
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      hidePanel(btn.getAttribute('data-close'));
+    });
+  });
+
+  /* ==================================================
+     13. 顶栏空闲变淡
+     ================================================== */
+  var idleTimer = null;
+  function resetIdle() {
+    topbar.classList.remove('idle');
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(function () {
+      if (!topbar.classList.contains('dragging') &&
+          !topbar.classList.contains('resizing')) {
+        topbar.classList.add('idle');
+      }
+    }, 4000);
+  }
+  ['mousemove','mousedown','touchstart','keydown','wheel'].forEach(function (ev) {
+    document.addEventListener(ev, resetIdle, { passive: true });
+  });
+  resetIdle();
+
+  /* ==================================================
+     14. 按钮事件
+     ================================================== */
+  btnPlay.addEventListener('click', togglePlay);
+  btnNext.addEventListener('click', nextStep);
+  btnPrev.addEventListener('click', prevStep);
+  btnReset.addEventListener('click', resetAll);
+  btnFull.addEventListener('click', toggleFullscreen);
+  btnPanels.addEventListener('click', toggleAllPanels);
+  btnMinimap.addEventListener('click', toggleMinimap);
+  btnLayout.addEventListener('click', resetLayout);
+
+  speedInput.addEventListener('input', function () {
+    speed = Number(speedInput.value);
+    speedLabel.textContent = (speed / 1000).toFixed(1) + 's';
+    if (playing) {
+      clearInterval(timer);
+      timer = setInterval(tick, speed);
+    }
+  });
+
+  /* ==================================================
+     15. 全局键盘快捷键（任何面板状态都有效）
+     ================================================== */
+  document.addEventListener('keydown', function (e) {
+    var tag = (e.target && e.target.tagName ? e.target.tagName : '').toUpperCase();
+    if (tag === 'INPUT' && e.code !== 'Escape') return;
+
+    switch (e.code) {
+      case 'Space':     e.preventDefault(); togglePlay(); break;
+      case 'ArrowRight':
+      case 'PageDown':  e.preventDefault(); nextStep(); break;
+      case 'ArrowLeft':
+      case 'PageUp':    e.preventDefault(); prevStep(); break;
+      case 'KeyR':      e.preventDefault(); resetAll(); break;
+      case 'KeyF':      e.preventDefault(); toggleFullscreen(); break;
+      case 'KeyH':      e.preventDefault(); toggleAllPanels(); break;
+      case 'KeyM':      e.preventDefault(); toggleMinimap(); break;
+    }
+  });
+
+  /* ==================================================
+     16. 初始化
+     ================================================== */
+  buildVarTable();
+  speedLabel.textContent = (speed / 1000).toFixed(1) + 's';
+  updateFullBtn();
+  restoreLayout();
+  updatePanelToggleState();
+  updateHint();
+  render();
+
+  window.addEventListener('load', function () {
+    requestAnimationFrame(function () {
+      updateMinimapViewport();
+      keepPanelsInView();
+      if (window.console && console.log) {
+        var cs = getComputedStyle(document.documentElement);
+        console.log('[大屏自检] --code-font=' + cs.getPropertyValue('--code-font').trim() +
+                    ' ; --out-font=' + cs.getPropertyValue('--out-font').trim());
+        console.log('[大屏自检] 逻辑核对：!a=0 · !b=1 · !c=1 · d=2 · !d=0 · 输出 0-2 / a is true / b is false · 返回值 0');
+        console.log('[大屏自检] 面板可拖动、可关闭、可任意调整大小（无最小/最大限制）。');
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>
