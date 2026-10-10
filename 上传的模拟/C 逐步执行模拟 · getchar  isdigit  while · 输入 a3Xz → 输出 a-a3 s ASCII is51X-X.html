@@ -1,0 +1,1542 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 逐步执行模拟 · getchar / isdigit / while · 输入 "a3Xz" → 输出 a-a3's ASCII is:51X-X</title>
+<style>
+/* ===================================================================
+   字号硬指标：1920×1080 下代码 ≥80px、输出 ≥72px、变量 ≥40px、
+   说明 ≥48px、按钮 ≥40px。全部用 clamp 自适应，正文绝不低于 32px。
+   =================================================================== */
+:root{
+  --code-font: clamp(80px, 4.2vw, 120px);
+  --code-lh: 1.34;
+  --out-font: clamp(72px, 4.5vw, 110px);
+  --var-font: clamp(40px, 2.4vw, 60px);
+  --explain-font: clamp(48px, 2.8vw, 72px);
+  --btn-font: clamp(40px, 2.2vw, 60px);
+  --title-font: clamp(56px, 3vw, 80px);
+  --panel-head-font: clamp(32px, 1.8vw, 44px);
+
+  --bg:#0d1117;
+  --panel-bg:rgba(22,27,34,.82);
+  --border:#30363d;
+  --text:#e6edf3;
+  --muted:#8b949e;
+  --accent:#58a6ff;
+  --green:#3fb950;
+  --amber:#d29922;
+  --pink:#f778ba;
+  --purple:#bc8cff;
+  --gold:#e3b341;
+  --teal:#39c5bb;
+  --orange:#ffa657;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);}
+body{
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  color:var(--text);
+  user-select:none;
+}
+
+/* ================= 全屏代码区（不透明，永不被永久遮挡） ================= */
+#codeArea{
+  position:fixed; inset:0; overflow:auto;
+  background:#0d1117;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  line-height:var(--code-lh);
+  padding:24px 60px 70vh 0;
+  scrollbar-width:thin; scrollbar-color:#30363d transparent;
+}
+#codeArea::-webkit-scrollbar{width:16px;height:16px;}
+#codeArea::-webkit-scrollbar-thumb{background:#30363d;border-radius:16px;}
+#codeArea::-webkit-scrollbar-track{background:#010409;}
+
+.cl{
+  display:flex; align-items:baseline; white-space:pre;
+  border-left:14px solid transparent;
+  padding:0 40px 0 0;
+  transition:background .25s,border-color .25s,opacity .25s;
+}
+.cl .ln{
+  flex:0 0 auto; width:3ch; text-align:right;
+  color:#484f58; margin-right:34px;
+  font-size:.7em; user-select:none;
+}
+.cl .src{flex:0 0 auto;}
+.cl.active{
+  background:linear-gradient(90deg,rgba(88,166,255,.22),rgba(88,166,255,.03) 70%);
+  border-left-color:var(--accent);
+}
+.cl.active .ln{color:var(--accent);}
+.cl.active .src{color:#ffffff;}
+.cl.past{opacity:.62;}
+
+/* 语法高亮 */
+.pp{color:var(--purple);font-weight:700;}
+.str{color:var(--green);}
+.cmt{color:#6e7681;font-style:italic;}
+.fn{color:var(--accent);font-weight:700;}
+.kw{color:var(--pink);font-weight:700;}
+.num{color:var(--amber);font-weight:700;}
+.op{color:var(--orange);font-weight:700;}
+.chr{color:var(--gold);font-weight:700;}
+
+/* ================= 通用悬浮面板 ================= */
+.panel{
+  position:fixed;
+  background:var(--panel-bg);
+  -webkit-backdrop-filter:blur(16px) saturate(1.3);
+  backdrop-filter:blur(16px) saturate(1.3);
+  border:2px solid var(--border);
+  border-radius:16px;
+  box-shadow:0 16px 48px rgba(0,0,0,.65);
+  display:flex; flex-direction:column;
+  overflow:hidden;
+  z-index:100;
+  transition:border-color .2s,box-shadow .2s,opacity .2s;
+}
+.panel.active{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(88,166,255,.32),0 16px 48px rgba(0,0,0,.75);
+}
+.panel.hidden{display:none;}
+.panel.dragging{opacity:.94;}
+
+.ph{
+  flex:0 0 auto; display:flex; align-items:center; gap:14px;
+  padding:10px 14px;
+  background:rgba(28,34,44,.9);
+  border-bottom:2px solid var(--border);
+  cursor:grab; flex-wrap:wrap;
+  touch-action:none;
+}
+.ph:active{cursor:grabbing;}
+.ptitle{
+  font-size:var(--panel-head-font); font-weight:700;
+  color:var(--accent); white-space:nowrap; letter-spacing:.02em;
+}
+.pclose{
+  margin-left:auto;
+  width:clamp(48px,3vw,64px); height:clamp(48px,3vw,64px);
+  border-radius:12px; border:2px solid var(--border);
+  background:#2d1618; color:#ff9c9c;
+  font-size:clamp(30px,1.8vw,44px); line-height:1;
+  cursor:pointer; flex:0 0 auto;
+}
+.pclose:hover{background:#4a1d21;border-color:#f85149;color:#fff;}
+
+.pbody{flex:1 1 auto; min-height:0; overflow:auto; padding:10px 14px;}
+.pbody::-webkit-scrollbar{width:12px;height:12px;}
+.pbody::-webkit-scrollbar-thumb{background:#30363d;border-radius:12px;}
+
+/* 右下角缩放手柄：不限制最小/最大尺寸 */
+.rs{
+  position:absolute; right:0; bottom:0;
+  width:clamp(40px,2.6vw,56px); height:clamp(40px,2.6vw,56px);
+  cursor:nwse-resize; touch-action:none;
+  background:
+    linear-gradient(135deg,transparent 46%,var(--accent) 46%,var(--accent) 54%,transparent 54%),
+    linear-gradient(135deg,transparent 66%,rgba(88,166,255,.55) 66%,rgba(88,166,255,.55) 74%,transparent 74%),
+    linear-gradient(135deg,transparent 84%,rgba(88,166,255,.3) 84%,rgba(88,166,255,.3) 92%,transparent 92%);
+  z-index:5;
+}
+
+/* ================= 按钮 ================= */
+button{
+  font-family:inherit; font-size:var(--btn-font);
+  min-height:clamp(72px,4.4vh,92px);
+  padding:0 clamp(18px,1.3vw,30px);
+  border-radius:14px; border:2px solid var(--border);
+  background:#21262d; color:var(--text);
+  cursor:pointer; white-space:nowrap;
+  transition:background .15s,border-color .15s,transform .1s;
+  user-select:none;
+}
+button:hover:not(:disabled){background:#30363d;border-color:#5a6b80;}
+button:active:not(:disabled){transform:translateY(2px);}
+button:disabled{opacity:.32;cursor:not-allowed;}
+button.primary{background:linear-gradient(180deg,#1f6feb,#1158c7);border-color:#58a6ff;color:#fff;font-weight:700;}
+button.primary.playing{background:linear-gradient(180deg,#d29922,#9e6a03);border-color:#e3b341;color:#1a1200;}
+
+/* ================= 控制栏 ================= */
+#pBar .pbody{padding:10px 14px;}
+.bar-row{display:flex;align-items:center;gap:16px;flex-wrap:wrap;}
+.speed-wrap{display:flex;align-items:center;gap:14px;font-size:var(--btn-font);color:var(--muted);}
+#speed{
+  width:clamp(200px,12vw,300px); height:clamp(40px,2.6vh,56px);
+  accent-color:var(--accent); cursor:pointer;
+  touch-action:auto;
+}
+#speedLabel{
+  color:var(--accent); font-variant-numeric:tabular-nums;
+  min-width:5ch; font-weight:700;
+}
+
+/* ================= 变量 / 数组面板 ================= */
+.sec-title{
+  font-size:calc(var(--var-font)*.8); color:var(--muted);
+  margin:10px 0 8px; display:flex; align-items:baseline; gap:14px; flex-wrap:wrap;
+}
+.sec-title b{color:var(--accent);font-family:ui-monospace,Consolas,monospace;}
+.sec-title .tag{
+  font-size:calc(var(--var-font)*.62); padding:2px 12px; border-radius:8px;
+  background:rgba(139,148,158,.18); color:#a9b6c4;
+  font-family:ui-monospace,Consolas,monospace;
+}
+.arr-scroll{overflow-x:auto;padding-bottom:6px;}
+.arr-grid{display:grid;gap:8px;margin-bottom:12px;}
+.cell{
+  text-align:center; border-radius:8px; padding:8px 4px;
+  background:#0d1728; border:2px solid #1b293f; min-width:0;
+  transition:background .25s,border-color .25s,box-shadow .25s,transform .25s;
+}
+.cell .ci{
+  display:block; font-size:calc(var(--var-font)*.42); color:#5f7796;
+  line-height:1.15; font-variant-numeric:tabular-nums;
+}
+.cell .cv{
+  display:block; font-family:ui-monospace,Consolas,monospace;
+  font-weight:700; font-size:calc(var(--var-font)*.82);
+  color:#8aa2c0; line-height:1.25;
+}
+.cell.is-pending{
+  background:#0a1120; border-color:#1b293f;
+}
+.cell.is-pending .cv{color:#5d7699;font-weight:600;}
+.cell.is-pending .ci{color:#3b5473;}
+.cell.is-done{
+  border-color:var(--green); background:rgba(63,185,80,.14);
+  box-shadow:0 0 0 2px rgba(63,185,80,.35);
+}
+.cell.is-done .cv{color:#b7f5c4;}
+.cell.is-done .ci{color:var(--green);}
+.cell.is-hl{
+  border-color:var(--accent); background:rgba(88,166,255,.22);
+  box-shadow:0 0 0 3px rgba(88,166,255,.5); transform:translateY(-3px);
+}
+.cell.is-hl .cv{color:#fff;}
+.cell.is-hl .ci{color:var(--accent);}
+.cell.is-emit{
+  border-color:var(--gold); background:rgba(227,179,65,.3);
+  box-shadow:0 0 0 4px rgba(227,179,65,.7),0 0 22px rgba(227,179,65,.55);
+  transform:translateY(-4px) scale(1.1);
+}
+.cell.is-emit .cv{color:#fff8d0;font-size:calc(var(--var-font)*.94);}
+.cell.is-emit .ci{color:var(--gold);}
+@keyframes cellFlash{0%{transform:scale(1);}45%{transform:scale(1.3);color:#fff;}100%{transform:scale(1);}}
+.cell .cv.flash{animation:cellFlash .45s ease-out;}
+
+/* 大号 ch 显示 */
+.ch-box{
+  display:flex; align-items:center; gap:24px; flex-wrap:wrap;
+  padding:14px 22px; margin-bottom:12px;
+  background:#0d1728; border:2px solid #1b293f; border-radius:12px;
+}
+.ch-label{font-size:calc(var(--var-font)*.8); color:var(--muted);}
+.ch-val{
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:calc(var(--var-font)*1.6); font-weight:800;
+  color:var(--gold); min-width:2.4ch; text-align:center;
+  padding:2px 18px; border-radius:10px; background:rgba(227,179,65,.14);
+  transition:background .25s, color .25s, transform .25s;
+}
+.ch-val.uninit{color:#ff9ee8;background:rgba(247,120,186,.18);font-size:calc(var(--var-font)*1.1);}
+.ch-val.flash{animation:cellFlash .45s ease-out;}
+.ch-code{
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:calc(var(--var-font)*1.0); font-weight:700;
+  color:var(--accent);
+}
+
+/* 变量表 */
+.var-table{display:flex;flex-direction:column;gap:6px;}
+.var-row{
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  padding:8px 16px; border-radius:10px;
+  background:#0d1728; border:2px solid #1b293f;
+  font-size:var(--var-font);
+  transition:background .25s,border-color .25s;
+}
+.var-row.k-ctx{border-left:8px solid rgba(63,185,80,.8);}
+.var-row.k-ptr{border-left:8px solid rgba(88,166,255,.9);}
+.var-row.k-ch{border-left:8px solid rgba(227,179,65,.95);}
+.var-row.k-expr{border-left:8px solid rgba(247,120,186,.9);}
+.var-row.k-val{border-left:8px solid rgba(247,120,186,.6);}
+.var-row.k-note{border-left:8px solid rgba(57,197,187,.9);}
+.var-row.k-cnt{border-left:8px solid rgba(188,140,255,.85);}
+.var-row.k-ret{border-left:8px solid rgba(210,153,34,.85);}
+.var-row.changed{border-color:var(--accent);background:rgba(88,166,255,.14);}
+.var-name{color:var(--muted);white-space:nowrap;flex:0 0 auto;}
+.var-value{
+  font-family:ui-monospace,Consolas,monospace; font-weight:700;
+  color:var(--accent); text-align:right; flex:1 1 auto; min-width:0;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.var-value.dim{color:#5f7796;font-weight:500;}
+.var-row.k-ctx .var-value{color:var(--green);}
+.var-row.k-ptr .var-value{color:var(--accent);}
+.var-row.k-ch .var-value{color:var(--gold);}
+.var-row.k-expr .var-value{color:var(--pink);}
+.var-row.k-val .var-value{color:var(--pink);}
+.var-row.k-note .var-value{color:var(--teal);}
+.var-row.k-cnt .var-value{color:var(--purple);}
+.var-row.k-ret .var-value{color:var(--amber);}
+@keyframes vflash{0%{transform:scale(1);}40%{transform:scale(1.18);color:#fff;}100%{transform:scale(1);}}
+.var-value.flash{animation:vflash .45s ease-out;}
+
+/* ================= 输出面板 ================= */
+#outBody{
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);
+  line-height:1.4; color:#7ee787;
+  background:#010409; border-radius:12px;
+  padding:20px 26px; min-height:100%;
+  white-space:pre-wrap; word-break:break-all;
+}
+.out-line{min-height:1.2em;}
+.out-line.empty{color:#3d5474;}
+.cursor{display:inline-block;color:#7ee787;animation:blink 1s step-end infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+.out-line.fade{animation:fadeIn .3s ease-out;}
+
+/* ================= 说明面板 ================= */
+#pExp .pbody{font-size:var(--explain-font);line-height:1.55;color:#c9d1d9;}
+.ex-line{
+  display:inline-block;margin-right:14px;padding:2px 16px;border-radius:10px;
+  background:rgba(88,166,255,.18);color:var(--accent);
+  font-weight:700;font-size:.62em;vertical-align:middle;
+}
+.ex-line.ans{background:rgba(210,153,34,.22);color:var(--amber);}
+.ex-line.mv{background:rgba(247,120,186,.22);color:var(--pink);}
+.ex-line.gold{background:rgba(227,179,65,.24);color:var(--gold);}
+.ex-line.warn{background:rgba(248,81,73,.26);color:#ff9c9c;}
+#pExp strong{color:#fff;}
+#pExp code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(110,118,129,.25);border-radius:8px;
+  padding:0 10px;color:#e6edf3;
+}
+.tip,.warn,.danger,.win{
+  display:block;margin-top:14px;padding:12px 18px;border-radius:12px;
+  font-size:.86em;line-height:1.5;
+}
+.tip{background:rgba(57,197,187,.12);border-left:10px solid var(--teal);color:#bff5ec;}
+.warn{background:rgba(210,153,34,.14);border-left:10px solid var(--amber);color:#ffe6b0;}
+.danger{background:rgba(248,81,73,.14);border-left:10px solid #f85149;color:#ffc9c9;}
+.win{background:rgba(227,179,65,.15);border-left:10px solid var(--gold);color:#fff3c4;font-weight:600;}
+
+/* ================= 缩略图（VSCode minimap 风格） ================= */
+#pMini .pbody{padding:0;overflow:hidden;}
+.mm-wrap{position:relative;width:100%;height:100%;overflow:hidden;background:rgba(1,4,9,.55);}
+.mm-lines{position:absolute;inset:0;display:flex;flex-direction:column;}
+.mm-line{
+  flex:1 1 0; min-height:0; overflow:hidden;
+  white-space:pre;
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:clamp(6px,.55vw,12px);
+  line-height:1.35;
+  padding-left:6px;
+  color:#8b949e;
+  border-left:4px solid transparent;
+  transition:background .2s,border-color .2s;
+}
+.mm-line.mm-active{background:rgba(88,166,255,.28);border-left-color:var(--accent);color:#fff;}
+.mm-line .pp{color:var(--purple);}
+.mm-line .str{color:var(--green);}
+.mm-line .cmt{color:#6e7681;}
+.mm-line .fn{color:var(--accent);}
+.mm-line .kw{color:var(--pink);}
+.mm-line .num{color:var(--amber);}
+.mm-line .op{color:var(--orange);}
+.mm-line .chr{color:var(--gold);}
+.mm-view{
+  position:absolute;left:0;right:0;
+  background:rgba(88,166,255,.14);
+  border-top:2px solid rgba(88,166,255,.65);
+  border-bottom:2px solid rgba(88,166,255,.65);
+  pointer-events:none;
+  transition:top .06s linear,height .06s linear;
+}
+
+/* ================= 小屏回退（仍不低于 32px 正文） ================= */
+@media (max-width:1100px){
+  :root{
+    --code-font:clamp(32px,4.4vw,56px);
+    --out-font:clamp(34px,4.2vw,56px);
+    --var-font:clamp(32px,3vw,40px);
+    --explain-font:clamp(32px,3.2vw,44px);
+    --btn-font:clamp(32px,3vw,40px);
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     全屏代码区（15 行，每行代码与行尾注释同行，不折行）
+     ============================================================ -->
+<div id="codeArea">
+  <div class="cl" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                        <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+  <div class="cl" data-line="2"><span class="ln">2</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;ctype.h&gt;</span>                        <span class="cmt">// 包含字符处理头文件</span></span></div>
+  <div class="cl" data-line="3"><span class="ln">3</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                             <span class="cmt">// 定义主函数</span></span></div>
+  <div class="cl" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">char</span> ch;                               <span class="cmt">// 定义字符变量</span></span></div>
+  <div class="cl" data-line="5"><span class="ln">5</span><span class="src">    ch <span class="op">=</span> <span class="fn">getchar</span>();                        <span class="cmt">// 输入一个字符</span></span></div>
+  <div class="cl" data-line="6"><span class="ln">6</span><span class="src">    <span class="kw">while</span>(ch <span class="op">!=</span> <span class="chr">'z'</span>) {                     <span class="cmt">// 当字符不是'z'时循环</span></span></div>
+  <div class="cl" data-line="7"><span class="ln">7</span><span class="src">        <span class="kw">if</span>(<span class="fn">isdigit</span>(ch)) {                   <span class="cmt">// 如果是数字字符</span></span></div>
+  <div class="cl" data-line="8"><span class="ln">8</span><span class="src">            <span class="fn">printf</span>(<span class="str">"%c's ASCII is:%d"</span>, ch, ch); <span class="cmt">// 输出ASCII码</span></span></div>
+  <div class="cl" data-line="9"><span class="ln">9</span><span class="src">        } <span class="kw">else</span> {                              <span class="cmt">// 否则</span></span></div>
+  <div class="cl" data-line="10"><span class="ln">10</span><span class="src">            <span class="fn">printf</span>(<span class="str">"%c-%c"</span>, ch, ch);          <span class="cmt">// 原样输出</span></span></div>
+  <div class="cl" data-line="11"><span class="ln">11</span><span class="src">        }</span></div>
+  <div class="cl" data-line="12"><span class="ln">12</span><span class="src">        ch <span class="op">=</span> <span class="fn">getchar</span>();                      <span class="cmt">// 继续输入下一个字符</span></span></div>
+  <div class="cl" data-line="13"><span class="ln">13</span><span class="src">    }</span></div>
+  <div class="cl" data-line="14"><span class="ln">14</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                              <span class="cmt">// 返回0，程序结束</span></span></div>
+  <div class="cl" data-line="15"><span class="ln">15</span><span class="src">}</span></div>
+</div>
+
+<!-- ============================================================
+     控制栏
+     ============================================================ -->
+<div class="panel" id="pBar">
+  <div class="ph">
+    <span class="ptitle">C 逐步执行 · getchar / isdigit / while</span>
+    <button class="pclose" data-act="close">×</button>
+  </div>
+  <div class="pbody">
+    <div class="bar-row">
+      <button data-act="reset">⟲ 重置</button>
+      <button data-act="prev">◀ 上一步</button>
+      <button data-act="play" class="primary" id="btnPlay">▶ 自动播放</button>
+      <button data-act="next">下一步 ▶</button>
+      <span class="speed-wrap">速度
+        <input type="range" id="speed" min="100" max="2000" step="50" value="700">
+        <b id="speedLabel">0.70s</b>
+      </span>
+      <button data-act="full">⛶ 全屏</button>
+      <button data-act="panels">面板显隐</button>
+      <button data-act="mini">缩略图</button>
+      <button data-act="layout">重置布局</button>
+    </div>
+  </div>
+  <div class="rs"></div>
+</div>
+
+<!-- ============================================================
+     缩略图（VSCode minimap 风格）
+     ============================================================ -->
+<div class="panel" id="pMini">
+  <div class="ph">
+    <span class="ptitle">缩略图</span>
+    <button class="pclose" data-act="close">×</button>
+  </div>
+  <div class="pbody">
+    <div class="mm-wrap" id="mmWrap">
+      <div class="mm-lines" id="mmLines"></div>
+      <div class="mm-view" id="mmView"></div>
+    </div>
+  </div>
+  <div class="rs"></div>
+</div>
+
+<!-- ============================================================
+     变量 / 数组 / 状态面板
+     ============================================================ -->
+<div class="panel" id="pVars">
+  <div class="ph">
+    <span class="ptitle">输入缓冲区 · 字符变量 ch · 状态表</span>
+    <button class="pclose" data-act="close">×</button>
+  </div>
+  <div class="pbody">
+    <div class="sec-title"><span>输入缓冲区 <b>stdin</b></span><span class="tag">本次模拟输入 = "a3Xz"</span></div>
+    <div class="arr-scroll"><div class="arr-grid" id="gridIn"></div></div>
+
+    <div class="sec-title"><span>字符变量 <b>ch</b></span><span class="tag">char ch;</span></div>
+    <div class="ch-box">
+      <span class="ch-label">ch =</span>
+      <span class="ch-val uninit" id="chBox">未初始化</span>
+      <span class="ch-code" id="chCode">ASCII = ?</span>
+    </div>
+
+    <div class="sec-title" style="margin-top:18px;"><span>运行状态表</span><span class="tag" style="background:rgba(248,81,73,.18);color:#ffb3ae;">灰色行为模拟辅助变量，非真实 C 变量</span></div>
+    <div class="var-table" id="varTable"></div>
+  </div>
+  <div class="rs"></div>
+</div>
+
+<!-- ============================================================
+     程序输出面板
+     ============================================================ -->
+<div class="panel" id="pOut">
+  <div class="ph">
+    <span class="ptitle">程序输出</span>
+    <button class="pclose" data-act="close">×</button>
+  </div>
+  <div class="pbody" style="padding:0;">
+    <div id="outBody"></div>
+  </div>
+  <div class="rs"></div>
+</div>
+
+<!-- ============================================================
+     当前语句说明条
+     ============================================================ -->
+<div class="panel" id="pExp">
+  <div class="ph">
+    <span class="ptitle">当前语句说明</span>
+    <button class="pclose" data-act="close">×</button>
+  </div>
+  <div class="pbody" id="expBody"></div>
+  <div class="rs"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =====================================================================
+   一、数据模型
+   ===================================================================== */
+var INPUT_STR = 'a3Xz';
+var INPUT_ARR = INPUT_STR.split('');
+var INPUT_LEN = INPUT_ARR.length;
+
+/* 为每个字符准备模拟 ASCII 码 */
+function codeOf(c){
+  if (c === null || c === undefined) return '—';
+  return c.charCodeAt(0);
+}
+function isDigit(c){
+  return c >= '0' && c <= '9';
+}
+function disp(c){
+  if (c === null || c === undefined) return '?';
+  if (c === '\0') return '\\0';
+  if (c === '\n') return '\\n';
+  if (c === ' ')  return '␣';
+  return c;
+}
+
+var STEPS = [];
+var outText = '';
+var CNT = {
+  getchar:0, isdigit:0, printf:0, whileJudge:0,
+  scanf:0, gets:0, puts:0, strlen:0, sizeof:0,
+  chars:0, nl:0
+};
+
+function push(o){
+  STEPS.push({
+    line:    o.line || 0,
+    cls:     o.cls || '',
+    ctx:     o.ctx || '—',
+    ptr:     o.ptr || '—',
+    chVal:   (o.chVal === undefined ? '—' : o.chVal),
+    chAscii: (o.chAscii === undefined ? '—' : o.chAscii),
+    expr:    o.expr || '—',
+    exprVal: o.exprVal || '—',
+    note:    o.note || '—',
+    ret:     o.ret || '—',
+    inPos:   (o.inPos === undefined ? 0 : o.inPos),
+    hlIn:    o.hlIn || [],
+    emitIn:  o.emitIn || [],
+    cnt:     Object.assign({}, CNT),
+    out:     (o.out === undefined ? outText : o.out),
+    title:   o.title || '',
+    desc:    o.desc || ''
+  });
+}
+
+/* =====================================================================
+   二、构建 15 行程序的逐步执行步骤
+   ===================================================================== */
+
+/* ---------- 第 1 行 ---------- */
+push({
+  line:1, cls:'ans', ctx:'预处理阶段 · 第 1 行',
+  note:'预处理指令，不占运行时间',
+  chVal:'—', chAscii:'—', inPos:0,
+  title:'#include &lt;stdio.h&gt;',
+  desc:'预处理指令：把标准输入输出头文件 <code>&lt;stdio.h&gt;</code> 包含进来。<br>' +
+       '· 本程序要用到 <code>getchar</code>（每次读 1 个字符）和 <code>printf</code>（格式化输出）；<br>' +
+       '· 它们的声明都在这个头文件里；<br>' +
+       '· 以 <code>#</code> 开头的都是<b>预处理指令</b>，在编译之前由预处理器处理。'
+});
+
+/* ---------- 第 2 行 ---------- */
+push({
+  line:2, cls:'ans', ctx:'预处理阶段 · 第 2 行',
+  note:'引入 isdigit 的声明',
+  chVal:'—', chAscii:'—', inPos:0,
+  title:'#include &lt;ctype.h&gt;',
+  desc:'再包含 <code>&lt;ctype.h&gt;</code>，本程序要用它声明的 <b><code>isdigit</code></b>。<br>' +
+       '· <code>isdigit(c)</code> 判断一个字符是不是<b>十进制数字字符</b> <code>\'0\'~\'9\'</code>；<br>' +
+       '· 是数字字符 → 返回<b>非零值</b>（真）；不是 → 返回 <b>0</b>（假）；<br>' +
+       '· 判断的是<b>字符本身</b>，不是字符的编码值是不是数字。' +
+       '<span class="tip"><b>本程序的判定规则：</b><br>' +
+       '<code>isdigit(\'0\')~isdigit(\'9\')</code> → 真；<br>' +
+       '<code>isdigit(\'a\')</code>、<code>isdigit(\'X\')</code>、<code>isdigit(\' \')</code> → 假。</span>'
+});
+
+/* ---------- 第 3 行 ---------- */
+push({
+  line:3, cls:'ans', ctx:'main · 程序入口',
+  note:'main 是程序入口，建立栈帧',
+  chVal:'—', chAscii:'—', inPos:0,
+  title:'int main() {   程序从这里开始',
+  desc:'操作系统把控制权交给 <code>main</code>，程序正式开始，系统为 main 建立<b>栈帧</b>。<br>' +
+       '<b>整体流程：</b><br>' +
+       '① 第 4 行：声明字符变量 <code>ch</code>（未初始化）；<br>' +
+       '② 第 5 行：<code>ch = getchar()</code> 读入第 1 个字符；<br>' +
+       '③ 第 6 行：<code>while(ch != \'z\')</code> 判断是否继续循环；<br>' +
+       '④ 第 7~10 行：<code>isdigit</code> 判断是否数字字符，走 if 或 else；<br>' +
+       '⑤ 第 12 行：<code>ch = getchar()</code> 再读一个字符，回到第 6 行；<br>' +
+       '⑥ 第 14 行：读到 <code>\'z\'</code> 时退出循环，返回 0；第 15 行：main 结束。' +
+       '<span class="tip"><b>本次模拟的输入：</b><code>"a3Xz"</code><br>' +
+       '<b>先预测一下输出：</b><br>' +
+       '· <code>\'a\'</code> 不是数字 → 输出 <code>a-a</code>；<br>' +
+       '· <code>\'3\'</code> 是数字（ASCII 51）→ 输出 <code>3\'s ASCII is:51</code>；<br>' +
+       '· <code>\'X\'</code> 不是数字 → 输出 <code>X-X</code>；<br>' +
+       '· <code>\'z\'</code> 让循环结束，<b>不输出任何东西</b>。<br>' +
+       '全部连在一起：<code>a-a3\'s ASCII is:51X-X</code>（没有任何换行）。</span>'
+});
+
+/* ---------- 第 4 行 ---------- */
+push({
+  line:4, cls:'ans', ctx:'main · 声明字符变量 ch',
+  note:'分配 1 字节，但未初始化，内容是栈上的垃圾值',
+  chVal:'未初始化 (?)', chAscii:'—', inPos:0,
+  title:'char ch;   声明一个字符变量（未初始化）',
+  desc:'声明一个 <b>char</b> 类型的局部变量 <code>ch</code>，占 <b>1 字节</b>。<br>' +
+       '· 它是<b>自动存储</b>（栈上）的变量，<b>没有初始化</b>；<br>' +
+       '· C 语言不会自动把局部变量清零，此刻 ch 里是<b>不确定的垃圾值</b>；<br>' +
+       '· 变量面板中用 <b>?</b> 表示“未初始化，内容不确定”。' +
+       '<span class="warn"><b>注意：</b>在赋值之前读取 ch 是<b>未定义行为</b>。<br>' +
+       '本程序第 5 行立刻用 <code>getchar()</code> 给它赋值，所以没有问题。</span>'
+});
+
+/* ---------- 第 5 行 · 读入 'a' ---------- */
+push({
+  line:5, cls:'mv', ctx:'第 5 行 · 调用 getchar 读入第一个字符',
+  ptr:'stdin[0]', chVal:'未初始化 (?)', chAscii:'—', inPos:0,
+  hlIn:[0],
+  expr:'ch = getchar()',
+  exprVal:'从输入缓冲区取走第 1 个字符，准备赋给 ch',
+  note:'getchar 从输入流读一个字符',
+  title:'ch = getchar();   准备读入第一个字符',
+  desc:'调用 <code>getchar()</code>：<br>' +
+       '· 它从<b>标准输入流 stdin</b> 中读取<b>一个字符</b>，并把这个字符作为返回值；<br>' +
+       '· 本次模拟的输入是 <code>"a3Xz"</code>，当前缓冲区最前面是 <b>\'a\'</b>；<br>' +
+       '· 取走之后，这个字符就从缓冲区里“消失”了，后面再也读不到它。' +
+       '<span class="tip"><b>getchar 的特点：</b><br>' +
+       '· 每次只读 <b>1 个字符</b>，包括空格、换行、制表符；<br>' +
+       '· 读到的字符被<b>消费掉</b>，下一次 getchar 读的是下一个字符；<br>' +
+       '· 返回值类型是 <code>int</code>（为了能表示 EOF = -1），赋给 char 时会发生截断。</span>'
+});
+
+CNT.getchar += 1;
+push({
+  line:5, cls:'gold', ctx:"getchar 读入 'a' 并赋给 ch",
+  ptr:'stdin[1]', chVal:"'a'", chAscii:'97', inPos:1,
+  hlIn:[], emitIn:[0],
+  expr:"ch = 'a'",
+  exprVal:"ch 的值变为 'a'（ASCII 97），输入指针后移到 stdin[1]",
+  note:"ch 现在是 'a'，缓冲区还剩 \"3Xz\"",
+  title:'getchar 返回 <b>\'a\'</b>，<b>ch = \'a\'</b>',
+  desc:'<code>getchar()</code> 从缓冲区取走了第一个字符 <b>\'a\'</b>，并把它赋给 <code>ch</code>：<br>' +
+       '· <b>ch</b> 从未初始化变为 <b>\'a\'</b>（ASCII 码 97）；<br>' +
+       '· 输入缓冲区指针后移到 <b>stdin[1]</b>，下一个待读字符是 <b>\'3\'</b>；<br>' +
+       '· 第 5 行执行完毕，控制流进入第 6 行的 while 判断。' +
+       '<span class="tip"><b>注意：</b>已经读走的 \'a\' 无法“退回”，getchar 是<b>单向</b>的。</span>'
+});
+
+/* ---------- 第 6 行 · while 第 1 次判断 ---------- */
+CNT.whileJudge += 1;
+push({
+  line:6, cls:'mv', ctx:'while 第 1 次条件判断',
+  ptr:"'a' vs 'z'", chVal:"'a'", chAscii:'97', inPos:1,
+  hlIn:[1],
+  expr:"ch != 'z'   →   'a' != 'z'",
+  exprVal:'真（1）→ 进入循环体',
+  note:"ch = 'a' 不是 'z'，继续循环",
+  title:"while(ch != 'z')　第 1 次判断：<b>'a' != 'z'</b> → <b>真</b>",
+  desc:'先算循环条件 <code>ch != \'z\'</code>：<br>' +
+       '· ch 当前是 <b>\'a\'</b>，和 <code>\'z\'</code> 不相同；<br>' +
+       '· 条件结果为 <b>真</b>，所以进入循环体（第 7 行开始）；<br>' +
+       '· 如果这里就是假，循环体会被整个跳过，直接去第 14 行。' +
+       '<span class="tip"><b>while 的执行顺序：</b><br>' +
+       '① 先判断条件；② 条件为真才执行循环体；③ 循环体执行完回到①重新判断。</span>'
+});
+
+/* ---------- 第 7 行 · isdigit('a') 第 1 次判断 ---------- */
+CNT.isdigit += 1;
+push({
+  line:7, cls:'mv', ctx:"if(isdigit('a')) 第 1 次判断",
+  ptr:"isdigit('a')", chVal:"'a'", chAscii:'97', inPos:1,
+  hlIn:[1],
+  expr:"isdigit('a')",
+  exprVal:'0（假）→ 跳过 if 分支，执行 else 分支',
+  note:"'a' 不是数字字符，走 else 分支",
+  title:"if(isdigit(ch))　isdigit('a') = <b>0（假）</b>",
+  desc:'调用 <code>isdigit(ch)</code>，其中 <code>ch = \'a\'</code>：<br>' +
+       '· <code>\'a\'</code> 是<b>字母</b>，不属于 <code>\'0\'~\'9\'</code> 这个范围；<br>' +
+       '· 所以 <code>isdigit</code> 返回 <b>0（假）</b>；<br>' +
+       '· 条件为假，第 8 行的 <code>printf("%c\'s ASCII is:%d", ...)</code> <b>被跳过</b>；<br>' +
+       '· 控制流转到第 9 行的 <code>else</code> 分支（第 10 行）。' +
+       '<span class="tip"><b>本程序的两种分支：</b><br>' +
+       '<b>真分支</b>（是数字）→ 输出形如 <code>3\'s ASCII is:51</code>；<br>' +
+       '<b>假分支</b>（不是数字）→ 输出形如 <code>a-a</code>（原样输出两遍，中间加横线）。</span>'
+});
+
+/* ---------- 第 10 行 · printf 输出 "a-a" ---------- */
+var out1 = 'a-a';
+outText += out1; CNT.printf += 1; CNT.chars += 3;
+push({
+  line:10, cls:'gold', ctx:'printf("%c-%c", ch, ch) 输出原样字符',
+  ptr:"ch = 'a'", chVal:"'a'", chAscii:'97', inPos:1,
+  hlIn:[1],
+  expr:'printf("%c-%c", \'a\', \'a\')',
+  exprVal:'把 \'a\' 按 %c 输出两次，中间夹一个 \'-\'',
+  note:'屏幕出现 “a-a”，没有换行',
+  out: outText,
+  title:"else 分支：printf 输出 <b>a-a</b>",
+  desc:'因为 <code>\'a\'</code> 不是数字字符，执行 <code>else</code> 里的语句：<br>' +
+       '· 格式串 <code>"%c-%c"</code> 逐段拆解：<br>' +
+       '&nbsp;&nbsp;第 1 个 <code>%c</code> → 替换成 ch 的字符 <b>\'a\'</b>；<br>' +
+       '&nbsp;&nbsp;中间的 <code>-</code> → 原样输出一个减号；<br>' +
+       '&nbsp;&nbsp;第 2 个 <code>%c</code> → 又一次替换成 <b>\'a\'</b>；<br>' +
+       '· 所以屏幕输出 <b>a-a</b>；<br>' +
+       '· <b>格式串里没有 \\n</b>，所以光标停在这一行末尾，不换行。' +
+       '<span class="tip"><b>屏幕当前内容：</b><br><code>' + outText + '</code></span>'
+});
+
+/* ---------- 第 12 行 · 读入 '3' ---------- */
+push({
+  line:12, cls:'mv', ctx:'第 12 行 · 调用 getchar 读入下一个字符',
+  ptr:'stdin[1]', chVal:"'a'", chAscii:'97', inPos:1,
+  hlIn:[1],
+  expr:'ch = getchar()',
+  exprVal:'从输入缓冲区取走下一个字符',
+  note:'循环体末尾，继续读字符',
+  out: outText,
+  title:'ch = getchar();   准备读入下一个字符',
+  desc:'循环体执行到最后一行，再次调用 <code>getchar()</code>：<br>' +
+       '· 这次缓冲区最前面是 <b>\'3\'</b>（stdin[1]）；<br>' +
+       '· 它会被取走并赋给 <code>ch</code>，<b>覆盖</b>掉原来的 <code>\'a\'</code>；<br>' +
+       '· 执行完后回到第 6 行的 while 条件重新判断。' +
+       '<span class="warn"><b>注意：</b>赋新值后，<code>\'a\'</code> 就再也找不回来了——' +
+       'ch 变量只有 1 个字节，只保存“当前字符”。</span>'
+});
+
+CNT.getchar += 1;
+push({
+  line:12, cls:'gold', ctx:"getchar 读入 '3' 并赋给 ch",
+  ptr:'stdin[2]', chVal:"'3'", chAscii:'51', inPos:2,
+  emitIn:[1],
+  expr:"ch = '3'",
+  exprVal:"ch 的值变为 '3'（ASCII 51），输入指针后移到 stdin[2]",
+  note:"ch 现在是 '3'，缓冲区还剩 \"Xz\"",
+  out: outText,
+  title:'getchar 返回 <b>\'3\'</b>，<b>ch = \'3\'</b>',
+  desc:'<code>getchar()</code> 从缓冲区取走 <b>\'3\'</b>，赋给 <code>ch</code>：<br>' +
+       '· <b>ch</b> 从 <code>\'a\'</code> 变为 <b>\'3\'</b>（ASCII 51）；<br>' +
+       '· 输入指针后移到 <b>stdin[2]</b>，下一个待读字符是 <b>\'X\'</b>；<br>' +
+       '· 回到第 6 行重新判断循环条件。'
+});
+
+/* ---------- 第 6 行 · while 第 2 次判断 ---------- */
+CNT.whileJudge += 1;
+push({
+  line:6, cls:'mv', ctx:'while 第 2 次条件判断',
+  ptr:"'3' vs 'z'", chVal:"'3'", chAscii:'51', inPos:2,
+  hlIn:[2],
+  expr:"ch != 'z'   →   '3' != 'z'",
+  exprVal:'真（1）→ 再次进入循环体',
+  note:"ch = '3' 不是 'z'，继续循环",
+  out: outText,
+  title:"while(ch != 'z')　第 2 次判断：<b>'3' != 'z'</b> → <b>真</b>",
+  desc:'循环条件重新求值：<br>' +
+       '· ch 现在是 <b>\'3\'</b>，和 <code>\'z\'</code> 不相同；<br>' +
+       '· 条件为 <b>真</b>，再次进入循环体；<br>' +
+       '· 这一次 ch 是<b>数字字符</b>，会走 <code>if</code> 的真分支。'
+});
+
+/* ---------- 第 7 行 · isdigit('3') 第 2 次判断 ---------- */
+CNT.isdigit += 1;
+push({
+  line:7, cls:'mv', ctx:"if(isdigit('3')) 第 2 次判断",
+  ptr:"isdigit('3')", chVal:"'3'", chAscii:'51', inPos:2,
+  hlIn:[2],
+  expr:"isdigit('3')",
+  exprVal:'非零（真）→ 进入 if 真分支，执行第 8 行',
+  note:"'3' 是数字字符，走 if 真分支",
+  out: outText,
+  title:"if(isdigit(ch))　isdigit('3') = <b>非零（真）</b>",
+  desc:'调用 <code>isdigit(ch)</code>，其中 <code>ch = \'3\'</code>：<br>' +
+       '· <code>\'3\'</code> 在字符范围 <code>\'0\'~\'9\'</code> 之内；<br>' +
+       '· 所以 <code>isdigit</code> 返回<b>非零值</b>（真）；<br>' +
+       '· 条件为真，进入第 8 行输出它的 ASCII 码；<br>' +
+       '· 第 9、10 行的 <code>else</code> 分支<b>被跳过</b>。' +
+       '<span class="tip"><b>关键区别：</b>判断的是<b>字符本身是不是数字字符</b>，' +
+       '而不是“这个字符的 ASCII 码是不是数字”。<br>' +
+       '<code>\'3\'</code> 的 ASCII 码是 <b>51</b>，但它是数字字符，所以 <code>isdigit</code> 为真。</span>'
+});
+
+/* ---------- 第 8 行 · printf 输出 "3's ASCII is:51" ---------- */
+var out2 = "3's ASCII is:51";
+outText += out2; CNT.printf += 1; CNT.chars += out2.length;
+push({
+  line:8, cls:'gold', ctx:"printf(\"%c's ASCII is:%d\", ch, ch) 输出 ASCII 码",
+  ptr:"ch = '3'", chVal:"'3'", chAscii:'51', inPos:2,
+  hlIn:[2],
+  expr:'printf("%c\'s ASCII is:%d", \'3\', 51)',
+  exprVal:"把 '3' 按 %c 输出，把 51 按 %d 输出",
+  note:"屏幕出现 “3's ASCII is:51”，没有换行",
+  out: outText,
+  title:"if 真分支：printf 输出 <b>3's ASCII is:51</b>",
+  desc:'因为 <code>\'3\'</code> 是数字字符，执行 <code>if</code> 里的语句：<br>' +
+       '· 格式串 <code>"%c\'s ASCII is:%d"</code> 逐段拆解：<br>' +
+       '&nbsp;&nbsp;第 1 个 <code>%c</code> → 替换成 ch 的字符 <b>\'3\'</b>；<br>' +
+       '&nbsp;&nbsp;后面的 <code>\'s ASCII is:</code> → <b>原样输出</b>（含那个单引号）；<br>' +
+       '&nbsp;&nbsp;<code>%d</code> → 替换成 ch 的<b>整数值</b>，也就是 ASCII 码 <b>51</b>；<br>' +
+       '· 于是屏幕输出 <b>3\'s ASCII is:51</b>；<br>' +
+       '· 同样<b>没有换行</b>，紧接在前面的 <code>a-a</code> 之后。' +
+       '<span class="tip"><b>为什么 %d 得到 51？</b><br>' +
+       '<code>ch</code> 的类型是 <code>char</code>，在 <code>printf</code> 的变参中会被<b>提升为 int</b>；<br>' +
+       '字符 <code>\'3\'</code> 的编码值（ASCII）就是 <b>51</b>，所以 <code>%d</code> 打印 51。<br>' +
+       '（同理 <code>\'0\'</code> 是 48，<code>\'9\'</code> 是 57。）<br><br>' +
+       '<b>屏幕当前内容：</b><br><code>' + outText + '</code></span>'
+});
+
+/* ---------- 第 12 行 · 读入 'X' ---------- */
+push({
+  line:12, cls:'mv', ctx:'第 12 行 · 再次调用 getchar',
+  ptr:'stdin[2]', chVal:"'3'", chAscii:'51', inPos:2,
+  hlIn:[2],
+  expr:'ch = getchar()',
+  exprVal:'从输入缓冲区取走下一个字符',
+  note:'循环体末尾，继续读字符',
+  out: outText,
+  title:'ch = getchar();   准备读入第 3 个字符',
+  desc:'循环体又执行到最后一行，第三次调用 <code>getchar()</code>：<br>' +
+       '· 缓冲区最前面现在是 <b>\'X\'</b>（stdin[2]）；<br>' +
+       '· 取走后赋给 <code>ch</code>，覆盖原来的 <code>\'3\'</code>；<br>' +
+       '· 然后回到第 6 行继续判断。'
+});
+
+CNT.getchar += 1;
+push({
+  line:12, cls:'gold', ctx:"getchar 读入 'X' 并赋给 ch",
+  ptr:'stdin[3]', chVal:"'X'", chAscii:'88', inPos:3,
+  emitIn:[2],
+  expr:"ch = 'X'",
+  exprVal:"ch 的值变为 'X'（ASCII 88），输入指针后移到 stdin[3]",
+  note:"ch 现在是 'X'，缓冲区只剩 \"z\"",
+  out: outText,
+  title:'getchar 返回 <b>\'X\'</b>，<b>ch = \'X\'</b>',
+  desc:'<code>getchar()</code> 从缓冲区取走 <b>\'X\'</b>，赋给 <code>ch</code>：<br>' +
+       '· <b>ch</b> 从 <code>\'3\'</code> 变为 <b>\'X\'</b>（ASCII 88）；<br>' +
+       '· 输入指针后移到 <b>stdin[3]</b>，下一个待读字符是 <b>\'z\'</b>；<br>' +
+       '· 回到第 6 行重新判断循环条件。'
+});
+
+/* ---------- 第 6 行 · while 第 3 次判断 ---------- */
+CNT.whileJudge += 1;
+push({
+  line:6, cls:'mv', ctx:'while 第 3 次条件判断',
+  ptr:"'X' vs 'z'", chVal:"'X'", chAscii:'88', inPos:3,
+  hlIn:[3],
+  expr:"ch != 'z'   →   'X' != 'z'",
+  exprVal:'真（1）→ 第三次进入循环体',
+  note:"ch = 'X' 不是 'z'，继续循环",
+  out: outText,
+  title:"while(ch != 'z')　第 3 次判断：<b>'X' != 'z'</b> → <b>真</b>",
+  desc:'循环条件再次求值：<br>' +
+       '· ch 现在是 <b>\'X\'</b>（大写字母），和 <code>\'z\'</code> 不同；<br>' +
+       '· 条件为 <b>真</b>，第三次进入循环体；<br>' +
+       '· 注意 C 语言<b>区分大小写</b>：<code>\'X\'</code> ≠ <code>\'x\'</code> ≠ <code>\'z\'</code>。'
+});
+
+/* ---------- 第 7 行 · isdigit('X') 第 3 次判断 ---------- */
+CNT.isdigit += 1;
+push({
+  line:7, cls:'mv', ctx:"if(isdigit('X')) 第 3 次判断",
+  ptr:"isdigit('X')", chVal:"'X'", chAscii:'88', inPos:3,
+  hlIn:[3],
+  expr:"isdigit('X')",
+  exprVal:'0（假）→ 走 else 分支',
+  note:"'X' 不是数字字符，走 else 分支",
+  out: outText,
+  title:"if(isdigit(ch))　isdigit('X') = <b>0（假）</b>",
+  desc:'调用 <code>isdigit(ch)</code>，其中 <code>ch = \'X\'</code>：<br>' +
+       '· <code>\'X\'</code> 是字母，不属于 <code>\'0\'~\'9\'</code>；<br>' +
+       '· 返回 <b>0（假）</b>，第 8 行被跳过；<br>' +
+       '· 控制流转到第 10 行的 <code>else</code> 分支，原样输出字符。'
+});
+
+/* ---------- 第 10 行 · printf 输出 "X-X" ---------- */
+var out3 = 'X-X';
+outText += out3; CNT.printf += 1; CNT.chars += 3;
+push({
+  line:10, cls:'gold', ctx:'printf("%c-%c", ch, ch) 输出原样字符',
+  ptr:"ch = 'X'", chVal:"'X'", chAscii:'88', inPos:3,
+  hlIn:[3],
+  expr:'printf("%c-%c", \'X\', \'X\')',
+  exprVal:'把 \'X\' 按 %c 输出两次，中间夹一个 \'-\'',
+  note:'屏幕出现 “X-X”，没有换行',
+  out: outText,
+  title:"else 分支：printf 输出 <b>X-X</b>",
+  desc:'因为 <code>\'X\'</code> 不是数字字符，再次走 <code>else</code> 分支：<br>' +
+       '· <code>"%c-%c"</code> 把 <b>\'X\'</b> 输出两次，中间加一个减号；<br>' +
+       '· 屏幕输出 <b>X-X</b>，同样<b>没有换行</b>；<br>' +
+       '· 它紧接在 <code>a-a3\'s ASCII is:51</code> 之后。' +
+       '<span class="tip"><b>屏幕当前内容：</b><br><code>' + outText + '</code></span>'
+});
+
+/* ---------- 第 12 行 · 读入 'z' ---------- */
+push({
+  line:12, cls:'mv', ctx:'第 12 行 · 再次调用 getchar',
+  ptr:'stdin[3]', chVal:"'X'", chAscii:'88', inPos:3,
+  hlIn:[3],
+  expr:'ch = getchar()',
+  exprVal:'从输入缓冲区取走最后一个字符',
+  note:'循环体末尾，读入最后一个字符',
+  out: outText,
+  title:'ch = getchar();   准备读入第 4 个字符',
+  desc:'循环体又到最后一行，第四次调用 <code>getchar()</code>：<br>' +
+       '· 缓冲区最前面是 <b>\'z\'</b>（stdin[3]）；<br>' +
+       '· 取走后赋给 <code>ch</code>，覆盖原来的 <code>\'X\'</code>；<br>' +
+       '· 这次读到的正是<b>循环的终止字符</b>，下一次 while 判断将不再成立。'
+});
+
+CNT.getchar += 1;
+push({
+  line:12, cls:'gold', ctx:"getchar 读入 'z' 并赋给 ch",
+  ptr:'stdin[4]（缓冲区末尾）', chVal:"'z'", chAscii:'122', inPos:4,
+  emitIn:[3],
+  expr:"ch = 'z'",
+  exprVal:"ch 的值变为 'z'（ASCII 122），输入指针到达末尾",
+  note:"ch 现在是 'z'，缓冲区已空",
+  out: outText,
+  title:'getchar 返回 <b>\'z\'</b>，<b>ch = \'z\'</b>',
+  desc:'<code>getchar()</code> 取走 <b>\'z\'</b>，赋给 <code>ch</code>：<br>' +
+       '· <b>ch</b> 从 <code>\'X\'</code> 变为 <b>\'z\'</b>（ASCII 122）；<br>' +
+       '· 输入指针到达缓冲区末尾（stdin[4]），本次模拟的输入已经全部读完；<br>' +
+       '· 回到第 6 行做最后一次条件判断。' +
+       '<span class="tip"><b>注意：</b>读入 <code>\'z\'</code> 本身也会执行第 12 行，' +
+       '但紧接着的第 6 行判断不成立，循环体<b>不会再执行</b>，所以 \'z\' 不会被输出。</span>'
+});
+
+/* ---------- 第 6 行 · while 第 4 次判断（退出） ---------- */
+CNT.whileJudge += 1;
+push({
+  line:6, cls:'gold', ctx:'while 第 4 次条件判断 —— 不成立，退出循环',
+  ptr:"'z' vs 'z'", chVal:"'z'", chAscii:'122', inPos:4,
+  expr:"ch != 'z'   →   'z' != 'z'",
+  exprVal:'假（0）→ 循环体不再执行，跳出 while',
+  note:"ch 等于 'z'，循环结束",
+  out: outText,
+  title:"while(ch != 'z')　第 4 次判断：<b>'z' != 'z'</b> → <b>假，退出循环</b>",
+  desc:'最后一次判断循环条件：<br>' +
+       '· ch 现在是 <b>\'z\'</b>，与 <code>\'z\'</code> <b>相同</b>；<br>' +
+       '· <code>ch != \'z\'</code> 的结果为 <b>假（0）</b>；<br>' +
+       '· while 循环<b>结束</b>，不再执行循环体，直接跳到第 14 行。' +
+       '<span class="win">★ 循环一共执行了 <b>3 轮</b>（分别处理 \'a\'、\'3\'、\'X\'），' +
+       '第 4 次判断为假后结束。<br>' +
+       '\'z\' 只是“信号灯”，本身不会被打印。</span>'
+});
+
+/* ---------- 第 14 行 · return 0 ---------- */
+push({
+  line:14, cls:'ans', ret:'0', ctx:'main · return 返回',
+  chVal:"'z'", chAscii:'122', inPos:4,
+  expr:'return 0;',
+  exprVal:'返回 0，程序正常结束',
+  note:'main 返回 0 表示程序正常结束',
+  out: outText,
+  title:'return 0;   结束 main 函数',
+  desc:'<code>return 0;</code> 结束 main 函数，把整数 <b>0</b> 交还操作系统。<br>' +
+       '· 约定返回 <b>0</b> 表示程序<b>正常结束</b>，返回非 0 通常表示出错；<br>' +
+       '· 这个 0 <b>不会</b>被打印到屏幕上，它是给操作系统看的「退出码」。'
+});
+
+/* ---------- 第 15 行 · } ---------- */
+push({
+  line:15, cls:'ans', ret:'0', ctx:'程序结束',
+  chVal:"'z'", chAscii:'122', inPos:4,
+  note:'栈帧销毁，程序退出',
+  out: outText,
+  title:'main 函数体结束 }',
+  desc:'函数收尾，main 的栈帧被销毁，局部变量 <code>ch</code> 随之消失。<br>' +
+       '程序共调用 <b>getchar 4 次</b>、<b>isdigit 3 次</b>、<b>printf 3 次</b>，返回 0。' +
+       '<span class="tip"><b>本程序要点总结：</b><br>' +
+       '① <b>getchar 每次只读 1 个字符</b>，读走就没了，下一次读下一个；<br>' +
+       '② <b>while 先判断后执行</b>：条件为假时循环体一次都不执行；<br>' +
+       '③ <b>isdigit 判断的是“数字字符”</b>，不是字符的编码值是不是数字；<br>' +
+       '④ <b>%c 输出字符本身，%d 输出它的 ASCII 码</b>，同一个 ch 可以两种方式打印；<br>' +
+       '⑤ <b>\'z\' 是终止条件</b>，读到它循环结束，它自己不会被输出；<br>' +
+       '⑥ <b>三次 printf 都没有 \\n</b>，所以所有输出挤在同一行。' +
+       '<b>程序输出：</b><br><code>' + outText + '</code>' +
+       '<b>手动验证：</b><br>' +
+       '· 输入 <code>"a3Xz"</code>；<br>' +
+       '· <code>\'a\'</code> 非数字 → <code>a-a</code>；<br>' +
+       '· <code>\'3\'</code> 是数字（ASCII 51）→ <code>3\'s ASCII is:51</code>；<br>' +
+       '· <code>\'X\'</code> 非数字 → <code>X-X</code>；<br>' +
+       '· <code>\'z\'</code> 结束循环 → 不输出；<br>' +
+       '· 连起来：<code>a-a3\'s ASCII is:51X-X</code> ✓<br>' +
+       '<b>常见错误：</b><br>' +
+       '① <b>把 getchar 写成 getch / scanf 混用</b>，读到的字符不符合预期；<br>' +
+       '② <b>忘记处理换行符</b>：如果输入是 "a3Xz\\n"，<code>\\n</code> 虽然在本程序里读不到，' +
+       '但在别的循环里常常成为“多读一个字符”的元凶；<br>' +
+       '③ <b>把 isdigit(ch) 写成 isdigit(\'ch\')</b>，参数变成多字符常量，行为错误；<br>' +
+       '④ <b>误以为 \'z\' 会被输出</b>：读到 \'z\' 后先执行 ch=getchar()，再判断为假，直接退出；<br>' +
+       '⑤ <b>把 while 写成 do-while</b>：do-while 会先执行一次循环体，\'z\' 就会被多输出一次；<br>' +
+       '⑥ <b>忘记包含 &lt;ctype.h&gt;</b>，isdigit 被隐式声明，返回值可能不正确。' +
+       '</span>'
+});
+
+/* =====================================================================
+   三、DOM 引用
+   ===================================================================== */
+const codeArea   = document.getElementById('codeArea');
+const codeLines  = Array.prototype.slice.call(document.querySelectorAll('.cl'));
+const varTable   = document.getElementById('varTable');
+const gridIn     = document.getElementById('gridIn');
+const chBox      = document.getElementById('chBox');
+const chCode     = document.getElementById('chCode');
+const outBody    = document.getElementById('outBody');
+const expBody    = document.getElementById('expBody');
+const mmLines    = document.getElementById('mmLines');
+const mmView     = document.getElementById('mmView');
+const mmWrap     = document.getElementById('mmWrap');
+const btnPlay    = document.getElementById('btnPlay');
+const speedInput = document.getElementById('speed');
+const speedLabel = document.getElementById('speedLabel');
+
+/* =====================================================================
+   四、网格构建
+   ===================================================================== */
+(function buildIn(){
+  let h = '';
+  for (let k = 0; k < INPUT_LEN; k++){
+    h += '<div class="cell is-pending" data-i="' + k + '">' +
+           '<span class="ci">' + k + '</span>' +
+           '<span class="cv">' + disp(INPUT_ARR[k]) + '</span>' +
+         '</div>';
+  }
+  gridIn.innerHTML = h;
+  gridIn.style.gridTemplateColumns = 'repeat(' + INPUT_LEN + ', minmax(80px, 1fr))';
+})();
+const cellsIn = Array.prototype.slice.call(gridIn.querySelectorAll('.cell'));
+
+/* =====================================================================
+   五、缩略图（VSCode minimap 风格）——真正渲染 15 行缩小版代码
+   ===================================================================== */
+(function buildMinimap(){
+  let h = '';
+  codeLines.forEach(function(cl){
+    const src = cl.querySelector('.src').innerHTML;
+    h += '<div class="mm-line">' + src + '</div>';
+  });
+  mmLines.innerHTML = h;
+})();
+const mmLineEls = Array.prototype.slice.call(mmLines.querySelectorAll('.mm-line'));
+
+let rafPending = false;
+function scheduleSync(){
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(function(){ rafPending = false; syncMinimap(); });
+}
+function syncMinimap(){
+  const sh = codeArea.scrollHeight;
+  const ch = codeArea.clientHeight;
+  const st = codeArea.scrollTop;
+  if (sh <= 0) return;
+  const wrapH = mmWrap.clientHeight;
+  const ratio = Math.min(1, ch / sh);
+  const viewH = Math.max(6, wrapH * ratio);
+  const viewT = (st / sh) * wrapH;
+  mmView.style.height = viewH + 'px';
+  mmView.style.top = Math.max(0, Math.min(wrapH - viewH, viewT)) + 'px';
+}
+mmWrap.addEventListener('pointerdown', function(e){
+  if (e.target === mmView) return;
+  const r = mmWrap.getBoundingClientRect();
+  const ratio = (e.clientY - r.top) / r.height;
+  const target = ratio * codeArea.scrollHeight - codeArea.clientHeight / 2;
+  codeArea.scrollTop = Math.max(0, target);
+  scheduleSync();
+});
+codeArea.addEventListener('scroll', scheduleSync);
+window.addEventListener('resize', scheduleSync);
+
+/* =====================================================================
+   六、变量表
+   ===================================================================== */
+const VAR_ROWS = [
+  { key:'ctx',       name:'当前执行位置',              kind:'k-ctx'  },
+  { key:'ptr',       name:'输入读取位置 / 判断位置',   kind:'k-ptr'  },
+  { key:'chVal',     name:'字符变量 ch 的值',          kind:'k-ch'   },
+  { key:'expr',      name:'正在求值的表达式',          kind:'k-expr' },
+  { key:'exprVal',   name:'表达式结果',                kind:'k-val'  },
+  { key:'note',      name:'关键状态提示',              kind:'k-note' },
+  { key:'c_getchar', name:'getchar 调用次数',          kind:'k-cnt'  },
+  { key:'c_isdigit', name:'isdigit 调用次数',          kind:'k-cnt'  },
+  { key:'c_printf',  name:'printf 调用次数',           kind:'k-cnt'  },
+  { key:'c_while',   name:'while 判断次数',            kind:'k-cnt'  },
+  { key:'c_chars',   name:'输出字符次数',              kind:'k-cnt'  },
+  { key:'c_nl',      name:'换行次数',                  kind:'k-cnt'  },
+  { key:'ret',       name:'main 返回值',               kind:'k-ret'  }
+];
+function buildVarTable(){
+  let h = '';
+  VAR_ROWS.forEach(function(r){
+    h += '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+           '<span class="var-name">' + r.name + '</span>' +
+           '<span class="var-value dim">—</span>' +
+         '</div>';
+  });
+  varTable.innerHTML = h;
+}
+buildVarTable();
+
+function stepVal(step, key){
+  if (!step) return '—';
+  if (key.charAt(0) === 'c'){
+    const m = step.cnt;
+    if (key === 'c_getchar') return String(m.getchar)   + ' 次';
+    if (key === 'c_isdigit') return String(m.isdigit)   + ' 次';
+    if (key === 'c_printf')  return String(m.printf)    + ' 次';
+    if (key === 'c_while')   return String(m.whileJudge)+ ' 次';
+    if (key === 'c_chars')   return String(m.chars)     + ' 个';
+    if (key === 'c_nl')      return String(m.nl)        + ' 次';
+  }
+  return String(step[key] === undefined ? '—' : step[key]);
+}
+function updateVars(step, prev){
+  VAR_ROWS.forEach(function(r){
+    const row = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+    if (!row) return;
+    const el = row.querySelector('.var-value');
+    const val = stepVal(step, r.key);
+    const old = stepVal(prev, r.key);
+    if (el.textContent !== val){
+      el.textContent = val;
+      el.title = val;
+      el.classList.toggle('dim', val === '—');
+      el.classList.remove('flash');
+      void el.offsetWidth;
+      el.classList.add('flash');
+      if (prev && old !== val){
+        row.classList.add('changed');
+        setTimeout(function(){ row.classList.remove('changed'); }, 700);
+      }
+    }
+  });
+}
+
+/* ch 大格子 */
+let lastChVal = null;
+function updateChBox(step){
+  if (!step) {
+    chBox.textContent = '未初始化';
+    chBox.className = 'ch-val uninit';
+    chCode.textContent = 'ASCII = ?';
+    lastChVal = '未初始化 (?)';
+    return;
+  }
+  const raw = step.chVal;
+  const isUninit = (raw === '未初始化 (?)' || raw === '—');
+  if (isUninit){
+    chBox.textContent = (raw === '—') ? '—' : '未初始化';
+    chBox.className = 'ch-val uninit';
+    chCode.textContent = 'ASCII = ?';
+  } else {
+    /* raw 形如 "'a'" */
+    const c = raw.replace(/'/g, '');
+    chBox.textContent = raw;
+    chBox.className = 'ch-val';
+    chCode.textContent = 'ASCII = ' + codeOf(c);
+  }
+  if (lastChVal !== raw){
+    lastChVal = raw;
+    chBox.classList.remove('flash');
+    void chBox.offsetWidth;
+    chBox.classList.add('flash');
+  }
+}
+
+/* =====================================================================
+   七、输入缓冲区渲染
+   ===================================================================== */
+function paintInput(step){
+  const inPos = step ? step.inPos : 0;
+  const hl    = step ? step.hlIn : [];
+  const em    = step ? step.emitIn : [];
+  for (let k = 0; k < cellsIn.length; k++){
+    const cell = cellsIn[k];
+    const idx = Number(cell.dataset.i);
+    cell.classList.remove('is-pending','is-done','is-hl','is-emit');
+    const isEmit = em.indexOf(idx) !== -1;
+    const isHl   = hl.indexOf(idx) !== -1;
+    const isDone = (idx < inPos);
+    if (isEmit)      cell.classList.add('is-emit');
+    else if (isHl)   cell.classList.add('is-hl');
+    else if (isDone) cell.classList.add('is-done');
+    else             cell.classList.add('is-pending');
+  }
+}
+
+/* =====================================================================
+   八、代码行高亮与滚动
+   ===================================================================== */
+let lastActiveLine = -1;
+function updateCode(step){
+  const line = step ? step.line : -1;
+  codeLines.forEach(function(cl){
+    const n = Number(cl.dataset.line);
+    cl.classList.toggle('active', n === line);
+    cl.classList.toggle('past', line !== -1 && n < line);
+  });
+  mmLineEls.forEach(function(el, i){
+    el.classList.toggle('mm-active', (i + 1) === line);
+  });
+  if (line !== lastActiveLine){
+    lastActiveLine = line;
+    const el = codeLines[line - 1];
+    if (el){
+      const top = el.offsetTop - codeArea.clientHeight / 2 + el.offsetHeight / 2;
+      codeArea.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+    }
+  }
+  scheduleSync();
+}
+
+/* =====================================================================
+   九、输出渲染
+   ===================================================================== */
+let lastOut = null;
+function updateOutput(step){
+  const text = step ? step.out : '';
+  if (text === lastOut) return;
+  lastOut = text;
+  outBody.innerHTML = '';
+  if (text === ''){
+    const ph = document.createElement('div');
+    ph.className = 'out-line empty';
+    ph.textContent = '（等待程序输出…）';
+    outBody.appendChild(ph);
+    return;
+  }
+  const d = document.createElement('div');
+  d.className = 'out-line fade';
+  d.textContent = text;
+  /* 光标紧跟在末尾（本程序无换行） */
+  const span = document.createElement('span');
+  span.className = 'cursor';
+  span.textContent = '▊';
+  d.appendChild(span);
+  outBody.appendChild(d);
+  outBody.scrollTop = outBody.scrollHeight;
+}
+
+/* =====================================================================
+   十、说明面板
+   ===================================================================== */
+const INTRO_HTML =
+  '<em>点击「自动播放」或「下一步」，开始逐条执行程序。<br>' +
+  '本程序用 <b>getchar</b> 从输入流逐个读字符，用 <b>isdigit</b> 判断是否为数字字符，' +
+  '<b>while</b> 循环直到读到 <b>\'z\'</b> 为止。<br>' +
+  '· <b>本次模拟输入</b>：<code>"a3Xz"</code><br>' +
+  '· <b>ch = getchar()</b>：从缓冲区取走 1 个字符，读走就没了<br>' +
+  '· <b>while(ch != \'z\')</b>：先判断，为真才执行循环体<br>' +
+  '· <b>if(isdigit(ch))</b>：是数字字符 → 输出 <code>%c\'s ASCII is:%d</code>；否则 → 输出 <code>%c-%c</code><br>' +
+  '· <b>注意</b>：三次 printf 都<b>没有 \\n</b>，输出全部连成一行<br>' +
+  '<b>预计输出：</b><code>a-a3\'s ASCII is:51X-X</code></em>';
+
+function updateExplain(step){
+  if (!step){
+    expBody.innerHTML = INTRO_HTML;
+    return;
+  }
+  expBody.innerHTML =
+    '<span class="ex-line' + (step.cls ? ' ' + step.cls : '') + '">第 ' + step.line + ' 行</span>' +
+    '<strong>' + step.title + '</strong> —— ' + step.desc;
+}
+
+/* =====================================================================
+   十一、面板管理：拖动 / 缩放 / 关闭 / 置顶 / 重置布局
+   ===================================================================== */
+let zTop = 100;
+function bringToFront(el){
+  zTop += 1;
+  el.style.zIndex = zTop;
+  document.querySelectorAll('.panel').forEach(function(p){
+    p.classList.toggle('active', p === el);
+  });
+}
+
+const LAYOUT = {
+  pBar:  { l:20,  t:20,  w:null, h:null },
+  pMini: { r:20,  t:20,  w:320,  h:380 },
+  pVars: { r:20,  t:420, w:920,  h:600 },
+  pOut:  { r:20,  b:20,  w:960,  h:340 },
+  pExp:  { l:20,  b:20,  w:1200, h:400 }
+};
+function applyLayout(){
+  Object.keys(LAYOUT).forEach(function(id){
+    const el = document.getElementById(id);
+    if (!el) return;
+    const c = LAYOUT[id];
+    el.style.left = el.style.right = el.style.top = el.style.bottom = 'auto';
+    el.style.width = el.style.height = 'auto';
+    if (c.l != null) el.style.left = c.l + 'px';
+    if (c.r != null) el.style.right = c.r + 'px';
+    if (c.t != null) el.style.top = c.t + 'px';
+    if (c.b != null) el.style.bottom = c.b + 'px';
+    if (c.w) el.style.width = c.w + 'px';
+    if (c.h) el.style.height = c.h + 'px';
+    el.classList.remove('hidden');
+  });
+  zTop = 100;
+  document.getElementById('pBar').style.zIndex = 101;
+  document.getElementById('pExp').style.zIndex = 102;
+  document.getElementById('pOut').style.zIndex = 103;
+  document.getElementById('pVars').style.zIndex = 104;
+  document.getElementById('pMini').style.zIndex = 105;
+  document.querySelectorAll('.panel').forEach(function(p){
+    p.classList.toggle('active', p.id === 'pMini');
+  });
+  scheduleSync();
+}
+
+function initDrag(panel, handle){
+  let dragging = false, sx=0, sy=0, ox=0, oy=0;
+  handle.addEventListener('pointerdown', function(e){
+    if (e.target.closest('button, input, .rs, .pclose')) return;
+    const r = panel.getBoundingClientRect();
+    dragging = true;
+    sx = e.clientX; sy = e.clientY; ox = r.left; oy = r.top;
+    panel.style.right = 'auto'; panel.style.bottom = 'auto';
+    panel.style.left = ox + 'px'; panel.style.top = oy + 'px';
+    panel.classList.add('dragging');
+    try { handle.setPointerCapture(e.pointerId); } catch(_){}
+    e.preventDefault();
+  });
+  handle.addEventListener('pointermove', function(e){
+    if (!dragging) return;
+    panel.style.left = (ox + e.clientX - sx) + 'px';
+    panel.style.top  = (oy + e.clientY - sy) + 'px';
+    scheduleSync();
+  });
+  function end(e){
+    if (!dragging) return;
+    dragging = false;
+    panel.classList.remove('dragging');
+    try { handle.releasePointerCapture(e.pointerId); } catch(_){}
+    scheduleSync();
+  }
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+}
+function initResize(panel, handle){
+  let resizing = false, sx=0, sy=0, sw=0, sh=0;
+  handle.addEventListener('pointerdown', function(e){
+    const r = panel.getBoundingClientRect();
+    resizing = true;
+    sx = e.clientX; sy = e.clientY; sw = r.width; sh = r.height;
+    panel.style.right = 'auto'; panel.style.bottom = 'auto';
+    panel.style.left = r.left + 'px'; panel.style.top = r.top + 'px';
+    panel.style.width = sw + 'px'; panel.style.height = sh + 'px';
+    try { handle.setPointerCapture(e.pointerId); } catch(_){}
+    e.preventDefault(); e.stopPropagation();
+  });
+  handle.addEventListener('pointermove', function(e){
+    if (!resizing) return;
+    /* 不设最小/最大限制 */
+    panel.style.width  = (sw + e.clientX - sx) + 'px';
+    panel.style.height = (sh + e.clientY - sy) + 'px';
+    scheduleSync();
+  });
+  function end(e){
+    if (!resizing) return;
+    resizing = false;
+    try { handle.releasePointerCapture(e.pointerId); } catch(_){}
+    scheduleSync();
+  }
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+}
+
+document.querySelectorAll('.panel').forEach(function(p){
+  const head = p.querySelector('.ph');
+  const rs   = p.querySelector('.rs');
+  if (head) initDrag(p, head);
+  if (rs)   initResize(p, rs);
+  p.addEventListener('pointerdown', function(){ bringToFront(p); }, true);
+  p.addEventListener('focusin',     function(){ bringToFront(p); });
+});
+applyLayout();
+
+/* =====================================================================
+   十二、步骤引擎
+   ===================================================================== */
+let current = -1;
+let playing = false;
+let timer = null;
+let speed = Number(speedInput.value);
+
+function render(){
+  const step = current >= 0 ? STEPS[current] : null;
+  const prev = current > 0 ? STEPS[current - 1] : null;
+
+  updateCode(step);
+  updateVars(step, prev);
+  updateChBox(step);
+  paintInput(step);
+  updateOutput(step);
+  updateExplain(step);
+
+  document.querySelector('button[data-act="prev"]').disabled = current < 0;
+  document.querySelector('button[data-act="next"]').disabled = current >= STEPS.length - 1;
+}
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+function tick(){
+  if (current >= STEPS.length - 1){ pause(); return; }
+  current += 1; render();
+  if (current >= STEPS.length - 1) pause();
+}
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true; updatePlayBtn();
+  clearInterval(timer);
+  timer = setInterval(tick, speed);
+  tick();
+}
+function pause(){
+  playing = false;
+  clearInterval(timer); timer = null;
+  updatePlayBtn();
+}
+function nextStep(){
+  pause();
+  if (current < STEPS.length - 1){ current += 1; render(); }
+}
+function prevStep(){
+  pause();
+  if (current > -1){ current -= 1; render(); }
+}
+function resetAll(){
+  pause();
+  current = -1;
+  lastOut = null; lastActiveLine = -1; lastChVal = null;
+  outBody.innerHTML = '';
+  codeArea.scrollTop = 0;
+  render();
+}
+
+/* =====================================================================
+   十三、按钮事件
+   ===================================================================== */
+document.addEventListener('click', function(e){
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const act = btn.dataset.act;
+
+  if (act === 'reset'){ resetAll(); }
+  else if (act === 'prev'){ prevStep(); }
+  else if (act === 'next'){ nextStep(); }
+  else if (act === 'play'){ if (playing) pause(); else play(); }
+  else if (act === 'close'){
+    const panel = btn.closest('.panel');
+    if (panel) panel.classList.add('hidden');
+  }
+  else if (act === 'full'){
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function(){});
+    else document.exitFullscreen();
+  }
+  else if (act === 'panels'){
+    const ids = ['pBar','pVars','pOut','pExp'];
+    const anyVisible = ids.some(function(id){
+      const el = document.getElementById(id);
+      return el && !el.classList.contains('hidden');
+    });
+    ids.forEach(function(id){
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle('hidden', anyVisible);
+    });
+  }
+  else if (act === 'mini'){
+    const el = document.getElementById('pMini');
+    el.classList.toggle('hidden');
+    if (!el.classList.contains('hidden')) scheduleSync();
+  }
+  else if (act === 'layout'){ applyLayout(); }
+});
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if (playing){
+    clearInterval(timer);
+    timer = setInterval(tick, speed);
+  }
+});
+
+/* =====================================================================
+   十四、全局快捷键
+   ===================================================================== */
+document.addEventListener('keydown', function(e){
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  switch (e.code){
+    case 'Space':
+      e.preventDefault();
+      if (playing) pause(); else play();
+      break;
+    case 'ArrowRight':
+      e.preventDefault(); nextStep(); break;
+    case 'ArrowLeft':
+      e.preventDefault(); prevStep(); break;
+    case 'KeyR':
+      resetAll(); break;
+    case 'KeyF':
+      if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function(){});
+      else document.exitFullscreen();
+      break;
+    case 'KeyM': {
+      const el = document.getElementById('pMini');
+      el.classList.toggle('hidden');
+      if (!el.classList.contains('hidden')) scheduleSync();
+      break;
+    }
+    case 'KeyH': {
+      const panels = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+      const anyVisible = panels.some(function(p){ return !p.classList.contains('hidden'); });
+      panels.forEach(function(p){ p.classList.toggle('hidden', anyVisible); });
+      if (!anyVisible) applyLayout();
+      break;
+    }
+  }
+});
+
+/* =====================================================================
+   十五、启动
+   ===================================================================== */
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+render();
+window.addEventListener('load', scheduleSync);
+setTimeout(scheduleSync, 200);
+
+})();
+</script>
+</body>
+</html>
