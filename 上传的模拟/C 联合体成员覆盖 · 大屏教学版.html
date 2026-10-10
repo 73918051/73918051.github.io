@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 联合体成员覆盖 · 大屏教学版</title>
+<style>
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;overflow:hidden;background:#0d1117;color:#c9d1d9;
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+
+:root{
+  --code-font: clamp(38px, 4.0vw, 82px);
+  --ln-font:   clamp(30px, 3.2vw, 66px);
+  --out-font:  clamp(28px, 3.0vw, 64px);
+  --var-font:  clamp(18px, 1.8vw, 36px);
+  --cell-font: clamp(18px, 1.8vw, 36px);
+  --explain-font: clamp(22px, 2.1vw, 44px);
+  --btn-font:  clamp(16px, 1.5vw, 30px);
+  --title-font:clamp(20px, 2.0vw, 40px);
+  --border:#1f3350;
+  --accent:#38bdf8; --green:#4ade80; --amber:#fbbf24; --pink:#f472b6;
+  --purple:#c084fc; --teal:#2dd4bf; --orange:#fb923c; --gold:#facc15; --red:#f87171;
+  --rose:#fb7185;
+  --panel-bg: rgba(15,23,38,0.86);
+}
+
+/* ===== 全屏代码区 ===== */
+#codeViewport{
+  position:fixed; inset:0; overflow:auto; background:#0d1117;
+  scroll-behavior:smooth; z-index:1;
+  scrollbar-width:thin; scrollbar-color:#2c3f5e transparent;
+}
+#codeViewport::-webkit-scrollbar{width:14px;height:14px;}
+#codeViewport::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+#codeInner{display:inline-block;min-width:100%;padding:40px 0 240px;}
+
+.code-line{
+  display:flex; align-items:flex-start; gap:.7em;
+  padding:.1em 2em .1em .5em;
+  white-space:pre;
+  border-left:10px solid transparent;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  line-height:1.5;
+  transition:background .25s,border-color .25s;
+}
+.code-line .ln{
+  flex:0 0 auto; width:2.6em; text-align:right;
+  color:#3d5a80; font-size:var(--ln-font); user-select:none;
+  line-height:1.5;
+}
+.code-line .src{flex:1 1 auto;white-space:pre;line-height:1.5;}
+
+.code-line.active{
+  background:linear-gradient(90deg,rgba(56,189,248,.30),rgba(56,189,248,.03));
+  border-left-color:var(--accent);
+}
+.code-line.active .ln{color:var(--accent);}
+.code-line.active .src{color:#ffffff;}
+.code-line.gold-hi.active{
+  background:linear-gradient(90deg,rgba(250,204,21,.32),rgba(250,204,21,.03));
+  border-left-color:var(--gold);
+}
+.code-line.gold-hi.active .ln{color:var(--gold);}
+.code-line.rose-hi.active{
+  background:linear-gradient(90deg,rgba(251,113,133,.38),rgba(251,113,133,.03));
+  border-left-color:var(--rose);
+}
+.code-line.rose-hi.active .ln{color:var(--rose);}
+.code-line.rose-hi.active .src{color:#fff;}
+
+.cmt{color:#5b6f8c;font-style:italic;}
+.pp{color:var(--purple);font-weight:700;}
+.kw{color:var(--pink);font-weight:700;}
+.ty{color:var(--teal);font-weight:700;}
+.fn{color:var(--accent);}
+.str{color:var(--green);}
+.num{color:var(--amber);}
+.op{color:var(--orange);font-weight:700;}
+.union-kw{color:var(--rose);font-weight:700;}
+
+/* ===== 悬浮面板 ===== */
+.panel{
+  position:fixed;
+  background:var(--panel-bg);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  border:2px solid var(--border);
+  border-radius:16px;
+  display:flex; flex-direction:column;
+  overflow:hidden;
+  box-shadow:0 14px 44px rgba(0,0,0,.6);
+  z-index:100;
+  transition:border-color .2s,box-shadow .2s,opacity .2s;
+  opacity:.94;
+}
+.panel:hover{opacity:1;}
+.panel.active-panel{
+  border-color:var(--accent);
+  box-shadow:0 0 0 3px rgba(56,189,248,.35),0 18px 56px rgba(0,0,0,.75);
+}
+.p-head{
+  flex:0 0 auto;display:flex;align-items:center;gap:10px;
+  padding:8px 12px;
+  background:rgba(28,43,68,.95);
+  border-bottom:2px solid var(--border);
+  cursor:move;user-select:none;
+  font-size:var(--title-font);color:#8fa8c8;font-weight:700;
+  white-space:nowrap;
+}
+.p-head .dot{width:14px;height:14px;border-radius:50%;background:var(--accent);flex:0 0 auto;}
+.p-close{
+  margin-left:auto;flex:0 0 auto;
+  width:42px;height:42px;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:10px;border:none;cursor:pointer;
+  background:rgba(248,113,113,.18);color:#f87171;
+  font-size:22px;font-weight:900;line-height:1;
+}
+.p-close:hover{background:rgba(248,113,113,.45);color:#fff;}
+.p-body{flex:1 1 auto;overflow:auto;padding:10px 14px;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;}
+.p-body::-webkit-scrollbar{width:10px;height:10px;}
+.p-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+.p-resize{
+  position:absolute;right:0;bottom:0;width:26px;height:26px;
+  cursor:nwse-resize;z-index:5;
+  background:linear-gradient(135deg,transparent 46%,rgba(56,189,248,.75) 46%);
+  border-bottom-right-radius:14px;
+}
+.p-resize:hover{background:linear-gradient(135deg,transparent 40%,rgba(56,189,248,1) 40%);}
+
+/* ===== 顶部控制栏 ===== */
+#topbar{
+  position:fixed;left:16px;top:14px;z-index:400;
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:10px 14px;border-radius:16px;
+  background:rgba(13,17,23,.78);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  border:2px solid var(--border);
+  box-shadow:0 10px 36px rgba(0,0,0,.6);
+  max-width:calc(100vw - 32px);
+  opacity:.9;
+}
+#topbar:hover{opacity:1;}
+#topbar button{
+  font:inherit;font-size:var(--btn-font);font-weight:700;
+  min-height:60px;padding:8px 16px;
+  border-radius:12px;border:2px solid var(--border);
+  background:#182741;color:#dce8f8;cursor:pointer;
+  transition:background .15s,border-color .15s,transform .1s;
+  white-space:nowrap;
+}
+#topbar button:hover{background:#213352;border-color:#3b5f94;}
+#topbar button:active{transform:translateY(2px);}
+#topbar button:disabled{opacity:.35;cursor:not-allowed;}
+#topbar button.primary{
+  background:linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#38bdf8;color:#04121f;
+}
+#topbar button.primary.playing{
+  background:linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24;color:#1a1200;
+}
+#topbar .speed{display:flex;align-items:center;gap:10px;
+  font-size:var(--btn-font);color:#8fa8c8;font-weight:700;}
+#topbar .speed input{width:160px;height:26px;accent-color:var(--accent);cursor:pointer;}
+#topbar .speed b{color:var(--accent);min-width:3.4em;display:inline-block;}
+
+/* ===== 通用 ===== */
+.kv{display:flex;flex-wrap:wrap;gap:6px 14px;margin-bottom:8px;
+  font-size:var(--var-font);font-family:ui-monospace,Consolas,monospace;}
+.kv span{color:#7d93b3;}
+.kv b{color:var(--teal);}
+.kv b.gold{color:var(--gold);}
+.kv b.rose{color:var(--rose);}
+
+.model-box{
+  background:rgba(45,212,191,.10);border-left:6px solid var(--teal);
+  border-radius:8px;padding:8px 12px;margin-bottom:10px;
+  font-size:var(--var-font);line-height:1.7;color:#bff5ec;
+  font-family:ui-monospace,Consolas,monospace;
+}
+.model-box b{color:#fff;}
+.model-box .rose{color:var(--rose);font-weight:700;}
+.model-box .warn{color:#fbbf24;font-weight:700;}
+
+.sec-title{font-size:var(--var-font);color:#8fa8c8;font-weight:700;
+  margin:8px 0 6px;letter-spacing:.04em;}
+
+/* ===== Union 共享视图 ===== */
+.union-viz{
+  background:#0a1322;border:1px solid #1b293f;border-radius:10px;
+  padding:12px 16px;
+  font-family:ui-monospace,Consolas,monospace;
+}
+.union-ruler{
+  display:grid;grid-template-columns:9rem 1fr;
+  align-items:center;margin-bottom:10px;padding-bottom:8px;
+  border-bottom:2px dashed #1b293f;
+}
+.union-ruler .ruler-label{font-size:calc(var(--var-font)*.85);color:#5f7796;font-weight:700;}
+.ruler-cells{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0;}
+.ruler-cells span{
+  text-align:center;font-size:calc(var(--var-font)*.8);color:#5f7796;font-weight:700;
+  border-left:2px solid #16233a;padding:2px 0;
+}
+.ruler-cells span:first-child{border-left:none;}
+
+.union-row{
+  display:grid;grid-template-columns:9rem 1fr;
+  align-items:center;margin-bottom:8px;transition:all .3s;
+}
+.union-row .m-name{
+  font-size:var(--var-font);color:#7d93b3;font-weight:700;
+  padding-right:.5rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.union-row .m-name .ty{
+  color:#4a6488;font-weight:400;
+  font-size:calc(var(--var-font)*.8);display:block;margin-top:2px;
+}
+.bar-wrap{
+  display:grid;grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:0;height:2.2rem;position:relative;
+}
+.bar-cell{
+  height:100%;transition:all .35s;
+  display:flex;align-items:center;justify-content:center;
+  font-size:calc(var(--var-font)*.9);font-weight:700;
+  border-radius:0;
+}
+.bar-cell.empty{
+  background:repeating-linear-gradient(45deg,
+    rgba(30,47,73,.5) 0 6px, rgba(15,23,40,.5) 6px 12px);
+  border:1px solid #1b293f;
+  color:#3d5474;
+}
+.bar-cell.n{background:linear-gradient(180deg,rgba(56,189,248,.7),rgba(56,189,248,.3));border:1px solid rgba(56,189,248,.75);color:#dff2ff;}
+.bar-cell.c{background:linear-gradient(180deg,rgba(251,113,133,.75),rgba(251,113,133,.35));border:1px solid rgba(251,113,133,.85);color:#ffe0e6;}
+.bar-cell.is-active{
+  box-shadow:0 0 0 3px rgba(255,255,255,.9), 0 0 18px rgba(255,255,255,.6);
+  transform:scale(1.08);z-index:2;
+}
+.bar-cell.dim{opacity:.22;filter:grayscale(60%);}
+.union-row.is-hl .m-name{color:#fff;text-shadow:0 0 10px var(--accent);}
+.union-row.is-hl .m-name .ty{color:#9fc3e8;}
+
+.union-legend{
+  display:flex;flex-wrap:wrap;gap:10px 20px;
+  margin-top:12px;padding-top:10px;border-top:2px dashed #1b293f;
+  font-size:calc(var(--var-font)*.9);color:#9db1cb;
+  font-family:ui-monospace,Consolas,monospace;
+}
+.union-legend span{display:inline-flex;align-items:center;gap:6px;}
+.union-legend i{display:inline-block;width:20px;height:13px;border-radius:3px;}
+.union-legend i.n{background:rgba(56,189,248,.85);}
+.union-legend i.c{background:rgba(251,113,133,.85);}
+
+/* ===== 字节级表格 ===== */
+.byte-table{
+  width:100%;border-collapse:separate;border-spacing:4px;
+  font-family:ui-monospace,Consolas,monospace;font-size:var(--var-font);
+}
+.byte-table th{
+  background:#16233a;color:#8fa8c8;font-weight:700;
+  padding:6px 8px;border-radius:8px;
+  text-align:center;font-size:calc(var(--var-font)*.9);
+}
+.byte-table td{
+  background:#0d1728;border:2px solid #1b293f;border-radius:8px;
+  padding:8px 8px;text-align:center;color:#7d93b3;
+  font-weight:700;transition:all .3s;
+}
+.byte-table td.b-off{color:#5f7796;font-weight:400;background:transparent;border:none;}
+.byte-table td.b-hex{color:#7dd3fc;}
+.byte-table td.b-dec{color:#fde68a;}
+.byte-table td.b-char{color:#86efac;}
+.byte-table td.is-active{
+  background:rgba(56,189,248,.22);
+  border-color:rgba(56,189,248,.85);
+  color:#fff;
+  box-shadow:0 0 0 2px rgba(56,189,248,.55);
+}
+.byte-table td.rose-active{
+  background:rgba(251,113,133,.24);
+  border-color:rgba(251,113,133,.9);
+  color:#fff;
+  box-shadow:0 0 0 3px rgba(251,113,133,.65);
+}
+.byte-table td.changed{animation:flashByte .7s ease-out;}
+@keyframes flashByte{
+  0%{transform:scale(1);}
+  30%{transform:scale(1.28);color:#fff;text-shadow:0 0 12px #fff;background:rgba(56,189,248,.5);}
+  100%{transform:scale(1);}
+}
+.byte-table td.changed-rose{animation:flashByteRose .8s ease-out;}
+@keyframes flashByteRose{
+  0%{transform:scale(1);}
+  30%{transform:scale(1.35);color:#fff;text-shadow:0 0 14px var(--rose);background:rgba(251,113,133,.65);}
+  100%{transform:scale(1);}
+}
+
+/* ===== 变量卡片 ===== */
+.var-cards{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;margin-top:4px;
+}
+.var-card{
+  background:#0d1728;border:2px solid #1b293f;border-radius:10px;
+  padding:10px 14px;font-family:ui-monospace,Consolas,monospace;
+  transition:all .3s;
+}
+.var-card .vn{font-size:var(--var-font);color:#c084fc;font-weight:700;display:block;margin-bottom:4px;}
+.var-card .vt{font-size:calc(var(--var-font)*.82);color:#64748b;display:block;margin-bottom:6px;}
+.var-card .vv{font-size:calc(var(--var-font)*1.5);font-weight:900;color:#7d93b3;transition:all .3s;}
+.var-card .vsub{font-size:calc(var(--var-font)*.82);color:#64748b;display:block;margin-top:6px;}
+.var-card.n-card{border-color:rgba(56,189,248,.4);}
+.var-card.n-card.has .vv{color:#7dd3fc;text-shadow:0 0 10px rgba(56,189,248,.55);}
+.var-card.n-card.is-active{
+  box-shadow:0 0 0 3px #fff, 0 0 18px rgba(56,189,248,.6);
+  transform:scale(1.03);
+}
+.var-card.c-card{border-color:rgba(251,113,133,.4);}
+.var-card.c-card.has .vv{color:#fda4af;text-shadow:0 0 10px rgba(251,113,133,.55);}
+.var-card.c-card.is-active{
+  box-shadow:0 0 0 3px #fff, 0 0 18px rgba(251,113,133,.6);
+  transform:scale(1.03);
+}
+.var-card .vv.changed{animation:flashVar .7s ease-out;}
+@keyframes flashVar{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.28);color:#fff;text-shadow:0 0 14px #fff;}
+  100%{transform:scale(1);}
+}
+
+/* ===== 程序输出 ===== */
+.out-line{
+  margin:0;white-space:pre-wrap;word-break:break-word;
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);line-height:1.5;min-height:1.5em;
+}
+.out-wait{color:#3d5474;}
+.out-note{color:#7dd3fc;}
+.out-ok{color:#86efac;}
+.out-pad{color:#fbbf24;}
+.out-final{color:#facc15;font-weight:700;}
+.out-info{color:#c084fc;}
+.out-res{color:#f472b6;font-weight:700;}
+.out-stdin{color:#94a3b8;}
+.out-warn{color:#fbbf24;font-weight:700;}
+.out-union{color:#fda4af;font-weight:700;}
+.out-rose{color:#fb7185;font-weight:700;}
+
+/* ===== 说明条 ===== */
+.ex-line{
+  display:inline-block;margin-right:12px;padding:3px 14px;
+  border-radius:8px;background:rgba(56,189,248,.18);
+  color:var(--accent);font-weight:900;
+  font-size:calc(var(--explain-font)*.8);
+  vertical-align:middle;
+}
+.ex-line.mv{background:rgba(244,114,182,.22);color:var(--pink);}
+.ex-line.gold{background:rgba(250,204,21,.28);color:var(--gold);}
+.ex-line.rose{background:rgba(251,113,133,.3);color:var(--rose);}
+#explainBody{font-size:var(--explain-font);line-height:1.65;color:#b8c9e0;}
+#explainBody strong{color:#eaf3ff;}
+#explainBody code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(148,163,184,.16);border-radius:6px;
+  padding:1px 7px;color:#e2e8f0;
+}
+#explainBody b{color:#fff;}
+#explainBody .tip{
+  display:block;margin-top:.4em;padding:.4em .6em;border-radius:.4em;
+  background:rgba(45,212,191,.1);border-left:4px solid var(--teal);color:#bff5ec;
+}
+#explainBody .warn{
+  display:block;margin-top:.4em;padding:.4em .6em;border-radius:.4em;
+  background:rgba(251,191,36,.12);border-left:4px solid var(--amber);color:#ffe6b0;
+}
+#explainBody .win{
+  display:block;margin-top:.4em;padding:.45em .65em;border-radius:.4em;
+  background:rgba(250,204,21,.14);border-left:4px solid var(--gold);color:#fff3c4;
+}
+#explainBody .rose-box{
+  display:block;margin-top:.4em;padding:.45em .65em;border-radius:.4em;
+  background:rgba(251,113,133,.16);border-left:4px solid var(--rose);color:#fecdd3;
+  font-weight:600;
+}
+
+/* ===== 缩略图 ===== */
+#mmBody{position:relative;overflow:hidden;padding:8px 10px;}
+#mmInner{position:relative;}
+.mm-line{
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:11px;line-height:16px;height:16px;
+  white-space:pre;overflow:hidden;
+  color:#55708f;border-radius:2px;
+  transition:background .2s;
+  padding-left:3px;
+}
+.mm-line .ln{display:none;}
+.mm-line.active{background:rgba(56,189,248,.55);color:#fff;}
+.mm-line.active.gold-hi{background:rgba(250,204,21,.7);color:#241c00;}
+.mm-line.active.rose-hi{background:rgba(251,113,133,.75);color:#fff;}
+.mm-line .cmt{color:#4a5f7c;}
+.mm-line.active .cmt{color:#9fc3e8;}
+#mmViewport{
+  position:absolute;left:2px;right:2px;top:0;height:120px;
+  border:2px solid rgba(56,189,248,.95);
+  background:rgba(56,189,248,.10);
+  border-radius:4px;pointer-events:none;
+  box-shadow:0 0 12px rgba(56,189,248,.4);
+}
+
+@media (max-width:1100px){
+  :root{
+    --code-font:clamp(20px,4.0vw,38px);
+    --ln-font:clamp(16px,3.2vw,30px);
+    --out-font:clamp(16px,3.0vw,28px);
+    --var-font:clamp(12px,2.2vw,20px);
+    --cell-font:clamp(12px,2.2vw,20px);
+    --explain-font:clamp(15px,2.6vw,24px);
+    --btn-font:clamp(13px,2.2vw,18px);
+    --title-font:clamp(14px,2.2vw,20px);
+  }
+  .union-ruler, .union-row{grid-template-columns:6.5rem 1fr;}
+}
+</style>
+</head>
+<body>
+
+<!-- ========== 全屏代码区（11 行） ========== -->
+<div id="codeViewport">
+  <div id="codeInner">
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                 <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                        <span class="cmt">// 主函数</span></span></div>
+    <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="union-kw">union</span> {                         <span class="cmt">// 定义联合体</span></span></div>
+    <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">        <span class="kw">unsigned</span> <span class="kw">int</span> n;             <span class="cmt">// 整型成员</span></span></div>
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">        <span class="kw">unsigned</span> <span class="kw">char</span> c;            <span class="cmt">// 字符成员</span></span></div>
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    } u;                            <span class="cmt">// 联合体变量</span></span></div>
+    <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">    u.n = <span class="num">66</span>;                       <span class="cmt">// 给n赋值66</span></span></div>
+    <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">    u.c = <span class="str">'A'</span>;                      <span class="cmt">// 给c赋值'A'，覆盖了n的值</span></span></div>
+    <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">    <span class="fn">printf</span>(<span class="str">"%c"</span>, u.n);               <span class="cmt">// 输出u.n，实际是'A'</span></span></div>
+    <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;</span></div>
+    <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">}</span></div>
+  </div>
+</div>
+
+<!-- ========== 顶部控制栏 ========== -->
+<div id="topbar">
+  <button id="btnReset">⟲ 重置</button>
+  <button id="btnPrev">◀ 上一步</button>
+  <button id="btnPlay" class="primary">▶ 播放</button>
+  <button id="btnNext">下一步 ▶</button>
+  <span class="speed">速度 <input type="range" id="speed" min="40" max="2000" step="20" value="800"><b id="speedLabel">0.80s</b></span>
+  <button id="btnFull">⛶ 全屏</button>
+  <button id="btnPanels">▣ 面板</button>
+  <button id="btnMini">▤ 缩略图</button>
+  <button id="btnResetLayout">↺ 重置布局</button>
+</div>
+
+<!-- ========== 平台模型面板 ========== -->
+<section class="panel" id="infoPanel">
+  <div class="p-head"><span class="dot"></span>平台模型 · union 大小计算<button class="p-close">×</button></div>
+  <div class="p-body">
+    <div class="model-box">
+      <b>平台模型（32 位）</b><br>
+      unsigned int = 4 字节 / 对齐 4<br>
+      unsigned char = 1 字节 / 对齐 1<br>
+      <b class="rose">union = 4 字节 / 对齐 4（无填充）</b><br>
+      <b>★ 字节序：小端序（Little-Endian）</b><br>
+      <b>union 大小：</b>max(4,1)=4 → 4 字节
+    </div>
+    <div class="kv">
+      <span>当前行</span><b id="kvLine">—</b>
+      <span>阶段</span><b id="kvPhase">—</b>
+      <span>sizeof(union)</span><b class="rose" id="kvSize">—</b>
+      <span>字节序</span><b class="gold" id="kvEndian">小端序</b>
+    </div>
+    <div class="sec-title">★ 三条核心铁律</div>
+    <table style="width:100%;border-collapse:separate;border-spacing:4px;font-family:ui-monospace,Consolas,monospace;font-size:calc(var(--var-font)*.9);">
+      <tbody>
+        <tr><td style="background:#0d1728;border:2px solid #1b293f;border-radius:7px;padding:6px 10px;color:var(--rose);font-weight:700;">① 所有成员偏移都是 0</td></tr>
+        <tr><td style="background:#0d1728;border:2px solid #1b293f;border-radius:7px;padding:6px 10px;color:var(--rose);font-weight:700;">② 同一时刻只有一个成员有效</td></tr>
+        <tr><td style="background:#0d1728;border:2px solid #1b293f;border-radius:7px;padding:6px 10px;color:var(--rose);font-weight:700;">③ 写一个成员会隐式修改另一个</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- ========== Union 共享视图面板 ========== -->
+<section class="panel" id="unionPanel">
+  <div class="p-head"><span class="dot" style="background:var(--rose)"></span>★ union 共享视图 · n 与 c 从偏移 0 开始<button class="p-close">×</button></div>
+  <div class="p-body">
+    <div class="union-viz" id="unionViz"></div>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- ========== 字节级表格面板 ========== -->
+<section class="panel" id="bytePanel">
+  <div class="p-head"><span class="dot" style="background:var(--accent)"></span>★ 字节级内存 · hex / dec / char<button class="p-close">×</button></div>
+  <div class="p-body">
+    <table class="byte-table" id="byteTable">
+      <thead>
+        <tr>
+          <th></th>
+          <th>偏移 0x00</th>
+          <th>偏移 0x01</th>
+          <th>偏移 0x02</th>
+          <th>偏移 0x03</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr data-row="hex">
+          <td class="b-off">hex</td>
+          <td class="b-hex" data-byte="0">??</td>
+          <td class="b-hex" data-byte="1">??</td>
+          <td class="b-hex" data-byte="2">??</td>
+          <td class="b-hex" data-byte="3">??</td>
+        </tr>
+        <tr data-row="dec">
+          <td class="b-off">dec</td>
+          <td class="b-dec" data-byte="0">?</td>
+          <td class="b-dec" data-byte="1">?</td>
+          <td class="b-dec" data-byte="2">?</td>
+          <td class="b-dec" data-byte="3">?</td>
+        </tr>
+        <tr data-row="char">
+          <td class="b-off">char</td>
+          <td class="b-char" data-byte="0">?</td>
+          <td class="b-char" data-byte="1">?</td>
+          <td class="b-char" data-byte="2">?</td>
+          <td class="b-char" data-byte="3">?</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="kv" style="margin-top:12px;color:#fde68a;">
+      ★ 小端序：66 = 0x42 在内存中是 42 00 00 00；写 c 只覆盖偏移 0 一字节
+    </div>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- ========== 变量值变化表面板 ========== -->
+<section class="panel" id="varPanel">
+  <div class="p-head"><span class="dot" style="background:var(--purple)"></span>变量值变化表<button class="p-close">×</button></div>
+  <div class="p-body">
+    <div class="var-cards">
+      <div class="var-card n-card" data-var="n">
+        <span class="vn">u.n</span>
+        <span class="vt">unsigned int（4 字节）</span>
+        <span class="vv">?</span>
+        <span class="vsub">偏移 0 ~ 3</span>
+      </div>
+      <div class="var-card c-card" data-var="c">
+        <span class="vn">u.c</span>
+        <span class="vt">unsigned char（1 字节）</span>
+        <span class="vv">?</span>
+        <span class="vsub">偏移 0（与 n 重叠）</span>
+      </div>
+    </div>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- ========== 程序输出面板 ========== -->
+<section class="panel" id="outPanel">
+  <div class="p-head"><span class="dot" style="background:var(--green)"></span>程序运行输出<button class="p-close">×</button></div>
+  <div class="p-body" id="outBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- ========== 说明面板 ========== -->
+<section class="panel" id="explainPanel">
+  <div class="p-head"><span class="dot" style="background:var(--pink)"></span>当前语句说明<button class="p-close">×</button></div>
+  <div class="p-body" id="explainBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- ========== 缩略图 ========== -->
+<section class="panel" id="minimap">
+  <div class="p-head"><span class="dot" style="background:var(--gold)"></span>缩略图<button class="p-close">×</button></div>
+  <div class="p-body" id="mmBody">
+    <div id="mmInner"></div>
+    <div id="mmViewport"></div>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<script>
+(function(){
+'use strict';
+
+function deep(o){ return JSON.parse(JSON.stringify(o)); }
+function esc(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+var $ = function(id){ return document.getElementById(id); };
+
+var UNION_SIZE = 4;
+
+/* ========== 状态 ========== */
+function freshState(){
+  return {
+    phase:'idle',
+    unionDone:false,
+    bytes:[null,null,null,null],
+    n:null,
+    c:null,
+    hl:{ member:null, bytes:[], writeKind:null, byteFlash:null },
+    console:[]
+  };
+}
+
+function charOf(byte){
+  if(byte >= 32 && byte <= 126) return "'"+String.fromCharCode(byte)+"'";
+  return '·';
+}
+
+function bytesToInt(b){
+  if(b.indexOf(null) >= 0) return null;
+  return (b[0] | (b[1]<<8) | (b[2]<<16) | (b[3]<<24)) >>> 0;
+}
+
+function intToBytes(v){
+  v = v >>> 0;
+  return [v&0xff, (v>>>8)&0xff, (v>>>16)&0xff, (v>>>24)&0xff];
+}
+
+/* ========== 构建步骤 ========== */
+function buildSteps(){
+  var S = freshState();
+  var steps = [];
+  function snap(o){
+    steps.push({
+      line:o.line, cls:o.cls||'', title:o.title||'', desc:o.desc||'',
+      state:deep(S)
+    });
+  }
+  function log(cls,text){ S.console.push({cls:cls,text:text}); }
+  function hl(o){
+    o = o || {};
+    S.hl = {
+      member:    o.member    || null,
+      bytes:     o.bytes     || [],
+      writeKind: o.writeKind || null,
+      byteFlash: o.byteFlash || null
+    };
+  }
+
+  /* 第 1 行 */
+  S.phase='preprocess';
+  log('out-note','[预处理] #include <stdio.h>   → 展开标准输入输出头文件');
+  hl({});
+  snap({
+    line:1,
+    title:'包含 <code>&lt;stdio.h&gt;</code>',
+    desc:'<b>预处理指令</b>，声明了 <code>printf</code>。<br>' +
+         '· 第 9 行要用 <code>printf("%c", u.n)</code> 输出字符；<br>' +
+         '· 头文件包含<b>不占用运行时内存</b>，只影响编译。'
+  });
+
+  /* 第 2 行 */
+  S.phase='main';
+  log('out-note','[编译] 进入 main 函数');
+  hl({});
+  snap({
+    line:2,
+    title:'<b>int main() {</b>　→　程序入口',
+    desc:'从 <code>main</code> 开始进入<b>运行期</b>。<br>' +
+         '· 接下来定义一个匿名 union 变量 <code>u</code>；<br>' +
+         '· <code>u</code> 是<b>局部变量</b>，初始值是<b>栈上的垃圾值</b>（不是 0）；<br>' +
+         '· 但后面会先给 <code>u.n</code> 赋值，所以垃圾值不影响最终结果。'
+  });
+
+  /* 第 3 行 */
+  S.phase='compile';
+  log('out-union','[编译] 第 3 行：union {   → 开始定义匿名联合体');
+  log('out-info','  → 所有成员将从偏移 0 开始，共享同一块内存');
+  hl({});
+  snap({
+    line:3, cls:'gold',
+    title:'<b>union {</b>　→　开始定义匿名联合体',
+    desc:'<code>union</code> 后面没有标签名，是<b>匿名联合体</b>。<br>' +
+         '· 与 <code>struct</code> 的<b>根本区别</b>：' +
+         'union 所有成员都从<b>偏移 0</b> 开始，相互覆盖；<br>' +
+         '· struct 的成员则依次排列，各占不同偏移；<br>' +
+         '· 没有标签名意味着无法在别处用 <code>union ? v;</code> 定义变量；<br>' +
+         '· 只能通过第 6 行定义的变量 <code>u</code> 访问。' +
+         '<span class="warn"><b>★ union 的核心特性：</b><br>' +
+         '在任意时刻，union 中<b>只有一个成员是「有效」的</b>——' +
+         '给一个成员赋值，会覆盖其它成员所在的字节。<br>' +
+         '本程序正是要利用这个特性演示「成员覆盖」。</span>'
+  });
+
+  /* 第 4 行 */
+  log('out-ok','  + unsigned int  n   偏移 0   大小 4   对齐 4   （0 ~ 3）');
+  hl({ member:'n', bytes:[0,1,2,3] });
+  snap({
+    line:4, cls:'mv',
+    title:'成员 <b>n</b>　→　偏移 0 ~ 3（4 字节）',
+    desc:'编译器解析 <code>unsigned int n;</code>。<br>' +
+         '· 类型 <code>unsigned int</code>，大小 <b>4</b> 字节，对齐 <b>4</b> 字节；<br>' +
+         '· union 所有成员都从偏移 <b>0</b> 开始，所以 <code>n</code> 占据 <b>0 ~ 3</b>；<br>' +
+         '· 当前候选大小 = <b>4</b>，最大对齐 = <b>4</b>。' +
+         '<span class="tip"><b>unsigned int 的取值范围：</b><br>' +
+         '32 位平台上，<code>unsigned int</code> 是 <b>0 ~ 4294967295</b>（0xFFFFFFFF）。</span>'
+  });
+
+  /* 第 5 行 */
+  log('out-ok','  + unsigned char c   偏移 0   大小 1   对齐 1   （0）');
+  log('out-union','    → 与 n 在偏移 0 处重叠；候选大小仍为 4');
+  hl({ member:'c', bytes:[0] });
+  snap({
+    line:5, cls:'mv',
+    title:'成员 <b>c</b>　→　偏移 0（1 字节，与 n 重叠）',
+    desc:'编译器解析 <code>unsigned char c;</code>。<br>' +
+         '· 类型 <code>unsigned char</code>，大小 <b>1</b> 字节，对齐 <b>1</b> 字节；<br>' +
+         '· <b>偏移仍是 0</b>——与 n 的最低字节共享同一位置；<br>' +
+         '· 候选大小：<code>max(4, 1) = 4</code>，不变；<br>' +
+         '· 最大对齐：<code>max(4, 1) = 4</code>，不变。' +
+         '<span class="warn"><b>★ 从图上观察：</b><br>' +
+         '右侧共享视图中，<b>蓝色横条</b>代表 n（4 格，偏移 0~3），' +
+         '<b>玫瑰色横条</b>代表 c（1 格，偏移 0）。<br>' +
+         '两者从<b>同一列（偏移 0）出发</b>——这就是 union 的「共享内存」。<br>' +
+         '写 <code>c</code> 只覆盖 1 个字节，写 <code>n</code> 覆盖 4 个字节，' +
+         '两者会相互干扰。</span>'
+  });
+
+  /* 第 6 行 */
+  S.unionDone = true;
+  log('out-final','[类型完成] union = 4 字节（max(4,1)=4，无填充）');
+  log('out-ok',    '[变量定义] } u;   → u 分配 4 字节（局部变量，栈上）');
+  log('out-warn',  '  ⚠ 局部变量 u 的初始值是栈上的垃圾值（不是 0）');
+  hl({ bytes:[0,1,2,3] });
+  snap({
+    line:6, cls:'gold',
+    title:'<b>} u;</b>　→　联合体完成 + 变量 <b>u</b>（4 字节）',
+    desc:'编译器遇到 <code>} u;</code>，一步完成两件事：<br>' +
+         '· ① 结束联合体定义：<code>max(4,1)=4</code>，最大对齐 4，' +
+         '向上取整到 4 的倍数 = <b>4 字节</b>，<b>无填充</b>；<br>' +
+         '· ② 定义变量 <code>u</code>，分配 4 字节。' +
+         '<span class="win"><b>★ union 内存布局（4 字节）：</b><br>' +
+         '偏移 0：<code>n</code> 的最低字节 <b>AND</b> <code>c</code>（共享）<br>' +
+         '偏移 1：仅属于 <code>n</code><br>' +
+         '偏移 2：仅属于 <code>n</code><br>' +
+         '偏移 3：仅属于 <code>n</code></span>' +
+         '<span class="tip"><b>★ 关键：小端序（Little-Endian）</b><br>' +
+         '本模拟假设 32 位小端序平台（x86/x64 都是）。<br>' +
+         '· <code>n = 66 = 0x42</code> 在内存中是：<br>' +
+         '　偏移 0: <b>0x42</b>　偏移 1: 0x00　偏移 2: 0x00　偏移 3: 0x00<br>' +
+         '· 即<b>低位字节存放在低地址</b>；<br>' +
+         '· 大端序平台上字节顺序会反过来，结果完全不同。</span>'
+  });
+
+  /* 第 7 行 */
+  var nBytes = intToBytes(66);
+  S.bytes = nBytes.slice();
+  S.n = 66;
+  S.c = nBytes[0];
+  log('out-ok',   '[赋值] u.n = 66;   → 写入 4 字节');
+  log('out-union','  → 66 = 0x00000042');
+  log('out-info', '  → 小端序展开：偏移 0=0x42，偏移 1=0x00，偏移 2=0x00，偏移 3=0x00');
+  hl({ member:'n', bytes:[0,1,2,3], writeKind:'n' });
+  snap({
+    line:7, cls:'mv',
+    title:'<b>u.n = 66;</b>　→　写入 4 字节 <b>0x42 00 00 00</b>',
+    desc:'把整数 <code>66</code> 写入成员 <code>n</code>（4 字节）。<br>' +
+         '· <code>66 = 0x00000042</code>；<br>' +
+         '· <b>小端序</b>下，低位字节存放在低地址：<br>' +
+         '　　偏移 0 ← <b>0x42</b>（最低字节 66）<br>' +
+         '　　偏移 1 ← <b>0x00</b><br>' +
+         '　　偏移 2 ← <b>0x00</b><br>' +
+         '　　偏移 3 ← <b>0x00</b>（最高字节）<br>' +
+         '· 因为 <code>c</code> 也在偏移 0，此刻 <code>u.c</code> 读出来也是 <b>0x42 = 66</b>。' +
+         '<span class="tip"><b>为什么字节顺序是 42 00 00 00 而不是 00 00 00 42？</b><br>' +
+         '因为 x86/x64 是<b>小端序</b>架构：整数的<b>最低有效字节</b>存放在<b>最低地址</b>。<br>' +
+         '如果是 <code>n = 0x12345678</code>，内存是 <code>78 56 34 12</code>（逆序）。</span>'
+  });
+
+  /* 第 8 行 */
+  var aByte = 'A'.charCodeAt(0);
+  S.bytes[0] = aByte;
+  S.c = aByte;
+  S.n = bytesToInt(S.bytes);
+  log('out-rose','[赋值] u.c = \'A\';   → 只写入 1 字节到偏移 0');
+  log('out-info','  → \'A\' 的 ASCII 码是 65 = 0x41');
+  log('out-union','  → 偏移 0：0x42 → 0x41（被覆盖）');
+  log('out-info','  → 偏移 1~3 保持原值：0x00 0x00 0x00');
+  log('out-rose','  ★★★ u.n 被"隐式"修改了！0x42 00 00 00 → 0x41 00 00 00');
+  log('out-rose','  ★★★ u.n 从 66 变成了 65（十进制）');
+  hl({ member:'c', bytes:[0], writeKind:'c', byteFlash:0 });
+  snap({
+    line:8, cls:'rose',
+    title:"<b>u.c = 'A';</b>　→　<b>★★ 覆盖 n 的最低字节！</b>",
+    desc:"<code>c</code> 是 <code>unsigned char</code>，只占 <b>1</b> 字节；" +
+         "只写偏移 <b>0</b>，不碰偏移 1~3。<br>" +
+         "· <code>'A'</code> 的 ASCII 码 = <b>65</b> = <b>0x41</b>；<br>" +
+         "· <b>写入前后对比：</b><br>" +
+         "　　偏移 0：<code>0x42</code> → <b><code>0x41</code></b>（被覆盖）<br>" +
+         "　　偏移 1：<code>0x00</code> → <code>0x00</code>（不变）<br>" +
+         "　　偏移 2：<code>0x00</code> → <code>0x00</code>（不变）<br>" +
+         "　　偏移 3：<code>0x00</code> → <code>0x00</code>（不变）" +
+         '<span class="rose-box"><b>★★★ 关键现象：u.n 被"隐式"修改了！</b><br>' +
+         '· 我们只写了 <code>u.c</code>，但 <code>u.n</code> 的值也跟着变了；<br>' +
+         '· 原来 <code>u.n = 0x00000042 = 66</code>；<br>' +
+         '· 现在 <code>u.n = 0x00000041 = 65</code>；<br>' +
+         '· 原因：<code>n</code> 和 <code>c</code> <b>共享同一个内存块</b>，' +
+         'c 覆盖了 n 的最低字节；<br>' +
+         '· 这就是 union "成员覆盖" 的核心表现——' +
+         '修改一个成员会影响另一个成员所在的字节。<br>' +
+         '· 从内存视图可以看到：偏移 0 的字节被写入 <code>0x41</code>，' +
+         'n 的值是「把 4 个字节按小端序重新组合」的结果：' +
+         '<code>0x41 + 0x00*256 + 0x00*65536 + 0x00*16777216 = 65</code>。</span>'
+  });
+
+  /* 第 9 行 */
+  log('out-res',  '[printf] printf("%c", u.n);   → 输出字符 \'A\'');
+  log('out-info', '  → u.n 现在是 65（十进制），作为 %c 的参数被当作 ASCII 码');
+  log('out-info', '  → 65 = \'A\'，屏幕输出 A（无换行）');
+  log('out-res',  'A');
+  hl({ member:'n', bytes:[0,1,2,3] });
+  snap({
+    line:9, cls:'gold',
+    title:'<b>printf("%c", u.n);</b>　→　输出 <b>A</b>',
+    desc:'<code>printf</code> 按格式串输出：<br>' +
+         '· <code>%c</code> 要求参数是 <code>int</code>，' +
+         '把它的值当作<b>字符编码</b>（ASCII）；<br>' +
+         '· <code>u.n</code> 当前的值是 <b>65</b>；<br>' +
+         '· <code>unsigned int</code> 传递给变参函数时，' +
+         '会按默认实参提升规则转成 <code>int</code>，值 65 保持不变；<br>' +
+         '· ASCII 码 65 对应的字符是 <b>\'A\'</b>；<br>' +
+         '· 所以 <code>printf</code> 输出单个字符 <code>A</code>，<b>没有换行符</b>。' +
+         '<span class="tip"><b>★ 为什么注释说"实际是 \'A\'"？</b><br>' +
+         '如果没有第 8 行 <code>u.c = \'A\';</code>，<code>u.n</code> 保持为 66，' +
+         '<code>printf("%c", 66)</code> 会输出字符 <code>\'B\'</code>。<br>' +
+         '正是因为第 8 行覆盖了最低字节，<code>u.n</code> 从 66（\'B\'）变成了 65（\'A\'），' +
+         '才导致最终输出 <code>A</code> 而不是 <code>B</code>。<br>' +
+         '这就是本程序要演示的"union 成员覆盖"的实际后果。</span>'
+  });
+
+  /* 第 10 行 */
+  S.phase='done';
+  log('out-empty','');
+  log('out-final','==================== 程序运行结果 ====================');
+  log('out-res',  'A');
+  log('out-empty','');
+  log('out-note', 'sizeof(union) = 4 字节');
+  log('out-note', '字节序        = 小端序（Little-Endian）');
+  log('out-empty','');
+  log('out-info', 'union 成员表：');
+  log('out-union','  unsigned int  n   偏移 0~3   大小 4   对齐 4');
+  log('out-union','  unsigned char c   偏移 0     大小 1   对齐 1');
+  log('out-empty','');
+  log('out-info', '内存字节变化过程：');
+  log('out-ok',  '  执行 u.n = 66; 后：');
+  log('out-ok',  '    偏移 0: 0x42 (66)   偏移 1: 0x00   偏移 2: 0x00   偏移 3: 0x00');
+  log('out-ok',  '    → u.n = 0x00000042 = 66');
+  log('out-rose','  执行 u.c = \'A\'; 后：');
+  log('out-rose','    偏移 0: 0x41 (65)   偏移 1: 0x00   偏移 2: 0x00   偏移 3: 0x00');
+  log('out-rose','    → u.n = 0x00000041 = 65（被隐式修改！）');
+  log('out-rose','    → u.c = 0x41 = 65 = \'A\'');
+  log('out-empty','');
+  log('out-info', '输出分析：');
+  log('out-info', '  printf("%c", u.n);   %c 把 u.n 的值 65 当作 ASCII 码');
+  log('out-info', '  65 对应字符 \'A\'，所以屏幕输出：A');
+  log('out-final', '程序正常结束（return 0）');
+
+  hl({});
+  snap({
+    line:10, cls:'gold',
+    title:'<b>return 0;</b>　→　程序正常结束',
+    desc:'main 函数返回 <b>0</b>，向操作系统表示程序正常退出。' +
+         '<span class="win"><b>★ 程序完整运行结果：</b><br>' +
+         '<code>A</code></span>' +
+         '<span class="rose-box"><b>★ 本程序核心知识点：</b><br>' +
+         '① <b>union 大小</b>：<code>max(4, 1) = 4</code> 字节，最大对齐 4，无填充；<br>' +
+         '② <b>成员共享内存</b>：<code>n</code> 占偏移 0~3，' +
+         '<code>c</code> 占偏移 0，两者在偏移 0 处重叠；<br>' +
+         '③ <b>小端序</b>：int 66 (0x00000042) 在内存中是 <code>42 00 00 00</code>；<br>' +
+         '④ <b>成员覆盖</b>：写 <code>c</code> 只改 1 字节，' +
+         '但会连带修改 <code>n</code> 的最低字节；<br>' +
+         '⑤ <b>n 从 66 变 65</b>：0x42 → 0x41，值减 1，' +
+         '对应 \'B\' → \'A\'；<br>' +
+         '⑥ <b>%c 格式符</b>：把 int 值当作 ASCII 码输出对应字符；<br>' +
+         '⑦ <b>union 的危险性</b>：一个成员的写入会「悄悄」改变另一个成员，' +
+         '这是使用 union 时最容易出 bug 的地方——同一时刻只能用一个成员。</span>' +
+         '<span class="tip"><b>★ 关于字节序的补充：</b><br>' +
+         '· <b>小端序</b>（x86/x64/ARM 默认）：低位字节在低地址；<br>' +
+         '· <b>大端序</b>（某些嵌入式/PowerPC）：高位字节在低地址。<br>' +
+         '如果在<b>大端序</b>平台上运行本程序：<br>' +
+         '· 66 = 0x00000042 会存为 <code>00 00 00 42</code>；<br>' +
+         '· 写 <code>u.c = \'A\'</code> 会覆盖<b>偏移 0</b>（最高字节 0x00），' +
+         'n 变成 <code>0x41000000 = 1090519040</code>；<br>' +
+         '· <code>printf("%c", u.n)</code> 会输出这个巨大 int 的低字节' +
+         '（通常是 0x00，不可打印字符）。<br>' +
+         '所以本程序是<b>平台相关</b>的——这一点非常值得注意！</span>'
+  });
+
+  /* 第 11 行 */
+  snap({
+    line:11, cls:'gold',
+    title:'<b>}</b>　→　main 栈帧销毁，程序结束',
+    desc:'<code>main</code> 的右花括号执行，栈帧销毁，局部变量 <code>u</code> 释放。<br><br>' +
+         '<b>★ 本程序统计：</b><br>' +
+         '· <code>printf</code> 调用 <b>1 次</b>；<br>' +
+         '· 屏幕输出 <b>1 个字符</b>：<code>A</code>（无换行）；<br>' +
+         '· <code>sizeof(union) = 4</code>；<br>' +
+         '· 无填充字节；<br>' +
+         '· 退出码 <b>0</b>。'
+  });
+
+  return steps;
+}
+
+var STEPS = buildSteps();
+
+/* ========== DOM ========== */
+var codeViewport = $('codeViewport');
+var codeLines = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+var unionViz = $('unionViz');
+var byteTable = $('byteTable');
+var varCards = document.querySelectorAll('.var-card');
+var outBody = $('outBody');
+var explainBody = $('explainBody');
+var mmInner = $('mmInner');
+var mmBody = $('mmBody');
+var mmViewport = $('mmViewport');
+
+var kvLine = $('kvLine'), kvPhase = $('kvPhase'), kvSize = $('kvSize'), kvEndian = $('kvEndian');
+
+/* ========== Union 共享视图 ========== */
+(function buildUnionViz(){
+  var h = '';
+  h += '<div class="union-ruler">' +
+         '<span class="ruler-label">偏移 →</span>' +
+         '<div class="ruler-cells">';
+  for(var i=0;i<UNION_SIZE;i++) h += '<span>'+i+'</span>';
+  h += '</div></div>';
+
+  /* n 行 */
+  h += '<div class="union-row" data-kind="n">' +
+         '<div class="m-name">n<span class="ty">unsigned int</span></div>' +
+         '<div class="bar-wrap">';
+  for(var j=0;j<4;j++) h += '<div class="bar-cell n" data-byte="'+j+'">??</div>';
+  h += '</div></div>';
+
+  /* c 行 */
+  h += '<div class="union-row" data-kind="c">' +
+         '<div class="m-name">c<span class="ty">unsigned char</span></div>' +
+         '<div class="bar-wrap">' +
+           '<div class="bar-cell c" data-byte="0">??</div>' +
+           '<div class="bar-cell empty" data-byte="1"></div>' +
+           '<div class="bar-cell empty" data-byte="2"></div>' +
+           '<div class="bar-cell empty" data-byte="3"></div>' +
+         '</div></div>';
+
+  /* 图例 */
+  h += '<div class="union-legend">' +
+         '<span><i class="n"></i>n（unsigned int，偏移 0~3）</span>' +
+         '<span><i class="c"></i>c（unsigned char，偏移 0，与 n 最低字节共享）</span>' +
+       '</div>';
+  unionViz.innerHTML = h;
+})();
+
+function updateUnionViz(step){
+  var s = step ? step.state : null;
+  var hlMember = s ? s.hl.member : null;
+  var bytes = s ? s.bytes : [null,null,null,null];
+  var rows = unionViz.querySelectorAll('.union-row');
+
+  for(var i=0;i<rows.length;i++){
+    var row = rows[i];
+    var kind = row.getAttribute('data-kind');
+    row.classList.toggle('is-hl', hlMember === kind);
+    var cells = row.querySelectorAll('.bar-cell');
+    for(var j=0;j<cells.length;j++){
+      var cell = cells[j];
+      var idx = Number(cell.getAttribute('data-byte'));
+      var isThisKind = cell.classList.contains(kind);
+      if(isThisKind && bytes[idx] !== null && bytes[idx] !== undefined){
+        cell.textContent = '0x' + bytes[idx].toString(16).padStart(2,'0').toUpperCase();
+      } else if(isThisKind){
+        cell.textContent = '??';
+      }
+      var shouldHl = (hlMember === kind) && isThisKind;
+      cell.classList.toggle('is-active', shouldHl);
+      if(hlMember && hlMember !== kind && isThisKind) cell.classList.add('dim');
+      else cell.classList.remove('dim');
+    }
+  }
+}
+
+/* ========== 字节表格 ========== */
+function updateByteTable(step){
+  var s = step ? step.state : null;
+  var bytes = s ? s.bytes : [null,null,null,null];
+  var activeBytes = s ? s.hl.bytes : [];
+  var flashByte = s ? s.hl.byteFlash : null;
+
+  var rows = byteTable.querySelectorAll('tbody tr');
+  for(var r=0;r<rows.length;r++){
+    var row = rows[r];
+    var rowKind = row.getAttribute('data-row');
+    var tds = row.querySelectorAll('td[data-byte]');
+    for(var c=0;c<tds.length;c++){
+      var td = tds[c];
+      var idx = Number(td.getAttribute('data-byte'));
+      var b = bytes[idx];
+      var newVal;
+      if(b === null || b === undefined){
+        newVal = (rowKind==='hex') ? '??' :
+                 (rowKind==='dec') ? '?'  : '·';
+      } else {
+        if(rowKind==='hex')      newVal = '0x' + b.toString(16).padStart(2,'0').toUpperCase();
+        else if(rowKind==='dec') newVal = String(b);
+        else                     newVal = charOf(b);
+      }
+      if(td.textContent !== newVal){
+        td.textContent = newVal;
+        td.classList.remove('changed','changed-rose');
+        void td.offsetWidth;
+        if(flashByte === idx && s && s.hl.writeKind === 'c'){
+          td.classList.add('changed-rose');
+        } else {
+          td.classList.add('changed');
+        }
+      }
+      td.classList.toggle('is-active', activeBytes.indexOf(idx) >= 0 && s && s.hl.writeKind !== 'c');
+      td.classList.toggle('rose-active', flashByte === idx && s && s.hl.writeKind === 'c');
+    }
+  }
+}
+
+/* ========== 变量卡片 ========== */
+function updateVarCards(step){
+  var s = step ? step.state : null;
+  var nCard = document.querySelector('.var-card.n-card');
+  var cCard = document.querySelector('.var-card.c-card');
+
+  if(nCard){
+    var nv = nCard.querySelector('.vv');
+    var nVal = (s && s.n !== null && s.n !== undefined) ? String(s.n) : '?';
+    if(nv.textContent !== nVal){
+      nv.textContent = nVal;
+      nv.classList.remove('changed');
+      void nv.offsetWidth;
+      nv.classList.add('changed');
+    }
+    if(nVal !== '?') nCard.classList.add('has');
+    else nCard.classList.remove('has');
+    nCard.classList.toggle('is-active', !!(s && s.hl.member === 'n'));
+  }
+
+  if(cCard){
+    var cv = cCard.querySelector('.vv');
+    var cVal;
+    if(s && s.c !== null && s.c !== undefined){
+      cVal = String(s.c) + '  ' + charOf(s.c);
+    } else cVal = '?';
+    if(cv.textContent !== cVal){
+      cv.textContent = cVal;
+      cv.classList.remove('changed');
+      void cv.offsetWidth;
+      cv.classList.add('changed');
+    }
+    if(cVal !== '?') cCard.classList.add('has');
+    else cCard.classList.remove('has');
+    cCard.classList.toggle('is-active', !!(s && s.hl.member === 'c'));
+  }
+}
+
+/* ========== 缩略图 ========== */
+(function buildMinimap(){
+  var h = '';
+  for(var i=0;i<codeLines.length;i++){
+    h += '<div class="mm-line" data-line="'+codeLines[i].getAttribute('data-line')+'">'+
+           codeLines[i].innerHTML +
+         '</div>';
+  }
+  mmInner.innerHTML = h;
+})();
+var mmLines = Array.prototype.slice.call(mmInner.querySelectorAll('.mm-line'));
+
+/* ========== 面板交互 ========== */
+var panels = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+var zTop = 100;
+
+function bringToFront(el){
+  zTop += 1;
+  el.style.zIndex = zTop;
+  panels.forEach(function(p){ p.classList.toggle('active-panel', p===el); });
+}
+
+function initDrag(el, handle){
+  handle.addEventListener('pointerdown', function(e){
+    if(e.target.closest('.p-close') || e.target.closest('button') || e.target.closest('input')) return;
+    e.preventDefault();
+    bringToFront(el);
+    var r = el.getBoundingClientRect();
+    var sx = e.clientX, sy = e.clientY, sl = r.left, st = r.top;
+    el.style.right='auto'; el.style.bottom='auto';
+    el.style.left = sl+'px'; el.style.top = st+'px';
+    try{ handle.setPointerCapture(e.pointerId); }catch(err){}
+    function move(ev){
+      el.style.left = (sl + ev.clientX - sx)+'px';
+      el.style.top  = (st + ev.clientY - sy)+'px';
+    }
+    function up(){
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      syncMinimap();
+    }
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
+  });
+}
+
+function initResize(el, handle){
+  handle.addEventListener('pointerdown', function(e){
+    e.preventDefault(); e.stopPropagation();
+    bringToFront(el);
+    var r = el.getBoundingClientRect();
+    var sx = e.clientX, sy = e.clientY, sw = r.width, sh = r.height;
+    try{ handle.setPointerCapture(e.pointerId); }catch(err){}
+    function move(ev){
+      var nw = sw + ev.clientX - sx;
+      var nh = sh + ev.clientY - sy;
+      if(nw < 40) nw = 40;
+      if(nh < 36) nh = 36;
+      el.style.width = nw+'px';
+      el.style.height = nh+'px';
+      el.style.maxWidth = 'none';
+      el.style.maxHeight = 'none';
+    }
+    function up(){
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', up);
+      handle.removeEventListener('pointercancel', up);
+      syncMinimap();
+    }
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', up);
+    handle.addEventListener('pointercancel', up);
+  });
+}
+
+panels.forEach(function(el){
+  var head = el.querySelector('.p-head');
+  var closeBtn = el.querySelector('.p-close');
+  var resizeHandle = el.querySelector('.p-resize');
+  if(head) initDrag(el, head);
+  if(resizeHandle) initResize(el, resizeHandle);
+  if(closeBtn){
+    closeBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      el.style.display = 'none';
+      syncMinimap();
+    });
+  }
+  el.addEventListener('pointerdown', function(){ bringToFront(el); }, true);
+});
+
+/* ========== 默认布局 ========== */
+var DEFAULTS = {
+  infoPanel:   {left:20,   top:100, width:520, height:340},
+  unionPanel:  {left:20,   top:460, width:520, height:320},
+  bytePanel:   {left:20,   top:800, width:560, height:290},
+  varPanel:    {left:600,  top:100, width:520, height:220},
+  outPanel:    {left:600,  top:340, width:520, height:760},
+  explainPanel:{left:1140, top:100, width:660, height:480},
+  minimap:     {left:1140, top:600, width:280, height:500}
+};
+
+function applyLayout(){
+  panels.forEach(function(p){
+    var d = DEFAULTS[p.id];
+    if(!d) return;
+    p.style.display = '';
+    p.style.left = d.left+'px';
+    p.style.top = d.top+'px';
+    p.style.width = d.width+'px';
+    p.style.height = d.height+'px';
+    p.style.right='auto'; p.style.bottom='auto';
+    p.style.maxWidth='none'; p.style.maxHeight='none';
+  });
+  syncMinimap();
+}
+
+function clampToViewport(){
+  panels.forEach(function(p){
+    var r = p.getBoundingClientRect();
+    if(r.left > window.innerWidth - 80) p.style.left = Math.max(10, window.innerWidth - 300)+'px';
+    if(r.top  > window.innerHeight - 60) p.style.top  = Math.max(10, window.innerHeight - 260)+'px';
+  });
+}
+
+/* ========== 渲染 ========== */
+function phaseName(p){
+  switch(p){
+    case 'idle': return '未开始';
+    case 'preprocess': return '预处理';
+    case 'compile': return '编译期';
+    case 'main': return '运行期';
+    case 'done': return '已结束';
+    default: return '—';
+  }
+}
+
+function renderCode(step){
+  var activeLine = step ? step.line : null;
+  for(var i=0;i<codeLines.length;i++){
+    var el = codeLines[i];
+    var n = Number(el.getAttribute('data-line'));
+    var isActive = (activeLine !== null && n === activeLine);
+    el.classList.toggle('active', isActive);
+    el.classList.toggle('gold-hi', isActive && step && step.cls === 'gold');
+    el.classList.toggle('rose-hi', isActive && step && step.cls === 'rose');
+  }
+  centerActiveLine();
+}
+
+function centerActiveLine(){
+  var el = codeViewport.querySelector('.code-line.active');
+  if(!el) return;
+  var er = el.getBoundingClientRect();
+  var vr = codeViewport.getBoundingClientRect();
+  var delta = (er.top + er.height/2) - (vr.top + vr.height/2);
+  if(Math.abs(delta) > 8){
+    codeViewport.scrollTop = Math.max(0, codeViewport.scrollTop + delta);
+  }
+}
+
+function renderInfo(st, step){
+  kvLine.textContent = step ? ('第 '+step.line+' 行') : '—';
+  kvPhase.textContent = st ? phaseName(st.phase) : '—';
+  kvSize.textContent = (st && st.unionDone) ? '4 字节' : '计算中…';
+  kvEndian.textContent = '小端序';
+}
+
+function renderOut(st){
+  if(!st || st.console.length === 0){
+    outBody.innerHTML = '<div class="out-line out-wait">（等待程序开始…）</div>';
+    return;
+  }
+  var h = '';
+  for(var i=0;i<st.console.length;i++){
+    h += '<div class="out-line '+st.console[i].cls+'">'+esc(st.console[i].text)+'</div>';
+  }
+  outBody.innerHTML = h;
+  outBody.scrollTop = outBody.scrollHeight;
+}
+
+function renderExplain(step){
+  if(!step){
+    explainBody.innerHTML =
+      '<b>点击「▶ 播放」或「下一步」，开始逐步执行模拟。</b><br><br>' +
+      '<b>本程序演示：union 成员覆盖的经典案例</b><br>' +
+      '· <code>union { unsigned int n; unsigned char c; } u;</code>　→　' +
+      'union = <b>4 字节</b>；<code>n</code> 占 0~3，<code>c</code> 占 0；<br>' +
+      '· <b>小端序</b>：<code>u.n = 66 = 0x00000042</code> 在内存中是 ' +
+      '<code>42 00 00 00</code>；<br>' +
+      '· <b>第 7 行</b>：<code>u.n = 66</code>　→　写入 4 字节；<br>' +
+      '· <b>第 8 行</b>：<code>u.c = \'A\'</code>　→　只覆盖偏移 0 ' +
+      '（<code>0x42 → 0x41</code>），导致 <b>u.n 从 66 隐式变为 65</b>；<br>' +
+      '· <b>第 9 行</b>：<code>printf("%c", u.n)</code>　→　' +
+      '输出字符 <b>A</b>；<br>' +
+      '· ★ 最终输出：<b>A</b>（不是 B）。<br><br>' +
+      '共 <b>'+STEPS.length+'</b> 个执行步骤。<br>' +
+      '快捷键：空格=播放/暂停，←→=上一步/下一步，R=重置，F=全屏，M=缩略图，H=显示/隐藏所有面板';
+    return;
+  }
+  explainBody.innerHTML =
+    '<span class="ex-line' + (step.cls ? ' ' + step.cls : '') + '">第 ' + step.line + ' 行</span>' +
+    '<strong>' + step.title + '</strong><br>' + step.desc;
+}
+
+function renderMinimap(step){
+  var activeLine = step ? step.line : null;
+  for(var i=0;i<mmLines.length;i++){
+    var el = mmLines[i];
+    var n = Number(el.getAttribute('data-line'));
+    var isActive = (activeLine !== null && n === activeLine);
+    el.classList.toggle('active', isActive);
+    el.classList.toggle('gold-hi', isActive && step && step.cls === 'gold');
+    el.classList.toggle('rose-hi', isActive && step && step.cls === 'rose');
+  }
+  syncMinimap();
+}
+
+function syncMinimap(){
+  var contentH = mmInner.offsetHeight;
+  var scrollH = codeViewport.scrollHeight;
+  var clientH = codeViewport.clientHeight;
+  if(!contentH || !scrollH) return;
+  var ratio = clientH / scrollH;
+  var boxH = Math.max(20, contentH * ratio);
+  var boxTop = (codeViewport.scrollTop / scrollH) * contentH;
+  var maxTop = contentH - boxH;
+  if(boxTop > maxTop) boxTop = Math.max(0, maxTop);
+  mmViewport.style.height = boxH + 'px';
+  mmViewport.style.top = boxTop + 'px';
+}
+
+mmBody.addEventListener('click', function(e){
+  var contentH = mmInner.offsetHeight;
+  if(!contentH) return;
+  var r = mmBody.getBoundingClientRect();
+  var y = e.clientY - r.top;
+  var ratio = Math.min(1, Math.max(0, y / contentH));
+  var target = ratio * codeViewport.scrollHeight - codeViewport.clientHeight / 2;
+  codeViewport.scrollTop = Math.max(0, target);
+  requestAnimationFrame(syncMinimap);
+});
+
+/* ========== 主渲染 ========== */
+var current = -1;
+var playing = false;
+var timer = null;
+var speed = 800;
+
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+  var st = step ? step.state : null;
+
+  renderCode(step);
+  renderInfo(st, step);
+  updateUnionViz(step);
+  updateByteTable(step);
+  updateVarCards(step);
+  renderOut(st);
+  renderExplain(step);
+  renderMinimap(step);
+
+  $('btnPrev').disabled = current < 0;
+  $('btnNext').disabled = current >= STEPS.length - 1;
+}
+
+function updatePlayBtn(){
+  var b = $('btnPlay');
+  b.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+  b.classList.toggle('playing', playing);
+}
+
+function tick(){
+  if(current >= STEPS.length - 1){ pause(); return; }
+  current += 1;
+  render();
+  if(current >= STEPS.length - 1) pause();
+}
+
+function play(){
+  if(playing) return;
+  if(current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  clearInterval(timer);
+  timer = setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){ pause(); if(current < STEPS.length - 1){ current += 1; render(); } }
+function prevStep(){ pause(); if(current > -1){ current -= 1; render(); } }
+function resetAll(){
+  pause();
+  current = -1;
+  codeViewport.scrollTop = 0;
+  render();
+}
+
+$('btnPlay').addEventListener('click', function(){ if(playing) pause(); else play(); });
+$('btnNext').addEventListener('click', nextStep);
+$('btnPrev').addEventListener('click', prevStep);
+$('btnReset').addEventListener('click', resetAll);
+
+$('speed').addEventListener('input', function(){
+  speed = Number(this.value);
+  $('speedLabel').textContent = (speed/1000).toFixed(2) + 's';
+  if(playing){
+    clearInterval(timer);
+    timer = setInterval(tick, speed);
+  }
+});
+
+$('btnFull').addEventListener('click', function(){
+  if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function(){});
+  else document.exitFullscreen().catch(function(){});
+});
+
+var panelsVisible = true;
+$('btnPanels').addEventListener('click', function(){
+  panelsVisible = !panelsVisible;
+  panels.forEach(function(p){ p.style.display = panelsVisible ? '' : 'none'; });
+  syncMinimap();
+});
+
+$('btnMini').addEventListener('click', function(){
+  var mm = $('minimap');
+  mm.style.display = (mm.style.display === 'none') ? '' : 'none';
+  syncMinimap();
+});
+
+$('btnResetLayout').addEventListener('click', function(){
+  applyLayout();
+  panelsVisible = true;
+  panels.forEach(function(p){ p.style.display = ''; });
+  bringToFront($('topbar'));
+});
+
+document.addEventListener('keydown', function(e){
+  var t = e.target;
+  if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+  switch(e.code){
+    case 'Space':
+      e.preventDefault();
+      if(playing) pause(); else play();
+      break;
+    case 'ArrowRight': e.preventDefault(); nextStep(); break;
+    case 'ArrowLeft':  e.preventDefault(); prevStep(); break;
+    case 'KeyR': e.preventDefault(); resetAll(); break;
+    case 'KeyF':
+      e.preventDefault();
+      if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(function(){});
+      else document.exitFullscreen().catch(function(){});
+      break;
+    case 'KeyM': {
+      e.preventDefault();
+      var mm = $('minimap');
+      mm.style.display = (mm.style.display === 'none') ? '' : 'none';
+      syncMinimap();
+      break;
+    }
+    case 'KeyH': {
+      e.preventDefault();
+      var anyVisible = panels.some(function(p){ return p.style.display !== 'none'; });
+      panels.forEach(function(p){ p.style.display = anyVisible ? 'none' : ''; });
+      syncMinimap();
+      break;
+    }
+  }
+});
+
+var rafPending = false;
+function onScrollOrResize(){
+  if(rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(function(){
+    rafPending = false;
+    syncMinimap();
+  });
+}
+codeViewport.addEventListener('scroll', onScrollOrResize, {passive:true});
+window.addEventListener('resize', onScrollOrResize);
+window.addEventListener('orientationchange', onScrollOrResize);
+if(window.ResizeObserver){
+  var ro = new ResizeObserver(onScrollOrResize);
+  ro.observe(mmBody);
+  ro.observe(codeViewport);
+}
+
+applyLayout();
+clampToViewport();
+$('speedLabel').textContent = (speed/1000).toFixed(2) + 's';
+render();
+requestAnimationFrame(function(){ syncMinimap(); });
+window.addEventListener('load', function(){
+  applyLayout();
+  render();
+  syncMinimap();
+});
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,2019 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 结构体嵌套 · 逐步执行模拟 · 变量值变化 · 内存对齐</title>
+<style>
+:root{
+  --bg:#0a1020;
+  --code-font: clamp(20px, 2.2vw, 46px);
+  --code-lh: 1.5;
+  --out-font: clamp(15px, 1.15vw, 26px);
+  --var-font: clamp(13px, 0.95vw, 22px);
+  --cell-font: clamp(12px, 0.9vw, 20px);
+  --cell-idx: clamp(10px, 0.7vw, 16px);
+  --explain-font: clamp(14px, 1.0vw, 22px);
+  --btn-font: clamp(13px, 0.85vw, 20px);
+  --title-font: clamp(14px, 1.0vw, 22px);
+  --blue:#38bdf8; --teal:#2dd4bf; --green:#4ade80; --gold:#facc15;
+  --pink:#f472b6; --purple:#c084fc; --orange:#fb923c; --red:#f87171;
+  --muted:#7d93b3;
+  --border:#1e2f49;
+  --panel-bg: rgba(13,22,38,0.85);
+  --panel-bg-hover: rgba(15,26,45,0.95);
+  --panel-border: rgba(56,189,248,0.28);
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;overflow:hidden;}
+body{
+  background: radial-gradient(1200px 700px at 15% -10%, #17294a 0%, var(--bg) 65%);
+  color:#dce8f8;
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ============ 全屏代码区 ============ */
+.code-fullscreen{
+  position:fixed; inset:0; z-index:1;
+  background:#0d1117; overflow:hidden;
+}
+.code-scroll{
+  position:absolute; inset:0;
+  overflow:auto; padding: 2.5vh 0;
+  scrollbar-width:thin; scrollbar-color:#334155 transparent;
+  scroll-behavior:smooth;
+}
+.code-scroll::-webkit-scrollbar{width:12px;height:12px;}
+.code-scroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:12px;}
+.code-line{
+  display:flex; align-items:flex-start; gap:.9em;
+  padding:.04em 2.5vw .04em 1vw;
+  border-left: 6px solid transparent;
+  white-space: pre;
+  font-family: ui-monospace,"Cascadia Mono",Consolas,monospace;
+  font-size: var(--code-font);
+  line-height: var(--code-lh);
+  transition: background .35s, border-color .35s, opacity .35s;
+  color:#c9d6e8;
+}
+.code-line .ln{
+  flex: 0 0 auto; width: 3.2ch; text-align:right;
+  color:#3f5a7d; user-select:none;
+  font-variant-numeric: tabular-nums;
+}
+.code-line .src{flex:1 1 auto;}
+.code-line.executed{opacity:.42;}
+.code-line.active{
+  background: linear-gradient(90deg, rgba(56,189,248,.3), rgba(56,189,248,.02));
+  border-left-color: var(--blue);
+  box-shadow: inset 0 0 0 2px rgba(56,189,248,.28);
+  color:#ffffff; opacity:1;
+}
+.code-line.active.err{
+  background: linear-gradient(90deg, rgba(248,113,113,.32), rgba(248,113,113,.02));
+  border-left-color: var(--red);
+  box-shadow: inset 0 0 0 2px rgba(248,113,113,.32);
+}
+.code-line.active .ln{color:var(--blue); font-weight:700;}
+.code-line.active.err .ln{color:var(--red);}
+.code-line.sep{background: rgba(192,132,252,.06);}
+.code-line.sep .src{color:#7d93b3;}
+
+/* 语法高亮 */
+.pp{color:var(--purple);font-weight:600;}
+.str{color:var(--green);}
+.cmt{color:#5b6f8c;font-style:italic;}
+.fn{color:var(--blue);}
+.kw{color:var(--pink);font-weight:600;}
+.num{color:var(--gold);}
+.op{color:var(--orange);font-weight:700;}
+.ty{color:var(--teal);font-weight:700;}
+.err-src{color:var(--red);}
+
+/* ============ 通用浮动面板 ============ */
+.floating-panel{
+  position: fixed;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 18px 50px rgba(0,0,0,.55);
+  display:flex; flex-direction:column;
+  min-width:0; min-height:0;
+  transition: background .2s, box-shadow .2s;
+  z-index: 10;
+}
+.floating-panel:hover{background: var(--panel-bg-hover);}
+.floating-panel.active{
+  box-shadow: 0 0 0 2px var(--blue), 0 22px 60px rgba(0,0,0,.7);
+}
+.floating-panel.hidden{display:none;}
+
+.panel-head{
+  flex:0 0 auto;
+  display:flex; align-items:center; gap:.5em;
+  padding: .35em .55em;
+  background: rgba(10,20,36,.88);
+  border-bottom: 1px solid var(--panel-border);
+  border-radius: 14px 14px 0 0;
+  cursor: move; user-select: none;
+  font-size: var(--btn-font);
+  color:#9fb6d2; letter-spacing:.05em;
+}
+.panel-head .panel-title{
+  flex:1 1 auto;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  font-weight:700;
+}
+.panel-btn{
+  flex:0 0 auto;
+  width:2em; height:2em;
+  display:flex; align-items:center; justify-content:center;
+  border-radius:.4em; border:1px solid var(--panel-border);
+  background: rgba(30,47,73,.6); color:#c9d6e8;
+  cursor:pointer; font-size:1em; font-family:inherit;
+  transition: background .15s;
+}
+.panel-btn:hover{background: rgba(56,189,248,.35);}
+.panel-body{
+  flex:1 1 auto; min-height:0; overflow:auto;
+  padding: .5em .7em;
+  scrollbar-width:thin; scrollbar-color:#334155 transparent;
+}
+.panel-body::-webkit-scrollbar{width:10px;height:10px;}
+.panel-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+
+.resize-handle{
+  position:absolute; right:-2px; bottom:-2px;
+  width: 26px; height: 26px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, rgba(56,189,248,.6) 50%);
+  border-radius: 0 0 14px 0;
+  touch-action:none; z-index: 2;
+}
+.resize-handle::after{
+  content:''; position:absolute; right:6px; bottom:6px;
+  width:8px; height:8px;
+  border-right:2px solid rgba(200,220,255,.9);
+  border-bottom:2px solid rgba(200,220,255,.9);
+}
+
+/* ============ 顶部控制栏 ============ */
+#topbarPanel{
+  top: 12px; left:50%; transform: translateX(-50%);
+  max-width: 96vw;
+}
+#topbarPanel .panel-body{
+  display:flex; flex-wrap:wrap; align-items:center; gap:.5em;
+  padding:.5em .7em;
+}
+.ctrl-btn{
+  font:inherit;
+  font-size: var(--btn-font);
+  padding:.35em .8em;
+  border-radius:.5em;
+  border:1px solid var(--panel-border);
+  background: rgba(30,47,73,.78);
+  color:#dce8f8;
+  cursor:pointer; white-space:nowrap;
+  min-height: 2.2em;
+  transition: background .15s, transform .1s;
+}
+.ctrl-btn:hover{background: rgba(56,189,248,.38);}
+.ctrl-btn:active{transform: translateY(1px);}
+.ctrl-btn.primary{
+  background: linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#38bdf8; color:#04121f; font-weight:700;
+}
+.ctrl-btn.primary.playing{
+  background: linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24; color:#1a1200;
+}
+.speed-box{
+  display:flex; align-items:center; gap:.5em;
+  font-size: var(--btn-font); color:#9fb6d2;
+}
+.speed-box input[type=range]{
+  width: 8em; accent-color: var(--blue); cursor:pointer; height: 1.6em;
+}
+.speed-box b{color:var(--blue); font-variant-numeric: tabular-nums; min-width:3.2em;}
+
+/* ============ 状态 + 变量面板 ============ */
+#varsPanel{ top: 110px; left: 14px; width: 620px; height: 700px; }
+.info-strip{
+  display:flex; flex-wrap:wrap; align-items:center; gap:.5em;
+  font-size: var(--var-font);
+  padding: .3em .1em .5em;
+  border-bottom:1px dashed rgba(56,189,248,.25);
+  margin-bottom:.5em;
+}
+.info-tag{
+  font-size: .78em; padding:.12em .5em;
+  background: rgba(148,163,184,.2); color:#9db1cb;
+  border-radius:.3em; white-space:nowrap;
+}
+.info-val{font-family: ui-monospace, Consolas, monospace; font-weight:700; color:var(--teal);}
+.info-val.fn{color:var(--blue);}
+.info-val.gold{color:var(--gold);}
+.info-val.red{color:var(--red);}
+
+.plat-note{
+  font-size:.78em; line-height:1.6;
+  padding:.5em .7em; margin:.3em 0 .5em;
+  background: rgba(192,132,252,.12);
+  border-left: 4px solid var(--purple);
+  border-radius:.4em; color:#e0ccff;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.plat-note b{color:#f0e6ff;}
+.plat-note code{color:#7dd3fc;}
+
+.mem-strip{
+  padding:.4em 0 .5em;
+  border-bottom:1px solid var(--border);
+  margin-bottom:.5em;
+}
+.mem-head{
+  font-size: var(--var-font); color:#9db1cb;
+  font-family: ui-monospace, Consolas, monospace;
+  margin-bottom:.35em; line-height:1.55;
+}
+.mem-head b{color:var(--blue);}
+.mem-grid{
+  display:grid;
+  grid-template-columns: repeat(13, minmax(0,1fr));
+  gap:3px;
+}
+.mem-cell{
+  position:relative;
+  display:flex; align-items:center; justify-content:center;
+  height:1.7em; border-radius:.28em;
+  background:#0d1728; border:1px solid #1b293f;
+  color:#4a6488;
+  font-size: var(--cell-font); font-weight:700;
+  font-family: ui-monospace, Consolas, monospace;
+  transition:all .3s;
+}
+.mem-cell.c-name    {background:rgba(56,189,248,.18);border-color:rgba(56,189,248,.6);color:#7dd3fc;}
+.mem-cell.c-sex     {background:rgba(244,114,182,.18);border-color:rgba(244,114,182,.6);color:#f9a8d4;}
+.mem-cell.c-nation  {background:rgba(74,222,128,.16);border-color:rgba(74,222,128,.55);color:#86efac;}
+.mem-cell.c-pad     {background:rgba(100,116,139,.3);border-color:rgba(100,116,139,.65);color:#94a3b8;}
+.mem-cell.c-age     {background:rgba(251,191,36,.18);border-color:rgba(251,191,36,.6);color:#fde68a;}
+.mem-cell.c-score   {background:rgba(251,146,60,.2);border-color:rgba(251,146,60,.62);color:#fdba74;}
+.mem-cell.c-bdYear  {background:rgba(45,212,191,.18);border-color:rgba(45,212,191,.6);color:#5eead4;}
+.mem-cell.c-bdMonth {background:rgba(14,165,233,.2);border-color:rgba(14,165,233,.65);color:#7dd3fc;}
+.mem-cell.c-bdDay   {background:rgba(129,140,248,.2);border-color:rgba(129,140,248,.65);color:#a5b4fc;}
+.mem-cell.is-active{
+  box-shadow:0 0 0 2px rgba(255,255,255,.8), 0 0 10px rgba(255,255,255,.4);
+  transform:scale(1.15); z-index:2;
+}
+@keyframes padPulse{
+  0%,100%{transform:scale(1); box-shadow:0 0 0 2px var(--gold);}
+  50%{transform:scale(1.2); box-shadow:0 0 0 4px var(--gold), 0 0 14px rgba(250,204,21,.7);}
+}
+.mem-cell.is-pad-active{animation:padPulse .85s ease-in-out infinite;}
+.mem-legend{
+  display:flex; flex-wrap:wrap; gap:.3em .7em;
+  margin-top:.35em; font-size:.7em; color:#9db1cb;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.mem-legend span{display:inline-flex; align-items:center; gap:.25em;}
+.mem-legend i{display:inline-block;width:.75em;height:.75em;border-radius:.18em;}
+.mem-legend i.c-name{background:rgba(56,189,248,.75);}
+.mem-legend i.c-sex{background:rgba(244,114,182,.75);}
+.mem-legend i.c-nation{background:rgba(74,222,128,.75);}
+.mem-legend i.c-pad{background:rgba(100,116,139,.9);}
+.mem-legend i.c-age{background:rgba(251,191,36,.75);}
+.mem-legend i.c-score{background:rgba(251,146,60,.75);}
+.mem-legend i.c-birthday{background:rgba(167,139,250,.75);}
+
+/* 变量值变化表 */
+.var-grid{
+  display:grid;
+  grid-template-columns: minmax(5.5em, 1.15fr) repeat(3, minmax(0,1fr));
+  gap:3px;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: var(--var-font);
+}
+.vg-head{
+  padding:.3em .4em; border-radius:.3em;
+  background:#16233a; color:#8fa8c8;
+  font-weight:700; font-size:.92em;
+  text-align:center; letter-spacing:.03em;
+}
+.vg-head.var-x{color:#7dd3fc;}
+.vg-head.var-y{color:#fbbf24;}
+.vg-head.var-z{color:#c084fc;}
+.vg-name{
+  padding:.28em .45em; border-radius:.3em;
+  background:#0d1728; border:1px solid #1b293f;
+  color:#7d93b3; font-size:.92em;
+  display:flex; align-items:center;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.vg-cell{
+  padding:.28em .45em; border-radius:.3em;
+  background:#0d1728; border:1px solid #1b293f;
+  color:#4c6689; font-weight:700;
+  text-align:right;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  transition: background .3s, border-color .3s, color .3s;
+}
+.vg-cell.has-val{color:#7dd3fc;}
+.vg-cell.var-y.has-val{color:#fbbf24;}
+.vg-cell.var-z.has-val{color:#c084fc;}
+.vg-cell.is-active{
+  background:rgba(56,189,248,.22);
+  border-color:rgba(56,189,248,.9);
+  box-shadow:0 0 0 1px rgba(56,189,248,.7);
+  color:#fff;
+}
+.vg-cell.var-y.is-active{
+  background:rgba(251,191,36,.22);
+  border-color:rgba(251,191,36,.9);
+  box-shadow:0 0 0 1px rgba(251,191,36,.7);
+}
+.vg-cell.var-z.is-active{
+  background:rgba(192,132,252,.22);
+  border-color:rgba(192,132,252,.9);
+  box-shadow:0 0 0 1px rgba(192,132,252,.7);
+}
+@keyframes cellFlash{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.08);}
+  100%{transform:scale(1);}
+}
+.vg-cell.flash{animation:cellFlash .45s ease-out;}
+
+/* ============ 编译错误面板 ============ */
+#errPanel{
+  top: 110px; right: 14px; width: 620px; height: 200px;
+  display:none;
+}
+#errPanel.open{display:flex;}
+#errPanel .panel-head{
+  background: rgba(60,10,15,.9);
+  border-bottom-color: rgba(248,113,113,.6);
+}
+#errPanel .panel-title{color:#fecaca;}
+#errPanel .panel-btn{background: rgba(80,20,25,.7); border-color: rgba(248,113,113,.6);}
+#errPanel .panel-body{
+  background: rgba(20,6,10,.85);
+  color:#fecaca;
+}
+.err-title{
+  color:#f87171; font-weight:800; font-size:1.1em;
+  margin-bottom:.4em; font-family: ui-monospace, Consolas, monospace;
+}
+.err-code{
+  color:#fca5a5; font-family: ui-monospace, Consolas, monospace;
+  font-size:.95em; margin:.3em 0;
+  padding:.4em .6em;
+  background:rgba(248,113,113,.1);
+  border-left:3px solid var(--red);
+  border-radius:.3em;
+  white-space:pre-wrap; word-break:break-all;
+}
+.err-fix{
+  color:#86efac; font-weight:700;
+  font-family: ui-monospace, Consolas, monospace;
+  margin-top:.5em;
+  padding:.4em .6em;
+  background:rgba(74,222,128,.12);
+  border-left:3px solid var(--green);
+  border-radius:.3em;
+}
+
+/* ============ 编译器输出面板 ============ */
+#outPanel{
+  bottom: 12px; left: 50%; transform: translateX(-50%);
+  width: 940px; height: 260px;
+}
+.console{
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: var(--out-font);
+  line-height: 1.5;
+  color:#86efac;
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding:.5em .9em;
+}
+.out-line{margin:0; white-space:pre;}
+.out-line.out-empty{color:#3d5474;}
+.out-line.out-note{color:#7dd3fc;}
+.out-line.out-ok{color:#86efac;}
+.out-line.out-pad{color:var(--gold); font-weight:700;}
+.out-line.out-final{color:var(--gold); font-weight:800;}
+.out-line.out-info{color:var(--purple); font-weight:700;}
+.out-line.out-res{color:var(--pink); font-weight:700;}
+.out-line.out-err{color:var(--red); font-weight:800;}
+.out-line.out-wait{color:#3d5474;}
+.cursor{
+  display:inline-block; color:#4ade80; font-weight:400;
+  animation: blink 1s step-end infinite; margin-left:2px;
+}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+/* ============ 说明条 ============ */
+#explainPanel{
+  top: 110px; left: 50%; transform: translateX(-50%);
+  width: 820px; height: 420px;
+  display:none;
+}
+#explainPanel.open{display:flex;}
+.explain{
+  font-size: var(--explain-font);
+  line-height: 1.65;
+  color:#b8c9e0;
+}
+.explain .ex-line{
+  display:inline-block; margin-right:.5em; padding:.05em .6em;
+  border-radius:.4em; background: rgba(56,189,248,.2);
+  color: var(--blue); font-weight:800; font-size:.85em; vertical-align:middle;
+}
+.explain .ex-line.gold{background: rgba(250,204,21,.28); color:var(--gold);}
+.explain .ex-line.mv{background: rgba(244,114,182,.28); color:var(--pink);}
+.explain .ex-line.err{background: rgba(248,113,113,.3); color:var(--red);}
+.explain strong{color:#eaf3ff;}
+.explain code{
+  font-family: ui-monospace, Consolas, monospace;
+  background: rgba(148,163,184,.15); border-radius:.3em;
+  padding:0 .35em; color:#e2e8f0;
+}
+.explain .tip,.explain .warn,.explain .win,.explain .errorbox{
+  display:block; margin-top:.55em; padding:.6em .8em;
+  border-radius:.45em; font-size:.9em; line-height:1.55;
+}
+.explain .tip{background: rgba(45,212,191,.12); border-left:4px solid var(--teal); color:#bff5ec;}
+.explain .warn{background: rgba(251,191,36,.14); border-left:4px solid var(--gold); color:#ffe6b0;}
+.explain .win{background: rgba(250,204,21,.16); border-left:4px solid var(--gold); color:#fff3c4; font-weight:600;}
+.explain .errorbox{background: rgba(248,113,113,.16); border-left:4px solid var(--red); color:#fecaca; font-weight:600;}
+
+/* ============ 缩略图 ============ */
+#minimapPanel{
+  top: 110px; right: 14px;
+  width: 200px; height: 800px;
+  z-index: 5;
+}
+#minimapPanel .panel-body{padding:.3em .4em;}
+.mini-wrap{
+  position:relative;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 10px; line-height: 1.5;
+  color:#8aa2c0; white-space: pre; overflow:hidden;
+}
+.mini-line{
+  padding:0 .25em;
+  overflow:hidden; text-overflow:clip;
+  border-left: 3px solid transparent;
+}
+.mini-line.active{
+  background: rgba(56,189,248,.35);
+  border-left-color: var(--blue);
+  color:#fff;
+}
+.mini-line.active.err{
+  background: rgba(248,113,113,.4);
+  border-left-color: var(--red);
+  color:#fff;
+}
+.mini-line.sep{opacity:.55;}
+.mini-viewport{
+  position:absolute; left:0; right:0;
+  border: 2px solid rgba(56,189,248,.75);
+  background: rgba(56,189,248,.08);
+  pointer-events:none;
+  border-radius: 3px;
+}
+
+/* ============ 提示词面板 ============ */
+#promptPanel{
+  top: 50%; left:50%; transform: translate(-50%,-50%);
+  width: 900px; height: 600px; display:none;
+  z-index: 300;
+}
+#promptPanel.open{display:flex;}
+#promptPanel .panel-body{
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px; line-height:1.6;
+  white-space: pre-wrap; color:#a9bdd8;
+}
+
+@media (max-width: 1100px){
+  .code-fullscreen{position:relative; inset:auto; height: 60vh;}
+  body{overflow:auto; height:auto;}
+}
+</style>
+</head>
+<body>
+
+<!-- ==================== 全屏代码区 ==================== -->
+<div class="code-fullscreen">
+  <div class="code-scroll" id="codeScroll"></div>
+</div>
+
+<!-- ==================== 顶部控制栏 ==================== -->
+<div class="floating-panel" id="topbarPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">▶ 执行模拟控制</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <button class="ctrl-btn" id="btnReset" title="R">⟲ 重置</button>
+    <button class="ctrl-btn" id="btnPrev" title="←">◀ 上一步</button>
+    <button class="ctrl-btn primary" id="btnPlay" title="空格">▶ 自动播放</button>
+    <button class="ctrl-btn" id="btnNext" title="→">下一步 ▶</button>
+    <div class="speed-box">
+      速度 <input type="range" id="speed" min="100" max="2400" step="50" value="800">
+      <b id="speedLabel">0.80s</b>
+    </div>
+    <button class="ctrl-btn" id="btnFullscreen" title="F">⛶ 全屏</button>
+    <button class="ctrl-btn" id="btnTogglePanels" title="H">👁 面板</button>
+    <button class="ctrl-btn" id="btnToggleMinimap" title="M">🗺 缩略图</button>
+    <button class="ctrl-btn" id="btnToggleExplain" title="E">💡 解说</button>
+    <button class="ctrl-btn" id="btnResetLayout">↺ 布局</button>
+    <button class="ctrl-btn" id="btnPrompt">📝 提示词</button>
+    <span class="info-val" id="stepCounter" style="font-size:var(--btn-font);color:var(--gold);">— / —</span>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 状态 + 变量面板 ==================== -->
+<div class="floating-panel" id="varsPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">📊 内存布局 · 变量值变化表</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="info-strip">
+      <span class="info-tag">当前行</span>
+      <span class="info-val fn" id="lineVal">—</span>
+      <span class="info-tag">阶段</span>
+      <span class="info-val" id="phaseVal">—</span>
+      <span class="info-tag">date</span>
+      <span class="info-val" id="dateVal">—</span>
+      <span class="info-tag">student</span>
+      <span class="info-val gold" id="stuVal">—</span>
+    </div>
+
+    <div class="plat-note">
+      <b>平台模型</b>：<code>char=1/对齐1</code>　<code>int=4/对齐4</code>　<code>float=4/对齐4</code>　<code>struct date=12/对齐4</code>。<br>
+      <b>struct student 布局</b>：name[20]@0　sex@20　nation[10]@21　<b>填充@31</b>　age@32　score@36　birthday@40　<b>共 52 字节</b>。
+    </div>
+
+    <div class="mem-strip">
+      <div class="mem-head">
+        <b>struct student</b> 内存布局（52 字节，13 列 × 4 行）
+      </div>
+      <div class="mem-grid" id="memGrid"></div>
+      <div class="mem-legend">
+        <span><i class="c-name"></i>name[20]</span>
+        <span><i class="c-sex"></i>sex</span>
+        <span><i class="c-nation"></i>nation[10]</span>
+        <span><i class="c-pad"></i>填充</span>
+        <span><i class="c-age"></i>age</span>
+        <span><i class="c-score"></i>score</span>
+        <span><i class="c-birthday"></i>birthday</span>
+      </div>
+    </div>
+
+    <div class="var-grid" id="varGrid"></div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 编译错误面板 ==================== -->
+<div class="floating-panel" id="errPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">⛔ 编译错误</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="err-title">error: assignment to expression with array type</div>
+    <div class="err-code">第 27 行：z.nation = x.nation;   ← 数组名不能作为赋值目标</div>
+    <div class="err-fix">✓ 正确写法：strcpy(z.nation, x.nation);</div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 编译器输出面板 ==================== -->
+<div class="floating-panel" id="outPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">🖥 程序运行输出 · 控制台</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="console" id="consoleBody"></div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 说明条 ==================== -->
+<div class="floating-panel" id="explainPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">💡 当前语句解说（按 E 开关）</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="explain" id="explain"></div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 缩略图 ==================== -->
+<div class="floating-panel" id="minimapPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">🗺 缩略图</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="mini-wrap" id="miniWrap">
+      <div id="miniLines"></div>
+      <div class="mini-viewport" id="miniViewport"></div>
+    </div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 提示词面板 ==================== -->
+<div class="floating-panel" id="promptPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">📝 教学提示词</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body" id="promptInner"></div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   1. 源代码：31 行编号 + 3 行注释分隔 = 34 个可视行
+   ========================================================= */
+const CODE_LINES = [
+  { ln:'1',  dataLine:1,  html:'<span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                 <span class="cmt">// 标准输入输出</span>' },
+  { ln:'2',  dataLine:2,  html:'<span class="pp">#include</span> <span class="str">&lt;string.h&gt;</span>                <span class="cmt">// 字符串处理</span>' },
+  { ln:'3',  dataLine:3,  html:'<span class="kw">struct</span> <span class="ty">date</span> {                       <span class="cmt">// 定义日期结构体</span>' },
+  { ln:'4',  dataLine:4,  html:'    <span class="kw">int</span> year;                       <span class="cmt">// 年</span>' },
+  { ln:'5',  dataLine:5,  html:'    <span class="kw">int</span> month;                      <span class="cmt">// 月</span>' },
+  { ln:'6',  dataLine:6,  html:'    <span class="kw">int</span> day;                        <span class="cmt">// 日</span>' },
+  { ln:'7',  dataLine:7,  html:'};' },
+  { ln:'',  sep:true, dataLine:0, html:'<span class="cmt">// ===================== 学生结构体 =====================</span>' },
+  { ln:'8',  dataLine:8,  html:'<span class="kw">struct</span> <span class="ty">student</span> {                    <span class="cmt">// 定义学生结构体</span>' },
+  { ln:'9',  dataLine:9,  html:'    <span class="kw">char</span> name[<span class="num">20</span>];                  <span class="cmt">// 姓名</span>' },
+  { ln:'10', dataLine:10, html:'    <span class="kw">char</span> sex;                       <span class="cmt">// 性别</span>' },
+  { ln:'11', dataLine:11, html:'    <span class="kw">char</span> nation[<span class="num">10</span>];                <span class="cmt">// 民族</span>' },
+  { ln:'12', dataLine:12, html:'    <span class="kw">int</span> age;                        <span class="cmt">// 年龄（前面需填充 1 字节）</span>' },
+  { ln:'13', dataLine:13, html:'    <span class="kw">float</span> score;                    <span class="cmt">// 成绩</span>' },
+  { ln:'14', dataLine:14, html:'    <span class="kw">struct</span> <span class="ty">date</span> birthday;           <span class="cmt">// 嵌套日期</span>' },
+  { ln:'15', dataLine:15, html:'} <span class="fn">y</span> = {<span class="str">"zhangjie"</span>, <span class="str">\'m\'</span>, <span class="str">"don"</span>, <span class="num">18</span>, <span class="num">340</span>}; <span class="cmt">// 初始化 y</span>' },
+  { ln:'',  sep:true, dataLine:0, html:'<span class="cmt">// ===================== 主函数 =====================</span>' },
+  { ln:'16', dataLine:16, html:'<span class="kw">int</span> <span class="fn">main</span>() {                        <span class="cmt">// 主函数</span>' },
+  { ln:'17', dataLine:17, html:'    <span class="kw">struct</span> <span class="ty">student</span> x, z;            <span class="cmt">// 定义变量 x 和 z</span>' },
+  { ln:'18', dataLine:18, html:'    <span class="fn">strcpy</span>(x.name, <span class="str">"Lily"</span>);          <span class="cmt">// 数组成员用 strcpy</span>' },
+  { ln:'19', dataLine:19, html:'    x.sex = <span class="str">\'f\'</span>;' },
+  { ln:'20', dataLine:20, html:'    <span class="fn">strcpy</span>(x.nation, <span class="str">"dongzi"</span>);' },
+  { ln:'21', dataLine:21, html:'    x.age = <span class="num">18</span>;' },
+  { ln:'22', dataLine:22, html:'    x.score = <span class="num">428</span>;' },
+  { ln:'23', dataLine:23, html:'    x.birthday.year = <span class="num">1999</span>;           <span class="cmt">// 嵌套成员逐级访问</span>' },
+  { ln:'24', dataLine:24, html:'    x.birthday.month = <span class="num">5</span>;' },
+  { ln:'25', dataLine:25, html:'    x.birthday.day = <span class="num">23</span>;' },
+  { ln:'26', dataLine:26, html:'    y = x;                           <span class="cmt">// 整体赋值，52 字节复制</span>' },
+  { ln:'27', dataLine:27, html:'    <span class="err-src">z.nation = x.nation;</span>              <span class="cmt">// ★ 编译错误！</span>' },
+  { ln:'28', dataLine:28, html:'    z.sex = y.sex;' },
+  { ln:'29', dataLine:29, html:'    <span class="fn">printf</span>(<span class="str">"%s,%c,%s,%d,%.1f\\n"</span>, x.name, x.sex, x.nation, x.age, x.score);' },
+  { ln:'30', dataLine:30, html:'    <span class="fn">printf</span>(<span class="str">"%d-%d-%d\\n"</span>, x.birthday.year, x.birthday.month, x.birthday.day);' },
+  { ln:'31', dataLine:31, html:'    <span class="kw">return</span> <span class="num">0</span>;' }
+];
+
+/* =========================================================
+   2. 常量与工具
+   ========================================================= */
+const STU_SIZE = 52;
+const TOTAL_LINES = CODE_LINES.length; // 34
+
+function fieldAtOffset(i){
+  if (i <= 19)  return { key:'name',   color:'name' };
+  if (i === 20) return { key:'sex',    color:'sex' };
+  if (i <= 30)  return { key:'nation', color:'nation' };
+  if (i === 31) return { key:'pad',    color:'pad' };
+  if (i <= 35)  return { key:'age',    color:'age' };
+  if (i <= 39)  return { key:'score',  color:'score' };
+  if (i <= 43)  return { key:'bdYear', color:'bdYear' };
+  if (i <= 47)  return { key:'bdMonth',color:'bdMonth' };
+  if (i <= 51)  return { key:'bdDay',  color:'bdDay' };
+  return null;
+}
+
+const VAR_FIELDS = [
+  { label:'name',           path:['name'],              type:'str'   },
+  { label:'sex',            path:['sex'],               type:'char'  },
+  { label:'nation',         path:['nation'],            type:'str'   },
+  { label:'age',            path:['age'],               type:'int'   },
+  { label:'score',          path:['score'],             type:'float' },
+  { label:'birthday.year',  path:['birthday','year'],   type:'int'   },
+  { label:'birthday.month', path:['birthday','month'],  type:'int'   },
+  { label:'birthday.day',   path:['birthday','day'],    type:'int'   }
+];
+
+/* =========================================================
+   3. 状态与步骤构建
+   ========================================================= */
+let S;
+let steps = [];
+
+function initState(){
+  S = {
+    definedFields: [],
+    dateDone: false,
+    stuDone: false,
+    activeRange: null,
+    activeVar: null,
+    activeField: null,
+    activePad: false,
+    isError: false,
+    x: null,
+    y: null,
+    z: null,
+    console: [],
+    resultShown: false
+  };
+}
+function cloneState(){
+  return JSON.parse(JSON.stringify({
+    definedFields: S.definedFields,
+    dateDone: S.dateDone,
+    stuDone: S.stuDone,
+    activeRange: S.activeRange,
+    activeVar: S.activeVar,
+    activeField: S.activeField,
+    activePad: S.activePad,
+    isError: S.isError,
+    x: S.x, y: S.y, z: S.z,
+    console: S.console,
+    resultShown: S.resultShown
+  }));
+}
+function push(o){
+  steps.push({
+    line: o.line,
+    cls: o.cls || '',
+    ctx: o.ctx || '',
+    expr: o.expr || '',
+    exprVal: o.exprVal || '',
+    note: o.note || '',
+    title: o.title || '',
+    desc: o.desc || '',
+    state: cloneState()
+  });
+}
+function log(cls, text){ S.console.push({cls, text}); }
+
+function buildSteps(){
+  steps = [];
+  initState();
+
+  /* 第 1 行 */
+  log('out-note', '[预处理] #include <stdio.h>   → 展开头文件');
+  push({
+    line: 1, ctx:'预处理器 · 头文件包含',
+    expr:'#include <stdio.h>',
+    exprVal:'头文件内容已展开，printf 声明可用',
+    note:'printf 现在可以正常调用',
+    title:'包含 <code>&lt;stdio.h&gt;</code>',
+    desc:'预处理器把 <code>&lt;stdio.h&gt;</code> 展开到源文件中。'+
+         '这个头文件声明了 <code>printf</code>，第 29、30 行要用它输出结果。<br>'+
+         '· 头文件包含<b>不占用运行时内存</b>，只影响编译。'+
+         '<span class="tip">如果忘了这一行，编译器会警告 <code>implicit declaration of printf</code>。</span>'
+  });
+
+  /* 第 2 行 */
+  log('out-note', '[预处理] #include <string.h>  → 展开头文件');
+  push({
+    line: 2, ctx:'预处理器 · 头文件包含',
+    expr:'#include <string.h>',
+    exprVal:'头文件内容已展开，strcpy 声明可用',
+    note:'strcpy 现在可以正常调用',
+    title:'包含 <code>&lt;string.h&gt;</code>',
+    desc:'<code>&lt;string.h&gt;</code> 里声明了 <code>strcpy</code>。'+
+         '第 18、20 行要用它给字符数组赋值。<br>'+
+         '· <b>为什么数组不能用 <code>=</code> 赋值？</b>'+
+         '因为数组名在 C 中会退化为指向首元素的指针常量，不能被赋值；'+
+         '必须用 <code>strcpy</code> 逐字符拷贝。'
+  });
+
+  /* 第 3 行 struct date */
+  S.definedFields = [];
+  log('out-note', '[编译] 开始解析 struct date ...');
+  push({
+    line: 3, cls:'gold',
+    ctx:'编译器 · 开始定义 struct date',
+    expr:'struct date {',
+    exprVal:'注册类型标签 date（不完整类型，大小未知）',
+    note:'类型表新增条目：struct date',
+    title:'<b>struct date {</b>　→　开始定义日期结构体',
+    desc:'编译器看到 <code>struct</code>，开始定义新类型。<br>'+
+         '· 类型标签是 <code>date</code>，以后可以用 <code>struct date</code> 声明变量；<br>'+
+         '· 此刻类型<b>不完整</b>（大小未知），只在类型表登记条目；<br>'+
+         '· 接下来逐条读取成员，按对齐规则计算偏移。'+
+         '<span class="tip"><b>三个 int 成员，都是 4 字节、对齐 4 字节。</b><br>'+
+         '每个成员本身占 4 字节，前一个结束后偏移一定是 4 的倍数，'+
+         '所以 <code>struct date</code> 内部<b>不会产生任何填充</b>，总大小 12 字节。</span>'
+  });
+
+  /* 第 4 行 year */
+  S.activeRange = [0, 3]; S.activePad = false;
+  log('out-ok', '  + int year                 偏移 0      大小 4');
+  push({
+    line: 4, cls:'mv',
+    ctx:'编译器 · 解析 struct date 成员 1/3：year',
+    expr:'int year;',
+    exprVal:'偏移 0 ~ 3，占 4 字节，已用 4 字节，最大对齐 4',
+    note:'成员 year 已就位 @ 偏移 0',
+    title:'成员 <b>year</b>　→　偏移 0 ~ 3（4 字节）',
+    desc:'<code>int</code> 大小 4，对齐 4；<br>'+
+         '· 当前偏移 <b>0</b>，<code>0 % 4 = 0</code>，满足对齐；<br>'+
+         '· <code>year</code> 占据偏移 <b>0 ~ 3</b>；<br>'+
+         '· 已用 <b>4</b> 字节，最大对齐 <b>4</b>。'
+  });
+
+  /* 第 5 行 month */
+  S.activeRange = [4, 7];
+  log('out-ok', '  + int month                偏移 4      大小 4');
+  push({
+    line: 5, cls:'mv',
+    ctx:'编译器 · 解析 struct date 成员 2/3：month',
+    expr:'int month;',
+    exprVal:'偏移 4 ~ 7，占 4 字节，已用 8 字节',
+    note:'成员 month 已就位 @ 偏移 4',
+    title:'成员 <b>month</b>　→　偏移 4 ~ 7（4 字节）',
+    desc:'· 当前偏移 <b>4</b>，<code>4 % 4 = 0</code>，满足对齐，无需填充；<br>'+
+         '· <code>month</code> 占据偏移 <b>4 ~ 7</b>；<br>'+
+         '· 已用 <b>8</b> 字节。'
+  });
+
+  /* 第 6 行 day */
+  S.activeRange = [8, 11];
+  log('out-ok', '  + int day                  偏移 8      大小 4');
+  push({
+    line: 6, cls:'mv',
+    ctx:'编译器 · 解析 struct date 成员 3/3：day',
+    expr:'int day;',
+    exprVal:'偏移 8 ~ 11，占 4 字节，已用 12 字节',
+    note:'成员 day 已就位 @ 偏移 8',
+    title:'成员 <b>day</b>　→　偏移 8 ~ 11（4 字节）',
+    desc:'· 当前偏移 <b>8</b>，<code>8 % 4 = 0</code>，满足对齐；<br>'+
+         '· <code>day</code> 占据偏移 <b>8 ~ 11</b>；<br>'+
+         '· 已用 <b>12</b> 字节。'
+  });
+
+  /* 第 7 行 }; date 结束 */
+  S.dateDone = true; S.activeRange = null; S.activePad = false;
+  log('out-final', '[类型完成] struct date = 12 字节');
+  push({
+    line: 7, cls:'gold',
+    ctx:'编译器 · struct date 定义结束',
+    expr:'};',
+    exprVal:'struct date 大小 = 12 字节，填充 0 字节',
+    note:'★ 类型表更新：struct date 现在是完整类型（12 字节）',
+    title:'<b>};</b>　→　struct date 定义完成，大小 = <b>12</b> 字节',
+    desc:'· 已用 <b>12</b> 字节，最大对齐 <b>4</b> 字节；<br>'+
+         '· 尾部填充检查：<code>12 % 4 = 0</code>，<b>恰好整除，末尾不需要补字节</b>；<br>'+
+         '· <b>struct date 最终大小 = 12 字节</b>，无任何填充；<br>'+
+         '· 现在可以作为其他结构体的成员使用了。'+
+         '<span class="win"><b>★ struct date 定义完成！大小 = 12 字节</b><br>'+
+         'year @ 0~3　month @ 4~7　day @ 8~11</span>'
+  });
+
+  /* 第 8 行 struct student */
+  S.activeRange = null; S.activePad = false; S.definedFields = [];
+  log('out-empty', '');
+  log('out-note', '[编译] 开始解析 struct student ...');
+  push({
+    line: 8, cls:'gold',
+    ctx:'编译器 · 开始定义 struct student',
+    expr:'struct student {',
+    exprVal:'注册类型标签 student（不完整类型）',
+    note:'类型表新增条目：struct student',
+    title:'<b>struct student {</b>　→　开始定义学生结构体',
+    desc:'编译器开始定义 <code>struct student</code>。<br>'+
+         '· 最后一个成员的类型是<b>已定义好的</b> <code>struct date</code>；<br>'+
+         '· 编译器把 <code>struct date</code> 当成整体处理：大小 <b>12</b>、对齐 <b>4</b>；<br>'+
+         '· 接下来逐个解析成员，必要时插入填充字节。'
+  });
+
+  /* 第 9 行 name[20] */
+  S.activeRange = [0, 19];
+  S.definedFields = ['name'];
+  log('out-ok', '  + char name[20]            偏移 0      大小 20');
+  push({
+    line: 9, cls:'mv',
+    ctx:'编译器 · 解析 struct student 成员 1/6：name',
+    expr:'char name[20];',
+    exprVal:'偏移 0 ~ 19，占 20 字节，已用 20 字节',
+    note:'成员 name 已就位 @ 偏移 0',
+    title:'成员 <b>name[20]</b>　→　偏移 0 ~ 19（20 字节）',
+    desc:'· 数组对齐要求等于<b>元素类型的对齐</b>，<code>char</code> 对齐 1；<br>'+
+         '· 当前偏移 <b>0</b>，<code>0 % 1 = 0</code>，满足对齐；<br>'+
+         '· <code>name</code> 占据偏移 <b>0 ~ 19</b>；<br>'+
+         '· 已用 <b>20</b> 字节。'
+  });
+
+  /* 第 10 行 sex */
+  S.activeRange = [20, 20];
+  S.definedFields = ['name', 'sex'];
+  log('out-ok', '  + char sex                 偏移 20     大小 1');
+  push({
+    line: 10, cls:'mv',
+    ctx:'编译器 · 解析 struct student 成员 2/6：sex',
+    expr:'char sex;',
+    exprVal:'偏移 20，占 1 字节，已用 21 字节',
+    note:'成员 sex 已就位 @ 偏移 20',
+    title:'成员 <b>sex</b>　→　偏移 20（1 字节）',
+    desc:'· <code>char</code> 大小 1，对齐 1；<br>'+
+         '· 当前偏移 <b>20</b>，<code>20 % 1 = 0</code>，满足对齐；<br>'+
+         '· <code>sex</code> 占据偏移 <b>20</b>；<br>'+
+         '· 已用 <b>21</b> 字节。'
+  });
+
+  /* 第 11 行 nation[10] */
+  S.activeRange = [21, 30];
+  S.definedFields = ['name', 'sex', 'nation'];
+  log('out-ok', '  + char nation[10]          偏移 21     大小 10');
+  push({
+    line: 11, cls:'mv',
+    ctx:'编译器 · 解析 struct student 成员 3/6：nation',
+    expr:'char nation[10];',
+    exprVal:'偏移 21 ~ 30，占 10 字节，已用 31 字节',
+    note:'成员 nation 已就位 @ 偏移 21 ~ 30',
+    title:'成员 <b>nation[10]</b>　→　偏移 21 ~ 30（10 字节）',
+    desc:'· 大小 <b>10</b>，对齐 <b>1</b>；<br>'+
+         '· 当前偏移 <b>21</b>，<code>21 % 1 = 0</code>，满足对齐；<br>'+
+         '· <code>nation</code> 占据偏移 <b>21 ~ 30</b>；<br>'+
+         '· 已用 <b>31</b> 字节。'+
+         '<span class="warn"><b>注意：接下来要小心了！</b><br>'+
+         '已用 <b>31</b> 字节，下一个成员是 <code>int age</code>，对齐 4。'+
+         '而 <code>31 % 4 = 3 ≠ 0</code>，<b>必然发生填充</b>。</span>'
+  });
+
+  /* 第 12 行 age 第 1 步：检测对齐 */
+  S.activeRange = null; S.activePad = false;
+  push({
+    line: 12, cls:'gold',
+    ctx:'编译器 · 解析 struct student 成员 4/6：age（检测到对齐冲突）',
+    expr:'int age;',
+    exprVal:'类型 int，大小 4 字节，对齐 4 字节',
+    note:'★ 当前偏移 31，31 % 4 = 3 ≠ 0，不满足对齐！',
+    title:'成员 <b>age</b>：<code>int</code>　→　检测到对齐冲突',
+    desc:'· <code>int</code> 大小 4，对齐要求 4；<br>'+
+         '· 当前已用偏移是 <b>31</b>，<code>31 % 4 = 3</code>，<b>不满足对齐</b>；<br>'+
+         '· 如果强行放在偏移 31，<code>age</code> 会跨在 4 字节边界上，'+
+         'CPU 访问时需要两次内存读取，效率低，甚至部分硬件报错；<br>'+
+         '· 所以编译器必须在偏移 31 处插入填充字节。'+
+         '<span class="warn"><b>填充多少字节？</b><br>'+
+         '<code>(4 - 31 % 4) % 4 = 1</code> 字节。<br>'+
+         '填充后 <code>age</code> 从偏移 <b>32</b> 开始，32 是 4 的倍数，对齐要求得到满足。</span>'
+  });
+
+  /* 第 12 行 age 第 2 步：插入填充 */
+  S.activePad = true; S.activeRange = [31, 31];
+  log('out-pad', '  (填充 1 字节 @ 偏移 31)');
+  push({
+    line: 12, cls:'gold',
+    ctx:'编译器 · 为 age 插入填充字节',
+    expr:'int age;   // 偏移 31 处插入 1 字节填充',
+    exprVal:'填充 1 字节 @ 偏移 31；age 将从偏移 32 开始',
+    note:'★ 填充大小 = (4 - 31 % 4) % 4 = 1 字节',
+    title:'插入 <b>1 字节填充</b>　→　age 落在偏移 32',
+    desc:'· 填充大小 = <code>(4 - 31 % 4) % 4 = 1</code> 字节；<br>'+
+         '· 这 1 个字节<b>不存放任何数据</b>，纯粹为了「占位」；<br>'+
+         '· 有了这 1 字节，<code>age</code> 的起始偏移变成 <b>32</b>，对齐满足。'+
+         '<span class="tip"><b>为什么填充字节不存数据却要占内存？</b><br>'+
+         '因为成员偏移是<b>编译期确定</b>的，必须让每个成员都落在对齐合法的地址上。'+
+         '填充就是「牺牲空间，换取访问效率」。</span>'
+  });
+
+  /* 第 12 行 age 第 3 步：放置 */
+  S.activePad = false; S.activeRange = [32, 35];
+  S.definedFields = ['name', 'sex', 'nation', 'age'];
+  log('out-ok', '  + int age                  偏移 32     大小 4');
+  push({
+    line: 12, cls:'mv',
+    ctx:'编译器 · 放置 struct student.age 到偏移 32',
+    expr:'int age;',
+    exprVal:'偏移 32 ~ 35，占 4 字节，已用 36 字节',
+    note:'成员 age 已就位 @ 偏移 32 ~ 35',
+    title:'成员 <b>age</b> 就位　→　偏移 32 ~ 35（4 字节）',
+    desc:'· <code>age</code> 落在偏移 <b>32</b>，占据 <b>32 ~ 35</b>；<br>'+
+         '· 已用 <b>36</b> 字节，最大对齐 <b>4</b>；<br>'+
+         '· <b>整个 struct student 里唯一的填充就是这 1 个字节</b>（偏移 31）。'
+  });
+
+  /* 第 13 行 score */
+  S.activeRange = [36, 39];
+  S.definedFields = ['name', 'sex', 'nation', 'age', 'score'];
+  log('out-ok', '  + float score              偏移 36     大小 4');
+  push({
+    line: 13, cls:'mv',
+    ctx:'编译器 · 解析 struct student 成员 5/6：score',
+    expr:'float score;',
+    exprVal:'偏移 36 ~ 39，占 4 字节，已用 40 字节',
+    note:'成员 score 已就位 @ 偏移 36 ~ 39',
+    title:'成员 <b>score</b>　→　偏移 36 ~ 39（4 字节）',
+    desc:'· <code>float</code> 大小 4，对齐 4；<br>'+
+         '· 当前偏移 <b>36</b>，<code>36 % 4 = 0</code>，满足对齐，无需填充；<br>'+
+         '· <code>score</code> 占据偏移 <b>36 ~ 39</b>；<br>'+
+         '· 已用 <b>40</b> 字节。'
+  });
+
+  /* 第 14 行 birthday */
+  S.activeRange = [40, 51];
+  S.definedFields = ['name', 'sex', 'nation', 'age', 'score', 'birthday'];
+  log('out-ok', '  + struct date birthday     偏移 40     大小 12');
+  push({
+    line: 14, cls:'mv',
+    ctx:'编译器 · 解析 struct student 成员 6/6：birthday',
+    expr:'struct date birthday;',
+    exprVal:'偏移 40 ~ 51，占 12 字节，已用 52 字节',
+    note:'嵌套结构体成员 birthday 已就位 @ 偏移 40 ~ 51',
+    title:'成员 <b>birthday</b>（嵌套 struct date）　→　偏移 40 ~ 51',
+    desc:'· 这是一个<b>嵌套结构体成员</b>：类型 <code>struct date</code> '+
+         '已定义完成，大小 <b>12</b>、对齐 <b>4</b>；<br>'+
+         '· 当前偏移 <b>40</b>，<code>40 % 4 = 0</code>，满足对齐，无需填充；<br>'+
+         '· 编译器把它当作整体放置，占据偏移 <b>40 ~ 51</b>；<br>'+
+         '· 内部细分：<code>birthday.year</code>@<b>40~43</b>、'+
+         '<code>birthday.month</code>@<b>44~47</b>、<code>birthday.day</code>@<b>48~51</b>；<br>'+
+         '· 已用 <b>52</b> 字节。'
+  });
+
+  /* 第 15 行 } y = {...}; */
+  S.stuDone = true; S.activeRange = null; S.activePad = false;
+  S.y = {
+    name:'zhangjie', sex:'m', nation:'don', age:18, score:340.0,
+    birthday: { year:0, month:0, day:0 }
+  };
+  S.activeVar = 'y'; S.activeField = 'all';
+  log('out-final', '[类型完成] struct student = 52 字节');
+  log('out-info', '[全局变量] y = {"zhangjie", \'m\', "don", 18, 340}  birthday 未赋值 → 全部为 0');
+  push({
+    line: 15, cls:'gold',
+    ctx:'编译器 · struct student 定义结束 + 全局变量 y 初始化',
+    expr:'} y = {"zhangjie", \'m\', "don", 18, 340};',
+    exprVal:'struct student = 52 字节；y 已初始化，birthday = {0, 0, 0}',
+    note:'★ 类型完成：52 字节；全局变量 y 已赋值',
+    title:'<b>} y = {...};</b>　→　类型完成（52 字节）+ y 初始化',
+    desc:'编译器遇到 <code>} y = { ... };</code>，<b>一步完成两件事</b>：<br>'+
+         '· ① 把 <code>struct student</code> 标记为完整类型，大小 = <b>52</b> 字节；<br>'+
+         '· ② 用初始化列表给全局变量 <code>y</code> 赋值。<br><br>'+
+         '<b>初始化列表逐项对应：</b><br>'+
+         '　<code>"zhangjie"</code> → <code>y.name</code>；<br>'+
+         '　<code>\'m\'</code> → <code>y.sex</code>；<br>'+
+         '　<code>"don"</code> → <code>y.nation</code>；<br>'+
+         '　<code>18</code> → <code>y.age</code>；<br>'+
+         '　<code>340</code> → <code>y.score</code>（自动转 float 340.0）；<br>'+
+         '　<code>birthday</code> <b>未出现在列表</b> → 全局变量默认零初始化，'+
+         '所以 <code>y.birthday = {0, 0, 0}</code>。<br><br>'+
+         '<b>尾部填充检查：</b><code>52 % 4 = 0</code>，无需补字节。'+
+         '<span class="win"><b>★ struct student 最终布局（52 字节）</b><br>'+
+         'name[20] @ 0~19　sex @ 20　nation[10] @ 21~30　'+
+         '<b>填充 @ 31</b>　age @ 32~35　score @ 36~39　birthday @ 40~51<br>'+
+         'y = {"zhangjie", \'m\', "don", 18, 340.0, {0,0,0}}</span>'
+  });
+
+  /* 第 16 行 main */
+  S.activeVar = null; S.activeField = null; S.activeRange = null;
+  log('out-empty', '');
+  log('out-note', '[编译] 进入 main 函数');
+  push({
+    line: 16, ctx:'运行时 · 进入 main 函数',
+    expr:'int main() {',
+    exprVal:'main 开始执行，栈帧建立',
+    note:'程序从这里开始真正运行',
+    title:'<b>int main() {</b>　→　程序入口',
+    desc:'前面都是<b>编译期</b>的工作（定义类型、计算布局、初始化全局变量）。'+
+         '从 <code>main</code> 开始，程序进入<b>运行期</b>。<br>'+
+         '· 全局变量 <code>y</code> 在程序启动时已初始化完毕；<br>'+
+         '· 接下来声明局部变量 <code>x</code> 和 <code>z</code>。'
+  });
+
+  /* 第 17 行 struct student x, z; */
+  S.x = null; S.z = null;
+  S.activeVar = null; S.activeField = null;
+  log('out-info', '[局部变量] struct student x, z;  → 未初始化（栈上垃圾值）');
+  push({
+    line: 17, ctx:'运行时 · 声明局部变量 x 和 z',
+    expr:'struct student x, z;',
+    exprVal:'在栈上分配两个 struct student，各 52 字节；未初始化',
+    note:'★ x 和 z 目前是「垃圾值」，赋值前不能读取',
+    title:'<b>struct student x, z;</b>　→　定义局部变量 x 和 z',
+    desc:'在 <code>main</code> 的栈帧里分配两个 <code>struct student</code>：'+
+         '<code>x</code> 和 <code>z</code>，各占 <b>52</b> 字节。<br>'+
+         '· <b>局部变量不会自动清零</b>，它们是「栈上的垃圾值」；<br>'+
+         '· 赋值前读取它们，结果是不可预测的（未定义行为）；<br>'+
+         '· 所以下面的代码要逐个成员给 <code>x</code> 赋值。'+
+         '<span class="tip"><b>对比全局变量 y：</b><br>'+
+         '全局变量和静态变量会被<b>自动零初始化</b>，然后才用初始化列表赋值；'+
+         '局部变量不会。<br>'+
+         '这就是为什么 <code>y.birthday</code> 是 {0,0,0}，'+
+         '而 <code>x.birthday</code> 在赋值前是垃圾值。</span>'
+  });
+
+  /* 第 18 行 strcpy(x.name, "Lily") */
+  S.x = { name:'Lily', sex:null, nation:null, age:null, score:null,
+          birthday:{ year:null, month:null, day:null } };
+  S.activeVar = 'x'; S.activeField = 'name'; S.activeRange = [0, 19];
+  log('out-ok', '  x.name     ← "Lily"       (偏移 0~19)');
+  push({
+    line: 18, cls:'mv',
+    ctx:'运行时 · 给 x.name 赋值',
+    expr:'strcpy(x.name, "Lily");',
+    exprVal:'x.name = "Lily"（L i l y \\0，共 5 字节）',
+    note:'★ 用 strcpy 拷贝，不能用 x.name = "Lily"',
+    title:'<b>strcpy(x.name, "Lily")</b>　→　x.name = <b>"Lily"</b>',
+    desc:'<code>strcpy</code> 把 <code>"Lily"</code> 逐字节复制到 '+
+         '<code>x.name</code> 指向的 20 字节数组。<br>'+
+         '· 内容：<code>\'L\' \'i\' \'l\' \'y\' \'\\0\'</code>，共 <b>5</b> 字节；<br>'+
+         '· 剩余 15 字节保持原样；<br>'+
+         '· <code>x.name</code> 占据偏移 <b>0 ~ 19</b>。'+
+         '<span class="warn"><b>为什么不能用 <code>x.name = "Lily";</code>？</b><br>'+
+         '数组名 <code>x.name</code> 是<b>数组首地址</b>（常量指针），不能作为赋值目标。<br>'+
+         '编译器会报错：<code>error: assignment to expression with array type</code>。<br>'+
+         '正确做法是用 <code>strcpy</code> 逐字节拷贝。</span>'
+  });
+
+  /* 第 19 行 x.sex = 'f'; */
+  S.x.sex = 'f'; S.activeField = 'sex'; S.activeRange = [20, 20];
+  log('out-ok', '  x.sex      ← \'f\'        (偏移 20)');
+  push({
+    line: 19, ctx:'运行时 · 给 x.sex 赋值',
+    expr:"x.sex = 'f';",
+    exprVal:"x.sex = 'f'",
+    note:"x.sex 是单个 char，可以直接用 = 赋值",
+    title:"<b>x.sex = 'f'</b>　→　x.sex = <b>'f'</b>",
+    desc:'<code>x.sex</code> 是单个 <code>char</code>，可以直接用 <code>=</code> 赋值。<br>'+
+         '· 占据偏移 <b>20</b>，1 字节；<br>'+
+         '· 存的是字符 <code>\'f\'</code> 的 ASCII 码 <b>102</b>。'+
+         '<span class="tip"><b>什么时候能用 =，什么时候不能？</b><br>'+
+         '· 单个 <code>char</code> / <code>int</code> / <code>float</code> 成员 → 用 <code>=</code>；<br>'+
+         '· <b>数组成员</b>（<code>name</code>、<code>nation</code>）→ 必须用 <code>strcpy</code>。</span>'
+  });
+
+  /* 第 20 行 strcpy(x.nation, "dongzi"); */
+  S.x.nation = 'dongzi'; S.activeField = 'nation'; S.activeRange = [21, 30];
+  log('out-ok', '  x.nation   ← "dongzi"    (偏移 21~30)');
+  push({
+    line: 20, ctx:'运行时 · 给 x.nation 赋值',
+    expr:'strcpy(x.nation, "dongzi");',
+    exprVal:'x.nation = "dongzi"（d o n g z i \\0，共 7 字节）',
+    note:'★ 同样是数组成员，必须用 strcpy',
+    title:'<b>strcpy(x.nation, "dongzi")</b>　→　x.nation = <b>"dongzi"</b>',
+    desc:'<code>x.nation</code> 是 10 字节 <code>char</code> 数组，也不能用 <code>=</code> 赋值。<br>'+
+         '· <code>strcpy</code> 把 <code>"dongzi"</code> 复制进去：'+
+         '<code>\'d\' \'o\' \'n\' \'g\' \'z\' \'i\' \'\\0\'</code>，共 <b>7</b> 字节；<br>'+
+         '· 剩余 3 字节保持原样；<br>'+
+         '· <code>x.nation</code> 占据偏移 <b>21 ~ 30</b>。'
+  });
+
+  /* 第 21 行 x.age = 18; */
+  S.x.age = 18; S.activeField = 'age'; S.activeRange = [32, 35];
+  log('out-ok', '  x.age      ← 18          (偏移 32~35)');
+  push({
+    line: 21, ctx:'运行时 · 给 x.age 赋值',
+    expr:'x.age = 18;',
+    exprVal:'x.age = 18',
+    note:'x.age 占据偏移 32 ~ 35（注意不是 31！）',
+    title:'<b>x.age = 18</b>　→　x.age = <b>18</b>',
+    desc:'<code>x.age</code> 是 <code>int</code>，直接赋值。<br>'+
+         '· 占据偏移 <b>32 ~ 35</b>（前面偏移 31 是填充字节）；<br>'+
+         '· 记住：<code>x.age</code> 的偏移是 <b>32</b>，'+
+         '因为 <code>name(20) + sex(1) + nation(10) = 31</code>，'+
+         '需要填充 1 字节才能对齐到 4 的倍数。'
+  });
+
+  /* 第 22 行 x.score = 428; */
+  S.x.score = 428.0; S.activeField = 'score'; S.activeRange = [36, 39];
+  log('out-ok', '  x.score    ← 428.0       (偏移 36~39)');
+  push({
+    line: 22, ctx:'运行时 · 给 x.score 赋值',
+    expr:'x.score = 428;',
+    exprVal:'x.score = 428.0（int 自动转换为 float）',
+    note:'整数 428 被隐式转换为 float 428.0',
+    title:'<b>x.score = 428</b>　→　x.score = <b>428.0</b>',
+    desc:'<code>x.score</code> 是 <code>float</code>，右边是整数 <code>428</code>，'+
+         'C 会自动<b>隐式转换</b>为浮点数 <code>428.0f</code>。<br>'+
+         '· 占据偏移 <b>36 ~ 39</b>；<br>'+
+         '· 输出时用 <code>%.1f</code> 格式化，会打印 <code>428.0</code>。'
+  });
+
+  /* 第 23 行 x.birthday.year = 1999; */
+  S.x.birthday.year = 1999;
+  S.activeField = 'birthday.year'; S.activeRange = [40, 43];
+  log('out-ok', '  x.birthday.year  ← 1999  (偏移 40~43)');
+  push({
+    line: 23, cls:'mv',
+    ctx:'运行时 · 给 x.birthday.year 赋值（嵌套成员逐级访问）',
+    expr:'x.birthday.year = 1999;',
+    exprVal:'x.birthday.year = 1999',
+    note:'★ 嵌套成员用「点」逐级访问：x.birthday.year',
+    title:'<b>x.birthday.year = 1999</b>　→　嵌套成员逐级访问',
+    desc:'这是本程序的一个<b>重点</b>：如何访问嵌套结构体的成员。<br>'+
+         '· <code>x</code> 是 <code>struct student</code>；<br>'+
+         '· <code>x.birthday</code> 是它的成员，类型是 <code>struct date</code>；<br>'+
+         '· <code>x.birthday.year</code> 是 <code>struct date</code> 里的 <code>year</code>。<br><br>'+
+         '<b>内存偏移计算：</b>birthday 在 <code>x</code> 中的偏移是 <b>40</b>，'+
+         '<code>year</code> 在 <code>struct date</code> 中的偏移是 <b>0</b>，'+
+         '所以 <code>x.birthday.year</code> 的总偏移 = <b>40 + 0 = 40</b>，'+
+         '占据 <b>40 ~ 43</b>。'
+  });
+
+  /* 第 24 行 x.birthday.month = 5; */
+  S.x.birthday.month = 5;
+  S.activeField = 'birthday.month'; S.activeRange = [44, 47];
+  log('out-ok', '  x.birthday.month ← 5     (偏移 44~47)');
+  push({
+    line: 24, cls:'mv',
+    ctx:'运行时 · 给 x.birthday.month 赋值',
+    expr:'x.birthday.month = 5;',
+    exprVal:'x.birthday.month = 5',
+    note:'总偏移 = 40（birthday 起点）+ 4（month 在 date 中的偏移）= 44',
+    title:'<b>x.birthday.month = 5</b>　→　偏移 44 ~ 47',
+    desc:'<code>month</code> 在 <code>struct date</code> 内部的偏移是 <b>4</b>。<br>'+
+         '所以 <code>x.birthday.month</code> 的总偏移 = 40 + 4 = <b>44</b>，'+
+         '占据 <b>44 ~ 47</b>。'
+  });
+
+  /* 第 25 行 x.birthday.day = 23; */
+  S.x.birthday.day = 23;
+  S.activeField = 'birthday.day'; S.activeRange = [48, 51];
+  log('out-ok', '  x.birthday.day   ← 23     (偏移 48~51)');
+  push({
+    line: 25, cls:'mv',
+    ctx:'运行时 · 给 x.birthday.day 赋值',
+    expr:'x.birthday.day = 23;',
+    exprVal:'x.birthday.day = 23',
+    note:'总偏移 = 40（birthday 起点）+ 8（day 在 date 中的偏移）= 48',
+    title:'<b>x.birthday.day = 23</b>　→　偏移 48 ~ 51',
+    desc:'<code>day</code> 在 <code>struct date</code> 内部的偏移是 <b>8</b>，'+
+         '所以总偏移 = 40 + 8 = <b>48</b>，占据 <b>48 ~ 51</b>。'+
+         '<span class="win"><b>★ 此时 x 的全部成员都已赋值：</b><br>'+
+         'x.name = "Lily"　x.sex = \'f\'　x.nation = "dongzi"<br>'+
+         'x.age = 18　x.score = 428.0　x.birthday = {1999, 5, 23}</span>'
+  });
+
+  /* 第 26 行 y = x; */
+  S.y = {
+    name:'Lily', sex:'f', nation:'dongzi', age:18, score:428.0,
+    birthday:{ year:1999, month:5, day:23 }
+  };
+  S.activeVar = 'y'; S.activeField = 'all'; S.activeRange = [0, 51];
+  log('out-info', '[赋值] y = x;  整体拷贝 52 字节');
+  push({
+    line: 26, cls:'gold',
+    ctx:'运行时 · 整体赋值 y = x',
+    expr:'y = x;',
+    exprVal:'y 的所有成员被 x 的对应成员覆盖（52 字节整体复制）',
+    note:'★ 结构体可以直接用 = 整体赋值，等价于 memcpy(&y, &x, 52)',
+    title:'<b>y = x</b>　→　整体赋值，x 复制给 y',
+    desc:'这是 C 语言中结构体的一个重要特性：<b>同类型的结构体变量可以直接用 '+
+         '<code>=</code> 整体赋值</b>。<br>'+
+         '· 编译器会生成代码，把 <code>x</code> 的 52 字节<b>逐字节复制</b>到 <code>y</code>；'+
+         '等价于 <code>memcpy(&y, &x, 52)</code>；<br>'+
+         '· 包括<b>填充字节</b>也会被一起复制（虽然内容无意义）；<br>'+
+         '· 赋值完成后，<code>y</code> 和 <code>x</code> 完全一样。<br><br>'+
+         '<b>y 的原值被覆盖：</b><br>'+
+         '　<code>y.name</code>：<code>"zhangjie"</code> → <code>"Lily"</code><br>'+
+         '　<code>y.sex</code>：<code>\'m\'</code> → <code>\'f\'</code><br>'+
+         '　<code>y.nation</code>：<code>"don"</code> → <code>"dongzi"</code><br>'+
+         '　<code>y.age</code>：<code>18</code> → <code>18</code><br>'+
+         '　<code>y.score</code>：<code>340.0</code> → <code>428.0</code><br>'+
+         '　<code>y.birthday</code>：<code>{0,0,0}</code> → <code>{1999,5,23}</code>'+
+         '<span class="warn"><b>注意：数组不能整体赋值，但结构体可以！</b><br>'+
+         '这正是 <code>y = x;</code> 合法、而 <code>z.nation = x.nation;</code> 非法的原因。</span>'
+  });
+
+  /* 第 27 行 z.nation = x.nation; 编译错误 */
+  S.activeVar = 'z'; S.activeField = 'nation'; S.activeRange = null; S.isError = true;
+  log('out-err', '  !! 第 27 行：z.nation = x.nation;  编译错误');
+  log('out-err', '  !! error: assignment to expression with array type');
+  log('out-err', '  !! 正确写法：strcpy(z.nation, x.nation);');
+  push({
+    line: 27, cls:'err',
+    ctx:'编译错误 · 数组不能整体赋值',
+    expr:'z.nation = x.nation;',
+    exprVal:'❌ 非法语句：数组名不能作为赋值目标',
+    note:'★ 编译错误：assignment to expression with array type',
+    title:'❌ <b>z.nation = x.nation;</b>　→　编译错误！',
+    desc:'这一行是<b>非法语句</b>，编译器会直接报错：<br>'+
+         '<code>error: assignment to expression with array type</code><br><br>'+
+         '<b>原因：</b><code>z.nation</code> 和 <code>x.nation</code> 都是 '+
+         '<code>char[10]</code> 类型的数组。在 C 语言中，<b>数组名</b>'+
+         '会退化为指向首元素的指针常量，它既不能作为左值被赋值，'+
+         '也不能作为右值整体参与赋值运算。<br><br>'+
+         '<b>对比第 26 行 <code>y = x;</code>：</b>那里两个操作数都是'+
+         '<b>结构体变量</b>（不是数组），结构体整体赋值是 C 标准允许的；'+
+         '而数组不行。<br><br>'+
+         '<b>正确写法：</b><br>'+
+         '<code>strcpy(z.nation, x.nation);</code>'+
+         '<span class="errorbox"><b>⚠ 为了继续演示后续流程，下面的步骤按修正后的'+
+         ' <code>strcpy(z.nation, x.nation);</code> 模拟执行。</b><br>'+
+         '实际编译时，这一行必须改掉，否则整个程序无法通过编译。</span>'
+  });
+
+  /* 第 28 行 z.sex = y.sex; */
+  S.isError = false;
+  S.z = {
+    name:null, sex:'f', nation:'dongzi', age:null, score:null,
+    birthday:{ year:null, month:null, day:null }
+  };
+  S.activeVar = 'z'; S.activeField = 'sex'; S.activeRange = [20, 20];
+  log('out-ok', '  z.nation  ← "dongzi"   (按修正后的 strcpy 模拟)');
+  log('out-ok', '  z.sex     ← \'f\'       (从 y.sex 复制)');
+  push({
+    line: 28, ctx:'运行时 · z.sex = y.sex',
+    expr:'z.sex = y.sex;',
+    exprVal:"z.sex = 'f'（y.sex 也是 'f'）",
+    note:'★ z 的 sex 和 nation 已赋值，其余成员仍是垃圾值',
+    title:"<b>z.sex = y.sex</b>　→　z.sex = <b>'f'</b>",
+    desc:'<code>z.sex</code> 是单个 <code>char</code>，可以直接用 <code>=</code> 赋值。<br>'+
+         '· 右边 <code>y.sex</code> 是 <code>\'f\'</code>（因为第 26 行 <code>y = x</code> 后，'+
+         '<code>y.sex</code> 已经变成 <code>\'f\'</code>）；<br>'+
+         '· 赋值后 <code>z.sex = \'f\'</code>。<br><br>'+
+         '<b>此时 z 的状态：</b><br>'+
+         '　<code>z.nation</code> = "dongzi"（第 27 行修正版赋值）<br>'+
+         '　<code>z.sex</code> = \'f\'<br>'+
+         '　其余成员（name、age、score、birthday）<b>仍是垃圾值</b>。'+
+         '<span class="tip"><b>注意：</b>程序后面<b>没有使用 z</b>，'+
+         '所以 z 的这些垃圾值不会影响输出结果。</span>'
+  });
+
+  /* 第 29 行 printf 1 */
+  S.activeVar = null; S.activeField = null; S.activeRange = null;
+  log('out-empty', '');
+  log('out-res', 'Lily,f,dongzi,18,428.0');
+  push({
+    line: 29, cls:'mv',
+    ctx:'运行时 · 第 1 个 printf 输出',
+    expr:'printf("%s,%c,%s,%d,%.1f\\n", x.name, x.sex, x.nation, x.age, x.score);',
+    exprVal:'输出：Lily,f,dongzi,18,428.0',
+    note:'★ 输出到控制台（见右下角）',
+    title:'<b>printf(...)</b>　→　输出 <code>Lily,f,dongzi,18,428.0</code>',
+    desc:'<code>printf</code> 按格式串 <code>"%s,%c,%s,%d,%.1f\\n"</code> '+
+         '依次输出 <code>x</code> 的成员：<br>'+
+         '· <code>%s</code> ← <code>x.name</code> → <code>Lily</code>；<br>'+
+         '· <code>%c</code> ← <code>x.sex</code> → <code>f</code>；<br>'+
+         '· <code>%s</code> ← <code>x.nation</code> → <code>dongzi</code>；<br>'+
+         '· <code>%d</code> ← <code>x.age</code> → <code>18</code>；<br>'+
+         '· <code>%.1f</code> ← <code>x.score</code> → <code>428.0</code>；<br>'+
+         '· <code>\\n</code> 换行。<br><br>'+
+         '<b>最终输出：</b><code>Lily,f,dongzi,18,428.0</code>'+
+         '<span class="win">★ 注意 <code>%.1f</code>：保留 1 位小数，所以 428.0 显示为 <code>428.0</code>。</span>'
+  });
+
+  /* 第 30 行 printf 2 */
+  log('out-res', '1999-5-23');
+  push({
+    line: 30, cls:'mv',
+    ctx:'运行时 · 第 2 个 printf 输出',
+    expr:'printf("%d-%d-%d\\n", x.birthday.year, x.birthday.month, x.birthday.day);',
+    exprVal:'输出：1999-5-23',
+    note:'★ 输出到控制台（见右下角）',
+    title:'<b>printf(...)</b>　→　输出 <code>1999-5-23</code>',
+    desc:'第二个 <code>printf</code> 按格式串 <code>"%d-%d-%d\\n"</code> '+
+         '依次输出 <code>x.birthday</code> 的三个成员：<br>'+
+         '· <code>%d</code> ← <code>x.birthday.year</code> → <code>1999</code>；<br>'+
+         '· <code>%d</code> ← <code>x.birthday.month</code> → <code>5</code>；<br>'+
+         '· <code>%d</code> ← <code>x.birthday.day</code> → <code>23</code>。<br><br>'+
+         '<b>最终输出：</b><code>1999-5-23</code>'
+  });
+
+  /* 第 31 行 return 0 */
+  S.resultShown = true;
+  log('out-empty', '');
+  log('out-final', '==================== 程序运行结果 ====================');
+  log('out-res', 'Lily,f,dongzi,18,428.0');
+  log('out-res', '1999-5-23');
+  log('out-empty', '');
+  log('out-note', 'sizeof(struct date)    = 12');
+  log('out-note', 'sizeof(struct student) = 52');
+  log('out-note', '总填充字节数 = 1（仅位于偏移 31，int age 之前）');
+  log('out-empty', '');
+  log('out-info', 'x 的成员偏移：');
+  log('out-ok', '  x.name             偏移  0   大小 20   (0 ~ 19)');
+  log('out-ok', '  x.sex              偏移 20   大小  1   (20)');
+  log('out-ok', '  x.nation           偏移 21   大小 10   (21 ~ 30)');
+  log('out-pad', '  (填充 1 字节 @ 偏移 31)');
+  log('out-ok', '  x.age              偏移 32   大小  4   (32 ~ 35)');
+  log('out-ok', '  x.score            偏移 36   大小  4   (36 ~ 39)');
+  log('out-ok', '  x.birthday         偏移 40   大小 12   (40 ~ 51)');
+  log('out-info', '      x.birthday.year   偏移 40   大小 4');
+  log('out-info', '      x.birthday.month  偏移 44   大小 4');
+  log('out-info', '      x.birthday.day    偏移 48   大小 4');
+  log('out-final', '程序正常结束（return 0）');
+
+  push({
+    line: 31, cls:'gold',
+    ctx:'运行时 · main 返回，程序结束',
+    expr:'return 0;',
+    exprVal:'main 返回 0，表示程序正常结束',
+    note:'★ 程序运行完成，最终输出两行结果',
+    title:'<b>return 0;</b>　→　程序正常结束',
+    desc:'main 函数返回 <b>0</b>，向操作系统表示程序正常退出。'+
+         '<span class="win"><b>★ 程序运行结果（两行输出）：</b><br>'+
+         '<code>Lily,f,dongzi,18,428.0</code><br>'+
+         '<code>1999-5-23</code></span>'+
+         '<span class="tip"><b>本程序核心知识点回顾：</b><br>'+
+         '① <b>结构体嵌套</b>：<code>struct date</code> 作为 <code>struct student</code> 的成员，'+
+         '按整体（12 字节、对齐 4）参与布局；<br>'+
+         '② <b>内存对齐与填充</b>：<code>name(20)+sex(1)+nation(10)=31</code>，'+
+         '<code>31 % 4 = 3 ≠ 0</code>，所以在偏移 31 处填充 1 字节，'+
+         '<code>age</code> 从偏移 32 开始；<br>'+
+         '③ <b>数组不能整体赋值</b>：<code>z.nation = x.nation;</code> 非法，'+
+         '必须用 <code>strcpy</code>；<br>'+
+         '④ <b>结构体可以整体赋值</b>：<code>y = x;</code> 合法，逐字节复制 52 字节；<br>'+
+         '⑤ <b>全局变量自动零初始化</b>：<code>y.birthday</code> 未在初始化列表中出现，'+
+         '所以是 {0, 0, 0}；而局部变量 <code>x</code>、<code>z</code> 是垃圾值。</span>'
+  });
+
+  return steps;
+}
+
+const STEPS = buildSteps();
+console.log('[STEPS] 共 ' + STEPS.length + ' 步');
+
+/* =========================================================
+   4. 渲染代码区
+   ========================================================= */
+const codeScroll = document.getElementById('codeScroll');
+const codeEls = [];
+CODE_LINES.forEach(line => {
+  const div = document.createElement('div');
+  div.className = 'code-line' + (line.sep ? ' sep' : '');
+  div.setAttribute('data-line', String(line.dataLine));
+  div.innerHTML = '<span class="ln">' + (line.ln || '') + '</span><span class="src">' + line.html + '</span>';
+  codeScroll.appendChild(div);
+  codeEls.push(div);
+});
+
+/* =========================================================
+   5. 缩略图
+   ========================================================= */
+const miniLines = document.getElementById('miniLines');
+const miniWrap = document.getElementById('miniWrap');
+const miniViewport = document.getElementById('miniViewport');
+let miniHTML = '';
+CODE_LINES.forEach(line => {
+  miniHTML += '<div class="mini-line' + (line.sep ? ' sep' : '') +
+    '" data-line="' + line.dataLine + '">' + line.html + '</div>';
+});
+miniLines.innerHTML = miniHTML;
+const miniEls = miniLines.querySelectorAll('.mini-line');
+
+/* =========================================================
+   6. 变量表骨架
+   ========================================================= */
+const varGrid = document.getElementById('varGrid');
+const memGrid = document.getElementById('memGrid');
+
+varGrid.innerHTML =
+  '<div class="vg-head">字段</div>' +
+  '<div class="vg-head var-x">x</div>' +
+  '<div class="vg-head var-y">y</div>' +
+  '<div class="vg-head var-z">z</div>' +
+  VAR_FIELDS.map(f =>
+    '<div class="vg-name">' + f.label + '</div>' +
+    '<div class="vg-cell" data-var="x" data-field="' + f.label + '">?</div>' +
+    '<div class="vg-cell var-y" data-var="y" data-field="' + f.label + '">?</div>' +
+    '<div class="vg-cell var-z" data-var="z" data-field="' + f.label + '">?</div>'
+  ).join('');
+
+let memHTML = '';
+for (let i = 0; i < STU_SIZE; i++) {
+  memHTML += '<div class="mem-cell" data-off="' + i + '">' + i + '</div>';
+}
+memGrid.innerHTML = memHTML;
+
+/* =========================================================
+   7. 其他 DOM
+   ========================================================= */
+const lineVal = document.getElementById('lineVal');
+const phaseVal = document.getElementById('phaseVal');
+const dateVal = document.getElementById('dateVal');
+const stuVal = document.getElementById('stuVal');
+const errPanel = document.getElementById('errPanel');
+const consoleBody = document.getElementById('consoleBody');
+const explainEl = document.getElementById('explain');
+const stepCounter = document.getElementById('stepCounter');
+
+/* =========================================================
+   8. 渲染逻辑
+   ========================================================= */
+function getPath(obj, path) {
+  let v = obj;
+  for (const k of path) {
+    if (v === null || v === undefined) return null;
+    v = v[k];
+  }
+  return (v === undefined) ? null : v;
+}
+function fmtVal(val, type) {
+  if (val === null || val === undefined) return '?';
+  if (type === 'str')   return '"' + val + '"';
+  if (type === 'char')  return "'" + val + "'";
+  if (type === 'float') return Number(val).toFixed(1);
+  return String(val);
+}
+
+function updateVarGrid(step){
+  if (!step){
+    varGrid.querySelectorAll('.vg-cell').forEach(c => {
+      c.textContent = '?';
+      c.className = c.className.replace(/ is-active| flash| has-val/g, '');
+    });
+    return;
+  }
+  const s = step.state;
+  for (const f of VAR_FIELDS){
+    ['x','y','z'].forEach(vn => {
+      const cell = varGrid.querySelector('.vg-cell[data-var="' + vn + '"][data-field="' + f.label + '"]');
+      if (!cell) return;
+      const obj = s[vn];
+      const val = getPath(obj, f.path);
+      const txt = fmtVal(val, f.type);
+      if (cell.textContent !== txt){
+        cell.textContent = txt;
+        cell.classList.remove('flash');
+        void cell.offsetWidth;
+        cell.classList.add('flash');
+      }
+      cell.classList.toggle('has-val', val !== null && val !== undefined);
+      const active = (s.activeVar === vn) && (s.activeField === 'all' || s.activeField === f.label);
+      cell.classList.toggle('is-active', active);
+    });
+  }
+}
+
+function updateMemGrid(step){
+  if (!step){
+    memGrid.querySelectorAll('.mem-cell').forEach(el => el.className = 'mem-cell');
+    return;
+  }
+  const s = step.state;
+  for (let i = 0; i < STU_SIZE; i++){
+    const el = memGrid.querySelector('.mem-cell[data-off="' + i + '"]');
+    if (!el) continue;
+    const f = fieldAtOffset(i);
+    let cls = 'mem-cell';
+    if (f){
+      let built = true;
+      if (!s.stuDone){
+        if (f.key === 'name')   built = s.definedFields.indexOf('name') >= 0;
+        else if (f.key === 'sex')    built = s.definedFields.indexOf('sex') >= 0;
+        else if (f.key === 'nation') built = s.definedFields.indexOf('nation') >= 0;
+        else if (f.key === 'pad')    built = s.definedFields.indexOf('age') >= 0 ||
+                                            s.definedFields.indexOf('nation') >= 0;
+        else if (f.key === 'age')    built = s.definedFields.indexOf('age') >= 0;
+        else if (f.key === 'score')  built = s.definedFields.indexOf('score') >= 0;
+        else if (['bdYear','bdMonth','bdDay'].indexOf(f.key) >= 0)
+          built = s.definedFields.indexOf('birthday') >= 0;
+      }
+      if (built) cls += ' c-' + f.color;
+    }
+    if (s.activeRange && i >= s.activeRange[0] && i <= s.activeRange[1]) cls += ' is-active';
+    if (s.activePad && i === 31) cls += ' is-pad-active';
+    el.className = cls;
+  }
+}
+
+function updateConsole(step){
+  if (!step){
+    consoleBody.innerHTML = '<div class="out-line out-wait">（等待程序开始…）</div>';
+    return;
+  }
+  consoleBody.innerHTML = step.state.console.map(l =>
+    '<div class="out-line ' + l.cls + '">' + escapeHtml(l.text) + '</div>'
+  ).join('');
+  const last = consoleBody.lastElementChild;
+  if (last && !step.state.resultShown){
+    last.innerHTML += '<span class="cursor">▊</span>';
+  }
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+function escapeHtml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function updateInfoBar(step){
+  if (!step){
+    lineVal.textContent = '—';
+    phaseVal.textContent = '—';
+    dateVal.textContent = '—';
+    stuVal.textContent = '—';
+    return;
+  }
+  const s = step.state;
+  lineVal.textContent = '第 ' + step.line + ' 行';
+  if (!s.dateDone) phaseVal.textContent = '编译期 · date';
+  else if (!s.stuDone) phaseVal.textContent = '编译期 · student';
+  else if (step.line <= 16) phaseVal.textContent = '运行期 · 进入 main';
+  else if (step.line <= 28) phaseVal.textContent = '运行期 · 赋值';
+  else if (step.line <= 30) phaseVal.textContent = '运行期 · 输出';
+  else phaseVal.textContent = '运行期 · 结束';
+  dateVal.textContent = s.dateDone ? '12 字节' : '定义中…';
+  stuVal.textContent = s.stuDone ? '52 字节' : '定义中…';
+}
+
+/* 代码高亮 */
+function updateCode(step){
+  const activeLine = step ? step.line : null;
+  codeEls.forEach(el => {
+    const n = Number(el.getAttribute('data-line'));
+    const isActive = activeLine !== null && n === activeLine;
+    el.classList.toggle('active', isActive);
+    el.classList.toggle('err', isActive && step && step.cls === 'err');
+  });
+  if (step){
+    codeEls.forEach(el => {
+      const n = Number(el.getAttribute('data-line'));
+      el.classList.toggle('executed', n > 0 && n < step.line);
+    });
+  } else {
+    codeEls.forEach(el => el.classList.remove('executed'));
+  }
+  centerActiveLine();
+}
+function centerActiveLine(){
+  const el = codeScroll.querySelector('.code-line.active');
+  if (!el) return;
+  const er = el.getBoundingClientRect();
+  const cr = codeScroll.getBoundingClientRect();
+  const delta = (er.top + er.height/2) - (cr.top + cr.height/2);
+  if (Math.abs(delta) > 4){
+    codeScroll.scrollTop = Math.max(0, codeScroll.scrollTop + delta);
+  }
+}
+
+/* 缩略图同步 */
+function updateMinimap(step){
+  const activeLine = step ? step.line : null;
+  miniEls.forEach(el => {
+    const n = Number(el.getAttribute('data-line'));
+    const isActive = activeLine !== null && n === activeLine;
+    el.classList.toggle('active', isActive);
+    el.classList.toggle('err', isActive && step && step.cls === 'err');
+  });
+  const totalH = codeScroll.scrollHeight;
+  const clientH = codeScroll.clientHeight;
+  const scrollTop = codeScroll.scrollTop;
+  const miniH = miniWrap.clientHeight;
+  if (totalH <= 0 || miniH <= 0) return;
+  const ratio = miniH / totalH;
+  miniViewport.style.top = (scrollTop * ratio) + 'px';
+  miniViewport.style.height = Math.max(20, clientH * ratio) + 'px';
+}
+let rafMini = null;
+function scheduleMinimap(){
+  if (rafMini) return;
+  rafMini = requestAnimationFrame(() => {
+    rafMini = null;
+    updateMinimap(current >= 0 ? STEPS[current] : null);
+  });
+}
+codeScroll.addEventListener('scroll', scheduleMinimap);
+window.addEventListener('resize', scheduleMinimap);
+miniWrap.addEventListener('click', (e) => {
+  const rect = miniWrap.getBoundingClientRect();
+  const ratio = (e.clientY - rect.top) / rect.height;
+  codeScroll.scrollTo({ top: Math.max(0, ratio * codeScroll.scrollHeight - codeScroll.clientHeight/2), behavior:'smooth' });
+});
+
+/* =========================================================
+   9. 总渲染
+   ========================================================= */
+let current = -1;
+let playing = false;
+let timer = null;
+let speed = Number(document.getElementById('speed').value);
+
+const btnPlay = document.getElementById('btnPlay');
+const btnPrev = document.getElementById('btnPrev');
+const btnNext = document.getElementById('btnNext');
+const btnReset = document.getElementById('btnReset');
+const speedLabel = document.getElementById('speedLabel');
+
+function render(){
+  const step = current >= 0 ? STEPS[current] : null;
+  updateCode(step);
+  updateVarGrid(step);
+  updateMemGrid(step);
+  updateConsole(step);
+  updateInfoBar(step);
+  scheduleMinimap();
+
+  if (step){
+    explainEl.innerHTML =
+      '<span class="ex-line' + (step.cls ? ' ' + step.cls : '') + '">第 ' + step.line + ' 行</span>' +
+      '<strong>' + step.title + '</strong> —— ' + step.desc;
+    stepCounter.textContent = '步骤 ' + (current + 1) + ' / ' + STEPS.length;
+  } else {
+    explainEl.innerHTML =
+      '<em>点击「自动播放」或「下一步」，开始逐步执行模拟。<br><br>' +
+      '<b>本程序演示：结构体嵌套 + 初始化 + 整体赋值 + 数组赋值编译错误</b><br>' +
+      '· <b>struct date</b>：3 个 <code>int</code> → 12 字节，无填充；<br>' +
+      '· <b>struct student</b>：name[20]@0、sex@20、nation[10]@21、' +
+      '<b>填充@31</b>、age@32、score@36、birthday@40 → <b>52</b> 字节；<br>' +
+      '· 全局变量 <code>y</code> 自动零初始化 birthday；<br>' +
+      '· <code>x</code> 逐成员赋值；<code>y = x</code> 整体复制 52 字节；<br>' +
+      '· 第 27 行 <code>z.nation = x.nation;</code> 是<b>编译错误</b>；<br>' +
+      '· 最终输出：<code>Lily,f,dongzi,18,428.0</code> 和 <code>1999-5-23</code>。<br><br>' +
+      '共 ' + STEPS.length + ' 个执行步骤。</em>';
+    stepCounter.textContent = '步骤 — / ' + STEPS.length;
+  }
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+}
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+function tick(){
+  if (current >= STEPS.length - 1){ pause(); return; }
+  current++;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  clearInterval(timer);
+  timer = setInterval(tick, speed);
+  tick();
+}
+function pause(){
+  playing = false;
+  clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+function nextStep(){ pause(); if (current < STEPS.length-1){ current++; render(); } }
+function prevStep(){ pause(); if (current > -1){ current--; render(); } }
+function resetAll(){ pause(); current = -1; render(); }
+
+btnPlay.addEventListener('click', () => playing ? pause() : play());
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+document.getElementById('speed').addEventListener('input', function(){
+  speed = Number(this.value);
+  speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+  if (playing){ clearInterval(timer); timer = setInterval(tick, speed); }
+});
+
+/* =========================================================
+   10. 面板交互
+   ========================================================= */
+let zTop = 100;
+function activate(panel){
+  panel.style.zIndex = String(++zTop);
+  document.querySelectorAll('.floating-panel').forEach(p => p.classList.remove('active'));
+  panel.classList.add('active');
+}
+function makeDraggable(panel){
+  const handle = panel.querySelector('[data-drag]');
+  if (!handle) return;
+  let sx, sy, ox, oy, dragging = false;
+  const start = e => {
+    const ev = e.touches ? e.touches[0] : e;
+    sx = ev.clientX; sy = ev.clientY;
+    const r = panel.getBoundingClientRect();
+    ox = r.left; oy = r.top;
+    dragging = true; activate(panel);
+    e.preventDefault();
+  };
+  const move = e => {
+    if (!dragging) return;
+    const ev = e.touches ? e.touches[0] : e;
+    panel.style.left = (ox + ev.clientX - sx) + 'px';
+    panel.style.top  = (oy + ev.clientY - sy) + 'px';
+    panel.style.right = 'auto'; panel.style.bottom = 'auto';
+    panel.style.transform = 'none';
+  };
+  const end = () => { dragging = false; };
+  handle.addEventListener('mousedown', start);
+  handle.addEventListener('touchstart', start, {passive:false});
+  document.addEventListener('mousemove', move);
+  document.addEventListener('touchmove', move, {passive:false});
+  document.addEventListener('mouseup', end);
+  document.addEventListener('touchend', end);
+}
+function makeResizable(panel){
+  const handle = panel.querySelector('[data-resize]');
+  if (!handle) return;
+  let sx, sy, ow, oh, resizing = false;
+  const start = e => {
+    const ev = e.touches ? e.touches[0] : e;
+    sx = ev.clientX; sy = ev.clientY;
+    const r = panel.getBoundingClientRect();
+    ow = r.width; oh = r.height;
+    resizing = true; activate(panel);
+    e.preventDefault(); e.stopPropagation();
+  };
+  const move = e => {
+    if (!resizing) return;
+    const ev = e.touches ? e.touches[0] : e;
+    panel.style.width = Math.max(0, ow + ev.clientX - sx) + 'px';
+    panel.style.height = Math.max(0, oh + ev.clientY - sy) + 'px';
+  };
+  const end = () => { resizing = false; };
+  handle.addEventListener('mousedown', start);
+  handle.addEventListener('touchstart', start, {passive:false});
+  document.addEventListener('mousemove', move);
+  document.addEventListener('touchmove', move, {passive:false});
+  document.addEventListener('mouseup', end);
+  document.addEventListener('touchend', end);
+}
+const panels = document.querySelectorAll('.floating-panel');
+const DEFAULT_LAYOUT = {};
+panels.forEach(p => {
+  const r = p.getBoundingClientRect();
+  DEFAULT_LAYOUT[p.id] = {
+    left: p.style.left || (r.left + 'px'),
+    top: p.style.top || (r.top + 'px'),
+    right: p.style.right || 'auto',
+    bottom: p.style.bottom || 'auto',
+    width: p.style.width || (r.width + 'px'),
+    height: p.style.height || (r.height + 'px'),
+    transform: p.style.transform || ''
+  };
+  makeDraggable(p);
+  makeResizable(p);
+  p.addEventListener('mousedown', () => activate(p));
+  p.addEventListener('touchstart', () => activate(p), {passive:true});
+  const cb = p.querySelector('[data-close]');
+  if (cb) cb.addEventListener('click', e => { e.stopPropagation(); p.classList.add('hidden'); scheduleMinimap(); });
+});
+
+/* 全屏 */
+document.getElementById('btnFullscreen').addEventListener('click', () => {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+  else document.exitFullscreen();
+});
+
+/* 面板显隐 */
+let panelsVisible = true;
+document.getElementById('btnTogglePanels').addEventListener('click', () => {
+  panelsVisible = !panelsVisible;
+  panels.forEach(p => {
+    if (p.id === 'promptPanel') return;
+    if (p.id === 'explainPanel'){ p.classList.toggle('open', panelsVisible); return; }
+    if (p.id === 'errPanel'){
+      if (current >= 0 && STEPS[current].cls === 'err') p.classList.toggle('open', panelsVisible);
+      return;
+    }
+    p.classList.toggle('hidden', !panelsVisible);
+  });
+  scheduleMinimap();
+});
+
+/* 缩略图显隐 */
+document.getElementById('btnToggleMinimap').addEventListener('click', () => {
+  document.getElementById('minimapPanel').classList.toggle('hidden');
+  scheduleMinimap();
+});
+
+/* 解说显隐 */
+document.getElementById('btnToggleExplain').addEventListener('click', () => {
+  document.getElementById('explainPanel').classList.toggle('open');
+});
+
+/* 重置布局 */
+document.getElementById('btnResetLayout').addEventListener('click', () => {
+  panels.forEach(p => {
+    if (DEFAULT_LAYOUT[p.id]){
+      const d = DEFAULT_LAYOUT[p.id];
+      p.style.left = d.left; p.style.top = d.top;
+      p.style.right = d.right; p.style.bottom = d.bottom;
+      p.style.width = d.width; p.style.height = d.height;
+      p.style.transform = d.transform;
+      p.classList.remove('hidden');
+    }
+  });
+  zTop = 100;
+  panels.forEach((p, i) => { p.style.zIndex = String(10 + i); });
+  scheduleMinimap();
+});
+
+/* 提示词 */
+document.getElementById('btnPrompt').addEventListener('click', () => {
+  const p = document.getElementById('promptPanel');
+  p.classList.toggle('open');
+  if (p.classList.contains('open')) activate(p);
+});
+
+/* 监听步骤变化，控制 errPanel */
+function syncErrPanel(){
+  if (current >= 0 && STEPS[current].cls === 'err') errPanel.classList.add('open');
+  else errPanel.classList.remove('open');
+}
+const _origRender = render;
+render = function(){ _origRender(); syncErrPanel(); };
+
+/* =========================================================
+   11. 键盘快捷键
+   ========================================================= */
+document.addEventListener('keydown', e => {
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  if (e.code === 'Space'){ e.preventDefault(); playing ? pause() : play(); }
+  else if (e.code === 'ArrowRight'){ nextStep(); }
+  else if (e.code === 'ArrowLeft'){ prevStep(); }
+  else if (e.code === 'KeyR'){ resetAll(); }
+  else if (e.code === 'KeyF'){
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  }
+  else if (e.code === 'KeyM'){
+    document.getElementById('minimapPanel').classList.toggle('hidden');
+    scheduleMinimap();
+  }
+  else if (e.code === 'KeyH'){
+    panelsVisible = !panelsVisible;
+    panels.forEach(p => {
+      if (p.id === 'promptPanel') return;
+      if (p.id === 'explainPanel'){ p.classList.toggle('open', panelsVisible); return; }
+      if (p.id === 'errPanel'){
+        if (current >= 0 && STEPS[current].cls === 'err') p.classList.toggle('open', panelsVisible);
+        return;
+      }
+      p.classList.toggle('hidden', !panelsVisible);
+    });
+    scheduleMinimap();
+  }
+  else if (e.code === 'KeyE'){
+    document.getElementById('explainPanel').classList.toggle('open');
+  }
+});
+
+/* =========================================================
+   12. 提示词
+   ========================================================= */
+document.getElementById('promptInner').textContent =
+'【教学提示词】C 结构体嵌套 · 逐步执行模拟 · 变量值变化 · 内存对齐\n' +
+'\n' +
+'程序：\n' +
+'  #include <stdio.h>\n' +
+'  #include <string.h>\n' +
+'  struct date { int year, month, day; };  // 12 字节，无填充\n' +
+'  struct student {\n' +
+'      char name[20]; char sex; char nation[10];\n' +
+'      int age; float score; struct date birthday;\n' +
+'  } y = {"zhangjie", \'m\', "don", 18, 340};\n' +
+'  int main() {\n' +
+'      struct student x, z;\n' +
+'      strcpy(x.name, "Lily"); x.sex = \'f\';\n' +
+'      strcpy(x.nation, "dongzi"); x.age = 18; x.score = 428;\n' +
+'      x.birthday = {1999, 5, 23};\n' +
+'      y = x;               // 整体赋值 52 字节\n' +
+'      z.nation = x.nation; // ★ 编译错误！\n' +
+'      z.sex = y.sex;\n' +
+'      printf("%s,%c,%s,%d,%.1f\\n", ...);\n' +
+'      printf("%d-%d-%d\\n", ...);\n' +
+'      return 0;\n' +
+'  }\n' +
+'\n' +
+'平台模型：char=1/对齐1，int=4/对齐4，float=4/对齐4，struct date=12/对齐4\n' +
+'布局：struct date=12字节（无填充）；struct student=52字节（填充1字节 @ 偏移31）\n' +
+'成员偏移：name@0~19 sex@20 nation@21~30 填充@31 age@32~35 score@36~39 birthday@40~51\n' +
+'\n' +
+'关键点：\n' +
+'  1. 全局变量 y 自动零初始化 birthday（未在列表中）→ {0,0,0}\n' +
+'  2. 局部变量 x、z 未初始化 → 垃圾值（显示为 "?"）\n' +
+'  3. 数组不能用 = 赋值，必须用 strcpy\n' +
+'  4. 结构体可以整体赋值：y = x 等价于 memcpy(&y, &x, 52)\n' +
+'  5. 第 27 行 z.nation = x.nation 是编译错误\n' +
+'  6. 嵌套结构体成员用「点」逐级访问：x.birthday.year\n' +
+'\n' +
+'最终输出 2 行：\n' +
+'  Lily,f,dongzi,18,428.0\n' +
+'  1999-5-23\n' +
+'\n' +
+'快捷键：Space 播放/暂停，←/→ 上/下一步，R 重置，F 全屏，M 缩略图，H 面板，E 解说\n';
+
+/* =========================================================
+   13. 初始化
+   ========================================================= */
+speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+panels.forEach((p, i) => { p.style.zIndex = String(10 + i); });
+render();
+scheduleMinimap();
+
+})();
+</script>
+</body>
+</html>

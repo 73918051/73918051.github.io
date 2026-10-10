@@ -1,0 +1,1617 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 文件块读写逐步执行模拟 · 大屏教学版</title>
+<style>
+:root{
+  --bg:#0b1220; --text:#dce8f8; --muted:#7d93b3;
+  --accent:#38bdf8; --green:#4ade80; --amber:#fbbf24;
+  --pink:#f472b6; --purple:#c084fc; --teal:#2dd4bf;
+  --orange:#fb923c; --gold:#facc15; --red:#ef4444;
+
+  --code-font: clamp(80px, 5vw, 120px);
+  --out-font:  clamp(72px, 4.5vw, 110px);
+  --var-font:  clamp(40px, 2.4vw, 60px);
+  --explain-font: clamp(48px, 2.8vw, 72px);
+  --btn-font: clamp(40px, 2.2vw, 60px);
+  --panel-font: clamp(40px, 2.4vw, 60px);
+  --mini-font: 11px;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;overflow:hidden;}
+body{
+  background:#0b1220; color:var(--text);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+}
+
+.code-layer{
+  position:fixed; inset:0; overflow:auto;
+  background:#0b1220; z-index:1;
+  scrollbar-width:thin; scrollbar-color:#334155 #0b1220;
+}
+.code-layer::-webkit-scrollbar{width:16px;height:16px;}
+.code-layer::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+.code-inner{ padding: 24px 0 70vh 0; min-width: max-content; }
+
+.code-line{
+  display:flex; align-items:flex-start; gap: 1.2rem;
+  padding: .08em 3rem .08em 0;
+  white-space: pre;
+  font-family: ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size: var(--code-font);
+  line-height: 1.5;
+  border-left: 16px solid transparent;
+  --tone:#38bdf8;
+  --tone-bg:rgba(56,189,248,.22);
+  transition: background .22s, border-color .22s;
+}
+.code-line .ln{
+  flex: 0 0 auto; width: 3.4ch; text-align: right;
+  color:#3f5a7d; font-size: .6em; user-select:none;
+  padding-top: .55em; font-variant-numeric: tabular-nums;
+}
+.code-line .src{ flex: 0 0 auto; }
+.code-line.active{
+  background: linear-gradient(90deg, var(--tone-bg), rgba(0,0,0,0));
+  border-left-color: var(--tone);
+  box-shadow: inset 0 0 0 3px var(--tone-bg);
+}
+.code-line.active .ln{ color: var(--tone); font-weight:700; }
+.code-line.active .src{ color:#ffffff; }
+
+.pre{color:#c084fc;font-weight:700;}
+.kw{color:#f472b6;font-weight:700;}
+.ty{color:#2dd4bf;font-weight:700;}
+.str{color:#4ade80;}
+.cmt{color:#64748b;font-style:italic;}
+.fn{color:#38bdf8;font-weight:600;}
+.num{color:#fbbf24;font-weight:700;}
+.op{color:#fb923c;font-weight:800;}
+.mac{color:#4ade80;font-weight:800;}
+
+.panel{
+  position:fixed;
+  background: rgba(11,18,32,.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 2px solid rgba(56,189,248,.32);
+  border-radius: 18px;
+  display:flex; flex-direction:column;
+  overflow:hidden;
+  box-shadow: 0 24px 70px rgba(0,0,0,.65);
+  z-index:50;
+  transition: border-color .18s, box-shadow .18s;
+}
+.panel.active{
+  border-color:#38bdf8;
+  box-shadow: 0 0 0 4px rgba(56,189,248,.28), 0 28px 80px rgba(0,0,0,.75);
+}
+.p-head{
+  flex:0 0 auto;
+  display:flex; align-items:center; gap:14px;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, rgba(56,189,248,.18), rgba(56,189,248,.05));
+  border-bottom:1px solid rgba(56,189,248,.22);
+  cursor: move; user-select:none; touch-action:none;
+  font-size: var(--panel-font); font-weight:700;
+  color:#bae6fd; white-space:nowrap;
+}
+.p-title{ overflow:hidden; text-overflow:ellipsis; }
+.p-close{
+  margin-left:auto; flex: 0 0 auto;
+  width:56px;height:56px;
+  border-radius:12px;
+  border:2px solid rgba(239,68,68,.55);
+  background:rgba(239,68,68,.16);
+  color:#fca5a5; font-size:40px; line-height:1;
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition: background .15s;
+}
+.p-close:hover{ background:rgba(239,68,68,.4); color:#fff; }
+.p-body{
+  flex:1 1 auto; min-height:0; overflow:auto;
+  padding: 12px 16px;
+  scrollbar-width:thin; scrollbar-color:#334155 transparent;
+}
+.p-body::-webkit-scrollbar{width:12px;height:12px;}
+.p-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+.p-resize{
+  position:absolute; right:0; bottom:0;
+  width:52px; height:52px;
+  cursor: nwse-resize; touch-action:none;
+  background: linear-gradient(135deg, transparent 48%, rgba(56,189,248,.75) 48%);
+  border-bottom-right-radius:16px;
+}
+
+#p-top .p-body{
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  padding: 10px 16px;
+}
+button.ctl{
+  font:inherit; font-size: var(--btn-font);
+  min-height: 72px; padding: 0 22px;
+  border-radius: 14px;
+  border:2px solid rgba(56,189,248,.4);
+  background: rgba(24,39,65,.9);
+  color: var(--text); cursor:pointer;
+  white-space:nowrap;
+  transition: background .15s, transform .1s, border-color .15s;
+}
+button.ctl:hover:not(:disabled){ background: rgba(33,51,82,.95); border-color:#38bdf8; }
+button.ctl:active:not(:disabled){ transform: translateY(2px); }
+button.ctl:disabled{ opacity:.32; cursor:not-allowed; }
+button.ctl.primary{
+  background: linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#7dd3fc; color:#04121f; font-weight:800;
+}
+button.ctl.primary.playing{
+  background: linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24; color:#1a1200;
+}
+.speed-wrap{
+  display:flex; align-items:center; gap:14px;
+  font-size: var(--btn-font); color:#93b3d6;
+}
+.speed-wrap input[type=range]{
+  width: 260px; height: 44px;
+  accent-color: var(--accent); cursor:pointer;
+}
+.speed-wrap b{
+  color: var(--accent); font-variant-numeric: tabular-nums;
+  min-width: 4.5ch; display:inline-block;
+}
+
+#p-explain .p-body{
+  font-size: var(--explain-font);
+  line-height: 1.6; color:#c3d5ec;
+}
+#p-explain .ex-line{
+  display:inline-block; margin-right: 16px;
+  padding: 4px 18px; border-radius: 12px;
+  background: rgba(56,189,248,.2);
+  color: var(--accent); font-weight:800;
+  font-size:.72em; vertical-align: middle;
+}
+#p-explain strong{ color:#ffffff; }
+#p-explain code{
+  font-family: ui-monospace,Consolas,monospace;
+  background: rgba(148,163,184,.18);
+  border-radius: 8px; padding: 0 10px; color:#e2e8f0;
+}
+#p-explain .tip, #p-explain .warn, #p-explain .win, #p-explain .danger{
+  display:block; margin-top: 12px; padding: 12px 18px;
+  border-radius: 12px; font-size:.82em; line-height:1.55;
+}
+#p-explain .tip{ background:rgba(45,212,191,.12); border-left: 8px solid var(--teal); color:#bff5ec; }
+#p-explain .warn{ background:rgba(251,191,36,.13); border-left: 8px solid var(--amber); color:#ffe6b0; }
+#p-explain .win{ background:rgba(250,204,21,.15); border-left: 8px solid var(--gold); color:#fff3c4; font-weight:700; }
+#p-explain .danger{ background:rgba(239,68,68,.15); border-left: 8px solid var(--red); color:#fecaca; }
+
+.ll-sec-title{
+  font-size: .72em; color:#94a3b8;
+  font-family: ui-monospace,Consolas,monospace;
+  margin: 4px 0 10px;
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+}
+.dot{display:inline-block; width:.75em; height:.75em; border-radius:4px; flex:0 0 auto;}
+.dot-h{background:#38bdf8;}
+
+.fc-track{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-bottom:8px; }
+.fc-cell{
+  min-width:4em; padding: 8px 10px; border-radius: 12px;
+  background: rgba(13,23,40,.95);
+  border:3px solid #24405f; text-align:center;
+  font-family: ui-monospace,Consolas,monospace;
+  transition: box-shadow .3s, border-color .3s, transform .3s, background .3s;
+}
+.fc-cell .fc-ch{ font-size:1em; color:#7dd3fc; font-weight:800; line-height:1.3; }
+.fc-cell .fc-code{ font-size:.58em; color:#5f7796; line-height:1.3; margin-top:2px; }
+
+.fc-cell.read{ border-color:#2f5a44; background: rgba(11,26,20,.95); }
+.fc-cell.read .fc-ch{ color:#4ade80; }
+.fc-cell.read .fc-code{ color:#3f7a5a; }
+
+.fc-cell.cur{
+  border-color:#facc15;
+  box-shadow: 0 0 0 5px rgba(250,204,21,.45), 0 0 30px rgba(250,204,21,.4);
+  transform: translateY(-6px);
+  background: rgba(26,22,7,.95);
+}
+.fc-cell.cur .fc-ch{ color:#fde68a; }
+.fc-cell.cur .fc-code{ color:#a16207; }
+
+.fc-cell.null-byte .fc-ch{ color:#facc15; }
+
+.fc-eof{ border-style:dashed; }
+.fc-eof .fc-ch{ color:#94a3b8; }
+.fc-eof.cur{
+  border-color:#fb923c;
+  box-shadow: 0 0 0 5px rgba(251,146,60,.5), 0 0 30px rgba(251,146,60,.45);
+  transform: translateY(-6px);
+  background: rgba(26,16,7,.95);
+}
+.fc-eof.cur .fc-ch{ color:#fdba74; }
+
+.fc-note{
+  font-size: .68em; color:#7d93b3;
+  font-family: ui-monospace,Consolas,monospace;
+  margin-top: 8px; line-height: 1.55;
+}
+.fc-note b{ color:#7dd3fc; }
+.fc-closed{ color:#f87171; font-weight:800; }
+
+.var-row{
+  display:flex; justify-content:space-between; align-items:center; gap:20px;
+  padding: 8px 16px; margin-bottom: 6px;
+  border-radius: 12px;
+  background: rgba(13,23,40,.8);
+  border:2px solid #1b293f;
+  border-left-width: 10px;
+  font-size: var(--var-font);
+  line-height:1.3;
+  transition: background .25s, border-color .25s;
+}
+.var-row.k-ctx{ border-left-color:#4ade80; }
+.var-row.k-fp{ border-left-color:#38bdf8; }
+.var-row.k-state{ border-left-color:#2dd4bf; }
+.var-row.k-size{ border-left-color:#c084fc; }
+.var-row.k-pos{ border-left-color:#c084fc; }
+.var-row.k-str{ border-left-color:#fbbf24; }
+.var-row.k-len{ border-left-color:#fb923c; }
+.var-row.k-buf{ border-left-color:#4ade80; }
+.var-row.k-ret{ border-left-color:#facc15; }
+.var-row.changed{ background: rgba(56,189,248,.16); border-color:#38bdf8; }
+.var-name{ color:#8fa8c8; font-size:.68em; white-space:nowrap; }
+.var-value{
+  font-family: ui-monospace,Consolas,monospace;
+  font-weight:900; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  text-align:right;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.var-value.dim{ color:#5f7796; font-weight:500; }
+.var-row.k-ctx .var-value{ color:#4ade80; }
+.var-row.k-fp .var-value{ color:#38bdf8; }
+.var-row.k-state .var-value{ color:#2dd4bf; }
+.var-row.k-size .var-value{ color:#c084fc; }
+.var-row.k-pos .var-value{ color:#c084fc; }
+.var-row.k-str .var-value{ color:#fbbf24; }
+.var-row.k-len .var-value{ color:#fb923c; }
+.var-row.k-buf .var-value{ color:#4ade80; }
+.var-row.k-ret .var-value{ color:#facc15; }
+@keyframes flashval{
+  0%{ transform: scale(1); }
+  35%{ transform: scale(1.22); color:#fff; text-shadow: 0 0 22px currentColor; }
+  100%{ transform: scale(1); }
+}
+.var-value.flash{ animation: flashval .55s ease-out; }
+
+#p-console .p-body{
+  background:#050c17;
+  border-radius: 12px;
+  margin: 12px 16px;
+  padding: 16px 20px;
+  font-family: ui-monospace,Consolas,"Courier New",monospace;
+  font-size: var(--out-font);
+  line-height:1.55;
+  color:#86efac;
+  white-space: pre;
+}
+.out-line{ margin:0; white-space:pre; }
+.out-norm{ color:#86efac; }
+.out-note{ color:#94a3b8; font-style:italic; }
+.out-input{ color:#7dd3fc; }
+.out-count{ color:#fbbf24; }
+.out-final{ color:#facc15; font-weight:900; }
+.out-wait{ color:#3d5474; }
+.out-danger{ color:#fca5a5; font-weight:800; }
+.cursor{ display:inline-block; color:#4ade80; animation: blink 1s step-end infinite; }
+@keyframes blink{ 0%,100%{opacity:1;} 50%{opacity:0;} }
+
+.chain-item{
+  font-family: ui-monospace,Consolas,monospace;
+  font-size: var(--var-font);
+  line-height:1.4;
+  padding: 8px 16px; margin-bottom: 6px;
+  border-radius: 10px;
+  background: rgba(13,23,40,.75);
+  border-left: 8px solid rgba(56,189,248,.55);
+  color:#9fd8f5;
+  white-space:nowrap;
+}
+.chain-item.last{
+  border-left-color: var(--gold);
+  background: rgba(250,204,21,.16);
+  color:#fff3c4; font-weight:900;
+  box-shadow: 0 0 0 3px rgba(250,204,21,.28);
+}
+.chain-empty{ color:#3d5474; font-size: var(--var-font); padding: 12px; }
+
+.model-body{ font-size: var(--var-font); line-height:1.5; color:#b8cbe4; }
+.model-body b{ color:#facc15; }
+.model-body code{
+  font-family: ui-monospace,Consolas,monospace;
+  background: rgba(148,163,184,.15);
+  border-radius: 8px; padding: 0 8px; color:#ffe9a8;
+}
+.model-body .k{ color:#f472b6; font-weight:800; }
+.model-body .g{ color:#4ade80; font-weight:800; }
+.model-body .r{ color:#fca5a5; font-weight:800; }
+.model-body .y{ color:#facc15; font-weight:800; }
+
+#p-mini .p-body{ padding: 6px 4px; }
+.mm-line{
+  display:flex; gap:4px;
+  white-space: pre; overflow: hidden;
+  font-family: ui-monospace,Consolas,monospace;
+  font-size: var(--mini-font);
+  line-height: 1.45; color:#7d93b3;
+  padding: 0 2px;
+  border-left: 3px solid transparent;
+}
+.mm-line .mmln{ color:#3f5a7d; width: 2.2ch; text-align:right; flex:0 0 auto; }
+.mm-line.active{ background: rgba(56,189,248,.28); border-left-color:#38bdf8; }
+.mm-line.active .mmln{ color:#38bdf8; font-weight:800; }
+.mm-line .src{ overflow:hidden; text-overflow: clip; }
+#mmViewport{
+  position:absolute; left:0; right:0;
+  background: rgba(56,189,248,.18);
+  border-top: 2px solid rgba(56,189,248,.85);
+  border-bottom: 2px solid rgba(56,189,248,.85);
+  pointer-events:none;
+}
+#mmBodyWrap{ position:relative; }
+
+#p-prompt .p-body{
+  font-family: ui-monospace,Consolas,monospace;
+  font-size: clamp(24px,1.4vw,34px);
+  line-height:1.6; color:#a9bdd8;
+  white-space: pre-wrap;
+}
+
+@media (max-width:1100px){
+  :root{
+    --code-font: clamp(34px,4.4vw,54px);
+    --out-font: clamp(30px,3.6vw,46px);
+    --var-font: clamp(22px,2.2vw,32px);
+    --explain-font: clamp(24px,2.4vw,34px);
+    --btn-font: clamp(20px,2vw,30px);
+    --panel-font: clamp(22px,2.2vw,32px);
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="code-layer" id="codeLayer">
+  <div class="code-inner" id="codeInner"></div>
+</div>
+
+<section class="panel" id="p-top">
+  <header class="p-head">
+    <span class="p-title">C 文件块读写 · 逐步执行</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body">
+    <button class="ctl" id="btnReset">⟲ 重置</button>
+    <button class="ctl" id="btnPrev">◀ 上一步</button>
+    <button class="ctl primary" id="btnPlay">▶ 播放</button>
+    <button class="ctl" id="btnNext">下一步 ▶</button>
+    <span class="speed-wrap">
+      速度
+      <input type="range" id="speed" min="40" max="1600" step="20" value="500">
+      <b id="speedLabel">0.50s</b>
+    </span>
+    <button class="ctl" id="btnFull">⛶ 全屏</button>
+    <button class="ctl" id="btnPanels">👁 面板</button>
+    <button class="ctl" id="btnMini">🗺 缩略图</button>
+    <button class="ctl" id="btnLayout">↺ 重置布局</button>
+    <button class="ctl" id="btnPrompt">📝 提示词</button>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-explain">
+  <header class="p-head">
+    <span class="p-title">当前语句说明</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="explainBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-file">
+  <header class="p-head">
+    <span class="p-title">文件内容与读写位置可视化</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="fileBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-var">
+  <header class="p-head">
+    <span class="p-title">变量表</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="varBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-console">
+  <header class="p-head">
+    <span class="p-title">程序运行输出（模拟器旁注）</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="consoleBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-eval">
+  <header class="p-head">
+    <span class="p-title">表达式求值链</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="evalBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-model">
+  <header class="p-head">
+    <span class="p-title">平台模型与关键考点</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body model-body">
+    <b>平台：</b>64 位，小端序；<code>char=1</code>、<code>int=4</code>、指针<code>=8</code>。<br>
+    <b>FILE 类型：</b>系统库内部结构体；<code>fp</code> 是 8 字节句柄地址，示意值 <b>0x5A2C</b>。<br>
+    <span class="k">★ char str[] 长度自动推断为 15</span>：14 个可见字符 + 末尾 <code>\0</code> = 15 字节。<br>
+    <span class="k">★ strlen(str) vs strlen(str)+1</span>：14（不含 \0）vs 15（含 \0）；<b>+1 就是把 \0 纳入</b>。<br>
+    <span class="k">★ fwrite 四参数</span>：<code>fwrite(ptr, size, count, fp)</code>；实际写入 = size × count；返回<b>元素个数</b>。<br>
+    　<code>fwrite(str, 1, 15, fp)</code> → 写 15 个 1 字节元素 → 15 字节，返回 <b>15</b>。<br>
+    <span class="k">★ fread 四参数</span>：<code>fread(ptr, size, count, fp)</code>；实际读取 = size × count；返回<b>元素个数</b>。<br>
+    　<code>fread(buf, 15, 1, fp)</code> → 读 1 个 15 字节元素 → 15 字节，返回 <b>1</b>。<br>
+    <span class="k">★ fwrite vs fputs</span>：前者按字节数写，<code>\0</code> 也写；后者遇 <code>\0</code> 就停。<br>
+    <span class="k">★ fread vs fgets</span>：前者不看内容按字节数读；后者遇 <code>\n</code> 停并补 <code>\0</code>。<br>
+    <span class="k">★ fseek(fp, 0, 0) 回卷</span>：第 3 个参数 <code>0</code> 就是 <code>SEEK_SET</code> 的宏值。<br>
+    <span class="k">★ "w+" 模式</span>：写+创建/清空；<code>+</code> = 可读可写。<br>
+    <span class="k">★ 相对路径 "a.txt"</span>：文件建在<b>程序当前工作目录</b>下。<br>
+    <span class="k">★ 打开文件必判空</span>：第 7 行；文件不存在 / 无权限都返回 NULL。<br>
+    <span class="r">原程序小瑕疵</span>：第 9 行错误分支里也写了 <code>return 0</code>，应改为 <code>return 1</code> 表示失败。<br>
+    <span class="k">★ printf("%s\n", buf) 靠 \0 把关</span>：%s 一直输出到遇到 \0 为止。<br>
+    <span class="k">★ buf[15..19] 是垃圾值但不影响输出</span>：因为 buf[14] 的 \0 已经把关。<br>
+    <span class="k">★ fclose 必须配对</span>：一个 fopen 一个 fclose。<br>
+    <span class="k">★ 块读写 vs 逐字符读写</span>：块读写一次搬一整块内存，效率更高。<br>
+    <span class="g">复杂度</span>：时间 <b>O(1)</b>，空间 <b>O(1)</b>。
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-mini">
+  <header class="p-head">
+    <span class="p-title">缩略图</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body">
+    <div id="mmBodyWrap">
+      <div id="mmBody"></div>
+      <div id="mmViewport"></div>
+    </div>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-prompt" style="display:none;">
+  <header class="p-head">
+    <span class="p-title">提示词</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="promptBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   一、源代码（17 行）
+   ============================================================ */
+var SRC = [
+[1 ,'<span class="pre">#include</span> <span class="str">&lt;stdio.h&gt;</span>                 <span class="cmt">// 包含标准输入输出头文件</span>'],
+[2 ,'<span class="pre">#include</span> <span class="str">&lt;string.h&gt;</span>                <span class="cmt">// 包含字符串头文件</span>'],
+[3 ,'<span class="ty">int</span> <span class="fn">main</span>() {                         <span class="cmt">// 主函数</span>'],
+[4 ,'    <span class="ty">FILE</span> <span class="op">*</span>fp;                        <span class="cmt">// 定义文件指针</span>'],
+[5 ,'    <span class="ty">char</span> str[] <span class="op">=</span> <span class="str">"this is a test"</span>;   <span class="cmt">// 源字符串</span>'],
+[6 ,'    <span class="ty">char</span> buf[<span class="num">20</span>];                    <span class="cmt">// 缓冲区</span>'],
+[7 ,'    <span class="kw">if</span>((fp <span class="op">=</span> <span class="fn">fopen</span>(<span class="str">"a.txt"</span>, <span class="str">"w+"</span>)) <span class="op">==</span> <span class="mac">NULL</span>) {'],
+[8 ,'        <span class="fn">printf</span>(<span class="str">"Cannot open outputfile.\\n"</span>);'],
+[9 ,'        <span class="kw">return</span> <span class="num">0</span>;'],
+[10,'    }'],
+[11,'    <span class="fn">fwrite</span>(str, <span class="num">1</span>, <span class="fn">strlen</span>(str)<span class="op">+</span><span class="num">1</span>, fp); <span class="cmt">// 写入文件（含\\0）</span>'],
+[12,'    <span class="fn">fseek</span>(fp, <span class="num">0</span>, <span class="num">0</span>);                  <span class="cmt">// 返回文件头</span>'],
+[13,'    <span class="fn">fread</span>(buf, <span class="fn">strlen</span>(str)<span class="op">+</span><span class="num">1</span>, <span class="num">1</span>, fp); <span class="cmt">// 读取全部数据</span>'],
+[14,'    <span class="fn">printf</span>(<span class="str">"%s\\n"</span>, buf);              <span class="cmt">// 显示</span>'],
+[15,'    <span class="fn">fclose</span>(fp);'],
+[16,'    <span class="kw">return</span> <span class="num">0</span>;'],
+[17,'}']
+];
+
+var codeInner = document.getElementById('codeInner');
+var html = '';
+for (var i = 0; i < SRC.length; i++) {
+  html += '<div class="code-line" data-line="' + SRC[i][0] + '">' +
+            '<span class="ln">' + SRC[i][0] + '</span>' +
+            '<span class="src">' + SRC[i][1] + '</span>' +
+          '</div>';
+}
+codeInner.innerHTML = html;
+
+var mmBody = document.getElementById('mmBody');
+var mmHtml = '';
+for (var m = 0; m < SRC.length; m++) {
+  mmHtml += '<div class="mm-line" data-line="' + SRC[m][0] + '">' +
+              '<span class="mmln">' + SRC[m][0] + '</span>' +
+              '<span class="src">' + SRC[m][1] + '</span>' +
+            '</div>';
+}
+mmBody.innerHTML = mmHtml;
+
+/* ============================================================
+   二、模拟数据
+   ============================================================ */
+var FP_ADDR = '0x5A2C';
+
+var FILE_CHARS = [
+  { label: 't', code: 116 },
+  { label: 'h', code: 104 },
+  { label: 'i', code: 105 },
+  { label: 's', code: 115 },
+  { label: '␣', code: 32  },
+  { label: 'i', code: 105 },
+  { label: 's', code: 115 },
+  { label: '␣', code: 32  },
+  { label: 'a', code: 97  },
+  { label: '␣', code: 32  },
+  { label: 't', code: 116 },
+  { label: 'e', code: 101 },
+  { label: 's', code: 115 },
+  { label: 't', code: 116 },
+  { label: '␀', code: 0   }
+];
+var FILE_LEN = FILE_CHARS.length;   /* 15 */
+var STR_LEN  = 14;
+var WRITE_LEN = STR_LEN + 1;        /* 15 */
+
+var TONES = {
+  blue:   ['#38bdf8', 'rgba(56,189,248,.22)'],
+  gold:   ['#facc15', 'rgba(250,204,21,.22)'],
+  pink:   ['#f472b6', 'rgba(244,114,182,.24)'],
+  purple: ['#c084fc', 'rgba(192,132,252,.22)'],
+  green:  ['#4ade80', 'rgba(74,222,128,.22)'],
+  orange: ['#fb923c', 'rgba(251,146,60,.22)'],
+  red:    ['#ef4444', 'rgba(239,68,68,.28)'],
+  cyan:   ['#2dd4bf', 'rgba(45,212,191,.22)']
+};
+
+/* ============================================================
+   三、步骤构建
+   ============================================================ */
+function buildSteps() {
+  var steps = [];
+  var CHAIN = [];
+
+  var S = {
+    func: '（未开始）',
+    fp: 'NULL',
+    fpState: '未打开',
+    fileOpen: false,
+    fileClosed: false,
+    fileChars: [],
+    pos: 0,
+    str: '—',
+    strLen: '—',
+    writeLen: '—',
+    buf: '—',
+    fwriteRet: '—',
+    freadRet: '—',
+    ret: '—',
+    out: [], done: false
+  };
+
+  function clone(o){ return JSON.parse(JSON.stringify(o)); }
+  function pushOut(t,c){ S.out.push({ t:t, c:c||'out-norm' }); }
+  function chainPush(t){ CHAIN.push({ t:t }); }
+  function snap(o){
+    S.chain = CHAIN.slice();
+    steps.push({
+      line: o.line, tone: o.tone || 'blue',
+      title: o.title || '', desc: o.desc || '',
+      s: clone(S)
+    });
+  }
+
+  /* ---- 1. 进入 main ---- */
+  S.func = 'main';
+  chainPush('进入 main');
+  snap({
+    line: 3, tone:'gold',
+    title: '进入 <b>main</b> 函数',
+    desc: '程序从 <code>main</code> 开始执行。这个程序要演示的是「<b>块读写</b>」——' +
+          '和 <code>fgetc</code> / <code>fputc</code> 一个字符一个字符地读写不同，' +
+          '<code>fwrite</code> / <code>fread</code> 一次性读写一整块内存，效率高得多。<br>' +
+          '· <code>fopen("a.txt","w+")</code> 创建文件并<b>判空</b>；<br>' +
+          '· <code>fwrite(str, 1, strlen(str)+1, fp)</code> 把 <code>str</code> 里 <b>15 个字节</b>' +
+          '（含字符串结束符 <code>\\0</code>）整块写进文件；<br>' +
+          '· <code>fseek(fp, 0, 0)</code> 把读写位置拨回文件开头；<br>' +
+          '· <code>fread(buf, strlen(str)+1, 1, fp)</code> 把 15 个字节整块读回 <code>buf</code>；<br>' +
+          '· <code>printf("%s\\n", buf)</code> 把读回的字符串显示到屏幕；<br>' +
+          '· <code>fclose(fp)</code> 关闭文件，<code>return 0</code> 结束。' +
+          '<span class="tip"><b>本例数据：</b><br>' +
+          '<code>str</code> = <code>"this is a test"</code>，' +
+          '<code>strlen(str)</code> = <b>14</b>（不含 <code>\\0</code>），' +
+          '<code>strlen(str)+1</code> = <b>15</b>（含 <code>\\0</code>）。<br>' +
+          '所以文件里存 <b>15 个字节</b>：14 个可见字符 + 1 个不可见的 <code>\\0</code>。<br>' +
+          '右侧「文件内容」条会把这 15 个字节全部显示出来，' +
+          '其中最后一个 <code>␀</code> 就是 <code>\\0</code>。</span>'
+  });
+
+  /* ---- 2. 声明 FILE *fp ---- */
+  snap({
+    line: 4, tone:'cyan',
+    title: '声明 <b>FILE *fp;</b>',
+    desc: '定义一个<b>文件指针</b> <code>fp</code>。<br>' +
+          '· <code>FILE</code> 是 <code>&lt;stdio.h&gt;</code> 中定义的结构体类型，' +
+          '内部记录着文件的缓冲区地址、读写位置、错误标志、文件结束标志等信息；<br>' +
+          '· 我们平时不直接碰这个结构体，只拿它的<b>指针</b>当「文件句柄」来用；<br>' +
+          '· 此刻 <code>fp</code> 只分配了变量空间，<b>还没有指向任何文件</b>，值是<b>不确定的</b>（野指针）。' +
+          '<span class="warn"><b>注意：</b>声明之后、<code>fopen</code> 之前，绝不能拿 <code>fp</code> 去读写文件，那是未定义行为。</span>'
+  });
+
+  /* ---- 3. 声明并初始化 str ---- */
+  S.str = '"this is a test"';
+  S.strLen = String(STR_LEN);
+  S.writeLen = String(WRITE_LEN);
+  pushOut('[初始化] char str[] = "this is a test"　→　str 占 ' + WRITE_LEN + ' 字节，strlen(str) = ' + STR_LEN, 'out-note');
+  chainPush('str = "this is a test"，长度 15，strlen = 14');
+  snap({
+    line: 5, tone:'gold',
+    title: '声明并初始化 <b>char str[] = "this is a test";</b>',
+    desc: '定义一个字符数组 <code>str</code> 并直接初始化。<br>' +
+          '· <b>没写数组长度</b>——编译器会自动数出需要多少空间：' +
+          '字符串字面量 <code>"this is a test"</code> 有 <b>' + STR_LEN + '</b> 个可见字符，' +
+          '加上末尾自动补的 <code>\\0</code>，共 <b>' + WRITE_LEN + ' 个字节</b>；<br>' +
+          '· 所以 <code>str</code> 实际就是 <code>char str[' + WRITE_LEN + ']</code>；' +
+          '内存里依次是 <code>t h i s ␣ i s ␣ a ␣ t e s t \\0</code>；<br>' +
+          '· 这个数组在<b>栈上</b>分配，是可读可写的——后面 <code>fwrite</code> 要读它，' +
+          '<code>fread</code> 则把数据写进另一个数组 <code>buf</code>。' +
+          '<span class="tip"><b>为什么 <code>char str[]</code> 和 <code>char *str</code> 不一样？</b><br>' +
+          '<code>char str[] = "..."</code> 是在栈上<b>复制</b>一份数组，可以修改内容；<br>' +
+          '<code>char *str = "..."</code> 是让指针指向<b>只读的字符串字面量</b>，改它会崩溃。<br>' +
+          '本程序用数组形式，更安全，也更符合「准备一块可写的数据」的语义。</span>' +
+          '<span class="warn"><b>⚠ 关键点：<code>strlen(str)</code> 是 ' + STR_LEN + '，不是 ' + WRITE_LEN + '！</b><br>' +
+          '<code>strlen</code> 计算的是「<b>从起始地址到第一个 <code>\\0</code> 之前的字符个数</b>」，' +
+          '不把 <code>\\0</code> 算进去。<br>' +
+          '所以 <code>strlen(str)+1</code> = ' + STR_LEN + ' + 1 = <b>' + WRITE_LEN + '</b>，' +
+          '这才是数组的<b>完整字节数</b>。<br>' +
+          '后面 <code>fwrite</code> 和 <code>fread</code> 都用 <code>strlen(str)+1</code>，' +
+          '目的就是<b>把 <code>\\0</code> 也一起写进去</b>——这一点很重要，' +
+          '下面看 <code>printf</code> 那一步你会明白为什么。</span>'
+  });
+
+  /* ---- 4. 声明 char buf[20] ---- */
+  S.buf = '（未初始化，垃圾值）';
+  pushOut('[声明] char buf[20];　→　20 字节缓冲区（未初始化）', 'out-note');
+  snap({
+    line: 6, tone:'cyan',
+    title: '声明 <b>char buf[20];</b>',
+    desc: '定义一个长度为 <b>20</b> 的字符数组 <code>buf</code>，作为读取文件的<b>缓冲区</b>。<br>' +
+          '· 占 20 个字节，能装 20 个字符（没有 <code>\\0</code> 的额外要求，因为它不是字符串，是原始内存）；<br>' +
+          '· 大小 20 &gt; 待读取的 15，<b>空间足够</b>，不会溢出；<br>' +
+          '· 此刻数组内容是<b>未初始化的垃圾数据</b>——' +
+          '但没关系，下一步 <code>fread</code> 会把 15 个字节覆盖上去。' +
+          '<span class="tip"><b>缓冲区大小该怎么定？</b><br>' +
+          '至少要 >= 待读取的字节数。<br>' +
+          '本例待读 15 字节，开 20 有余量，是最稳妥的做法。<br>' +
+          '如果开成 <code>buf[10]</code> 而读取 15 字节，' +
+          '<code>fread</code> 会<b>写爆栈</b>——这类「缓冲区溢出」是 C 程序最危险的 Bug。</span>'
+  });
+
+  /* ---- 5. fopen 调用 ---- */
+  chainPush('fopen("a.txt", "w+") → 0x5A2C');
+  snap({
+    line: 7, tone:'red',
+    title: '执行 <b>fopen("a.txt", "w+")</b>',
+    desc: '进入 <code>if</code>，先计算括号里的表达式。这里面藏着<b>两个动作</b>：' +
+          '① 调用 <code>fopen(...)</code> 打开/创建文件；② 把返回值赋给 <code>fp</code>，再与 <code>NULL</code> 比较。<br>' +
+          '先看 ①：<br>' +
+          '· <b>第一个参数</b> <code>"a.txt"</code> 是文件名，' +
+          '这是<b>相对路径</b>——文件会被创建在程序运行时的<b>当前工作目录</b>下；<br>' +
+          '· <b>第二个参数</b> <code>"w+"</code> 是打开方式：<br>' +
+          '　　<code>w</code> = <b>写模式</b>：文件不存在就<b>新建</b>；已存在则<b>清空为 0 字节</b>；<br>' +
+          '　　<code>+</code> = <b>可读可写</b>——没有它就只能写，后面的 <code>fread</code> 会失败；<br>' +
+          '· 打开成功返回一个 <b>FILE*</b> 指针，失败返回 <b>NULL</b>。' +
+          '<span class="tip"><b>本例假设创建成功</b>，返回文件句柄地址 <b>0x5A2C</b>（示意值）。</span>' +
+          '<span class="warn"><b>⚠ <code>"w"</code> 是危险模式：</b><br>' +
+          '如果 <code>a.txt</code> 本来存在，内容会被<b>立刻清空</b>。' +
+          '本例就是要「重新写一份」，所以用 <code>w</code> 是对的；' +
+          '如果只是想追加，应该用 <code>"a+"</code>。</span>'
+  });
+
+  /* ---- 6. fp 赋值 ---- */
+  S.fp = FP_ADDR;
+  S.fpState = '已打开 (w+)';
+  S.fileOpen = true;
+  S.fileChars = [];
+  S.pos = 0;
+  pushOut('[打开] fopen("a.txt", "w+") 成功 → fp = ' + FP_ADDR + '　文件已创建（0 字节）', 'out-note');
+  chainPush('fp = 0x5A2C，文件 0 字节，位置 0');
+  snap({
+    line: 7, tone:'purple',
+    title: '<b>fp = 0x5A2C</b>　→　文件句柄拿到手了',
+    desc: '<code>fopen</code> 返回的文件指针被赋给 <code>fp</code>。<br>' +
+          '· <code>fp = 0x5A2C</code>（FILE 结构体的地址，示意值）；<br>' +
+          '· 从此刻起，<code>fp</code> 就代表「<b>那个已经创建的 a.txt 文件</b>」；<br>' +
+          '· 文件刚被 <code>w</code> 清空/新建，大小是 <b>0 字节</b>，读写位置是 <b>0</b>（文件开头）。' +
+          '<span class="tip"><b>读写位置（文件位置指示器）</b>是 FILE 结构体里的一个成员，' +
+          '记录「下一次读/写从第几个字节开始」。<br>' +
+          '<code>fwrite</code> 写完后它会自动往后移，<code>fread</code> 读完后也往后移。<br>' +
+          '右侧文件条上<b>发光的那个格子</b>就是它现在的位置。</span>'
+  });
+
+  /* ---- 7. 判空 ---- */
+  chainPush('(fp == NULL) → 假');
+  snap({
+    line: 7, tone:'red',
+    title: '<b>(fp == NULL)</b>　→　<b>假</b>　→　文件创建成功',
+    desc: '把 <code>fp</code>（0x5A2C）与 <code>NULL</code> 比较：<br>' +
+          '· 两者<b>不相等</b> → 整个条件表达式为<b>假</b>；<br>' +
+          '· <b>不执行</b>第 8~9 行的 <code>printf</code> 和 <code>return 0</code>；<br>' +
+          '· 控制流直接跳到第 10 行的 <code>}</code> 之后，继续往下走。' +
+          '<span class="tip"><b>为什么必须判断 NULL？</b><br>' +
+          '路径写错、目录不存在、没有写权限、磁盘已满……' +
+          '都会让 <code>fopen</code> 返回 <code>NULL</code>。<br>' +
+          '如果不检查就拿着 NULL 去读写，程序会立刻崩溃。<br>' +
+          '「<b>打开文件必判空</b>」是 C 语言文件操作的第一条纪律。</span>' +
+          '<span class="warn"><b>⚠ 原程序小瑕疵：</b>错误分支里也写了 <code>return 0</code>。<br>' +
+          '按说文件打不开应该返回非 0（比如 <code>return 1;</code>）表示失败，' +
+          '但原程序写的是 <code>return 0</code>，意味着「文件打不开也算正常结束」。<br>' +
+          '不过本例假设文件成功创建，那个分支永远不会执行，所以不影响正确性。</span>' +
+          '<span class="win"><b>★ 本例假设：</b>文件创建成功，条件为假，' +
+          '错误提示和提前返回<b>一行都不执行</b>。</span>'
+  });
+
+  /* ---- 8. fwrite ---- */
+  S.fileChars = FILE_CHARS.slice();
+  S.pos = WRITE_LEN;
+  S.fwriteRet = String(WRITE_LEN);
+  pushOut('[写入] fwrite(str, 1, ' + WRITE_LEN + ', fp) → 写入 ' + WRITE_LEN + ' 个字节（含 \\0）　位置 0 → ' + WRITE_LEN, 'out-count');
+  chainPush('fwrite(str, 1, 15, fp) → 15 字节，返回 15');
+  snap({
+    line: 11, tone:'red',
+    title: '<b>fwrite(str, 1, ' + WRITE_LEN + ', fp)</b>　→　写入 <b>' + WRITE_LEN + ' 个字节</b>',
+    desc: '把 <code>str</code> 里的一整块内存<b>原样</b>写进文件。<br>' +
+          '· <code>fwrite(ptr, size, count, fp)</code> 的参数含义：<br>' +
+          '　　<b>第 1 个</b> <code>str</code>：要写入的数据在哪里（源地址）；<br>' +
+          '　　<b>第 2 个</b> <code>1</code>：每个元素的大小 = 1 字节；<br>' +
+          '　　<b>第 3 个</b> <code>strlen(str)+1</code> = <code>' + WRITE_LEN + '</code>：要写多少个元素；<br>' +
+          '　　<b>第 4 个</b> <code>fp</code>：写到哪个文件；<br>' +
+          '· 实际写入字节数 = size × count = 1 × ' + WRITE_LEN + ' = <b>' + WRITE_LEN + ' 字节</b>；<br>' +
+          '· 文件从 0 字节变成 <b>' + WRITE_LEN + ' 字节</b>，' +
+          '内容是 <code>t h i s ␣ i s ␣ a ␣ t e s t \\0</code>；<br>' +
+          '· 文件读写位置从 <b>0</b> 走到 <b>' + WRITE_LEN + '</b>（末尾）；<br>' +
+          '· 返回值是<b>成功写入的元素个数</b> = <b>' + WRITE_LEN + '</b>' +
+          '（本例没用到返回值）。' +
+          '<span class="tip"><b>注意：第 3 个参数是 <code>strlen(str)+1</code>，不是 <code>strlen(str)</code>！</b><br>' +
+          '<code>strlen(str)</code> = ' + STR_LEN + '，加上 <code>+1</code> 就是 <b>' + WRITE_LEN + '</b>。<br>' +
+          '这个 <code>+1</code> 是为了把字符串末尾的 <code>\\0</code> 也写进去。<br>' +
+          '<b>为什么要写 <code>\\0</code>？</b>看第 14 行的 <code>printf("%s\\n", buf)</code>——' +
+          '<code>%s</code> 必须靠 <code>\\0</code> 才能知道字符串到哪儿结束。<br>' +
+          '如果这里只写 ' + STR_LEN + ' 个字节，读回来的 <code>buf</code> 就没有 <code>\\0</code>，' +
+          '<code>printf</code> 会一直往后读到<b>内存里的垃圾数据</b>，输出乱码甚至崩溃。</span>' +
+          '<span class="tip"><b><code>fwrite</code> 与 <code>fputs</code> 的区别：</b><br>' +
+          '<code>fputs(s, fp)</code> 遇到 <code>\\0</code> <b>就停</b>，所以它<b>写不进 <code>\\0</code></b>；<br>' +
+          '<code>fwrite(ptr, size, count, fp)</code> 是<b>按字节数写</b>，' +
+          '<code>\\0</code> 也是普通字节，照样写。<br>' +
+          '这就是为什么本程序用 <code>fwrite</code> 而不是 <code>fputs</code>——' +
+          '只有它能精确控制「写多少字节，包括 <code>\\0</code>」。</span>'
+  });
+
+  /* ---- 9. fseek ---- */
+  S.pos = 0;
+  pushOut('[定位] fseek(fp, 0, 0) → 位置 ' + WRITE_LEN + ' → 0（文件头）', 'out-note');
+  chainPush('fseek(fp, 0, 0) → 15 → 0');
+  snap({
+    line: 12, tone:'red',
+    title: '<b>fseek(fp, 0, 0)</b>　→　把读写位置拨回文件开头',
+    desc: '把文件读写位置指示器重新定位到<b>文件开头</b>。<br>' +
+          '· 三个参数的含义：<br>' +
+          '　　<b>第 1 个</b> <code>fp</code>：要操作哪个文件；<br>' +
+          '　　<b>第 2 个</b> <code>0</code>：偏移量，从基准点移动 0 个字节；<br>' +
+          '　　<b>第 3 个</b> <code>0</code>：基准点。' +
+          '<b>这里的 <code>0</code> 就是 <code>SEEK_SET</code> 的宏值</b>' +
+          '（<code>SEEK_SET = 0</code>），意思是「以文件开头为基准」；<br>' +
+          '· 合起来就是：<b>从文件开头偏移 0 字节</b> → 位置 = 文件开头；<br>' +
+          '· 文件位置从 <b>' + WRITE_LEN + '</b>（末尾）回到 <b>0</b>；<br>' +
+          '· 成功返回 0，失败返回非 0（本例没用到返回值）。' +
+          '<span class="tip"><b>为什么第 3 个参数写 <code>0</code> 而不是 <code>SEEK_SET</code>？</b><br>' +
+          '两者<b>完全等价</b>——<code>SEEK_SET</code> 本身就是 <code>&lt;stdio.h&gt;</code> 里' +
+          '定义的一个宏，值就是 0。<br>' +
+          '写 <code>SEEK_SET</code> 可读性更好（一眼看出意图），' +
+          '写 <code>0</code> 更简洁但需要记住这个对应关系。<br>' +
+          '工程代码推荐写 <code>SEEK_SET</code>。</span>' +
+          '<span class="danger"><b>⚠ 这一步绝不能省！</b><br>' +
+          '刚写完文件时，位置指示器停在<b>末尾 ' + WRITE_LEN + '</b>。' +
+          '如果直接调用 <code>fread</code>，会读到 0 个字节（因为已经在末尾，没东西可读了），' +
+          '<code>buf</code> 里还是垃圾数据，<code>printf</code> 会输出乱码。<br>' +
+          '「<b>写完要读，先回卷</b>」——这是文件读写切换时最容易踩的坑。</span>'
+  });
+
+  /* ---- 10. fread ---- */
+  S.pos = WRITE_LEN;
+  S.buf = '"this is a test"';
+  S.freadRet = '1';
+  pushOut('[读取] fread(buf, ' + WRITE_LEN + ', 1, fp) → 读入 ' + WRITE_LEN + ' 个字节到 buf　位置 0 → ' + WRITE_LEN, 'out-input');
+  chainPush('fread(buf, 15, 1, fp) → 15 字节，返回 1');
+  snap({
+    line: 13, tone:'red',
+    title: '<b>fread(buf, ' + WRITE_LEN + ', 1, fp)</b>　→　读回 <b>' + WRITE_LEN + ' 个字节</b>',
+    desc: '从文件里读一整块内存到 <code>buf</code>。<br>' +
+          '· <code>fread(ptr, size, count, fp)</code> 的参数含义：<br>' +
+          '　　<b>第 1 个</b> <code>buf</code>：读到的数据放到哪里（目标地址）；<br>' +
+          '　　<b>第 2 个</b> <code>strlen(str)+1</code> = <code>' + WRITE_LEN + '</code>：每个元素的大小 = ' + WRITE_LEN + ' 字节；<br>' +
+          '　　<b>第 3 个</b> <code>1</code>：要读多少个元素；<br>' +
+          '　　<b>第 4 个</b> <code>fp</code>：从哪个文件读；<br>' +
+          '· 实际读取字节数 = size × count = ' + WRITE_LEN + ' × 1 = <b>' + WRITE_LEN + ' 字节</b>；<br>' +
+          '· <code>buf</code> 的前 15 个字节被覆盖，' +
+          '内容是 <code>t h i s ␣ i s ␣ a ␣ t e s t \\0</code>；' +
+          '后 5 个字节（buf[15] ~ buf[19]）保持原来的垃圾数据——' +
+          '但没关系，因为第 14 个字节是 <code>\\0</code>，<code>printf</code> 到那里就停了；<br>' +
+          '· 文件读写位置从 <b>0</b> 走到 <b>' + WRITE_LEN + '</b>（末尾）；<br>' +
+          '· 返回值是<b>成功读取的元素个数</b> = <b>1</b>' +
+          '（本例没用到返回值）。' +
+          '<span class="warn"><b>⚠ 注意 <code>fread</code> 的参数顺序和 <code>fwrite</code> 一样，但语义不同！</b><br>' +
+          '两次调用：<br>' +
+          '　<code>fwrite(str, 1, ' + WRITE_LEN + ', fp)</code> → 写 <b>' + WRITE_LEN + ' 个 1 字节</b>的元素；<br>' +
+          '　<code>fread(buf, ' + WRITE_LEN + ', 1, fp)</code> → 读 <b>1 个 ' + WRITE_LEN + ' 字节</b>的元素。<br>' +
+          '<b>两者读取/写入的总字节数相同（都是 ' + WRITE_LEN + '），但返回值的含义不一样：</b><br>' +
+          '· <code>fwrite</code> 返回「成功写入的元素个数」= ' + WRITE_LEN + '；<br>' +
+          '· <code>fread</code> 返回「成功读取的元素个数」= 1。<br>' +
+          '之所以这样写，是为了保证 <code>fread</code> 的返回值能直接判断「有没有读到一个完整的数据块」——' +
+          '如果返回 0，就说明一个完整的 ' + WRITE_LEN + ' 字节块都没读到，数据不完整。</span>' +
+          '<span class="tip"><b><code>fread</code> 与 <code>fgets</code> 的区别：</b><br>' +
+          '<code>fgets</code> 遇到 <code>\\n</code> 或读满就停，且会补 <code>\\0</code>；<br>' +
+          '<code>fread</code> <b>不看内容</b>，只按字节数读，' +
+          '<code>\\0</code> 和 <code>\\n</code> 都当普通字节。' +
+          '所以它能精确读回「含 <code>\\0</code> 的二进制块」。</span>'
+  });
+
+  /* ---- 11. printf ---- */
+  pushOut('[输出] printf("%s\\n", buf) → 屏幕显示：this is a test', 'out-final');
+  chainPush('printf("%s\\n", buf) → this is a test');
+  snap({
+    line: 14, tone:'gold',
+    title: '<b>printf("%s\\n", buf)</b>　→　屏幕输出 <b>this is a test</b>',
+    desc: '把 <code>buf</code> 里的字符串打印到屏幕。<br>' +
+          '· <code>%s</code> 会从 <code>buf[0]</code> 开始，' +
+          '<b>一直输出到遇到 <code>\\0</code> 为止</b>；<br>' +
+          '· <code>buf[0]</code> ~ <code>buf[13]</code> 是 14 个可见字符 <code>this is a test</code>；' +
+          '<code>buf[14]</code> 是 <code>\\0</code>，<code>%s</code> 在这里停下；<br>' +
+          '· 后面 <code>\\n</code> 是格式串里的换行符，让光标换到下一行；<br>' +
+          '· 屏幕上显示：<code>this is a test</code>。' +
+          '<span class="win"><b>★ 为什么能正确输出？关键就在那个 <code>+1</code>！</b><br>' +
+          '回顾一下：<br>' +
+          '· <code>fwrite</code> 用 <code>strlen(str)+1</code> = ' + WRITE_LEN + ' 个字节，' +
+          '把 <code>\\0</code> 也写进了文件；<br>' +
+          '· <code>fread</code> 用 <code>strlen(str)+1</code> = ' + WRITE_LEN + ' 个字节，' +
+          '又把 <code>\\0</code> 读了回来，放在 <code>buf[14]</code>；<br>' +
+          '· <code>printf("%s")</code> 正是靠这个 <code>\\0</code> 才知道在哪里停下。<br>' +
+          '<b>如果少了那个 <code>+1</code>，<code>\\0</code> 就不会被写入/读出，' +
+          '<code>printf</code> 会一直往后读 <code>buf</code> 后面的垃圾内存，输出乱码！</b></span>' +
+          '<span class="warn"><b>⚠ 关于 <code>buf[15]</code> ~ <code>buf[19]</code>：</b><br>' +
+          '这 5 个字节从未被赋值，内容是<b>栈上的垃圾数据</b>。<br>' +
+          '但因为 <code>buf[14]</code> 是 <code>\\0</code>，<code>printf</code> 到那里就停，' +
+          '所以它们不会被输出——「有垃圾」不等于「会出错」，' +
+          '关键是有没有 <code>\\0</code> 把关。</span>'
+  });
+
+  /* ---- 12. fclose ---- */
+  S.fpState = '已关闭';
+  S.fileOpen = false;
+  S.fileClosed = true;
+  pushOut('[关闭] fclose(fp) → 文件已关闭，缓冲区已刷新', 'out-note');
+  chainPush('fclose(fp)');
+  snap({
+    line: 15, tone:'cyan',
+    title: '<b>fclose(fp)</b>　→　关闭文件',
+    desc: '把文件关掉，通知操作系统「我用完了」。<br>' +
+          '· <b>先刷新缓冲区</b>：把还留在内存缓冲区里的数据真正写回磁盘' +
+          '（本例 <code>fwrite</code> 写的数据此刻才保证落盘）；<br>' +
+          '· 然后<b>释放 FILE 结构体</b>和相关系统资源，<code>fp</code> 就此失效；<br>' +
+          '· <code>fclose</code> 成功返回 <b>0</b>，失败返回 <b>EOF</b>（本例忽略返回值）。' +
+          '<span class="danger"><b>⚠ 忘了 fclose 会怎样？</b><br>' +
+          '· 数据可能还卡在缓冲区里没写进磁盘，程序一旦崩溃就丢了；<br>' +
+          '· 文件句柄是有限的系统资源（一般同时只能开几百个），长期不关会耗尽；<br>' +
+          '· 在某些系统上，别的程序可能无法修改这个文件。<br>' +
+          '所以「<b>打开就要配对关闭</b>」——本程序有一个 <code>fopen</code>，' +
+          '就有一个 <code>fclose</code>，一配一。</span>' +
+          '<span class="tip"><b>注意：文件关闭后，<code>buf</code> 的内容仍然有效。</b><br>' +
+          '<code>buf</code> 只是一个普通的栈数组，它保存的是从文件里读出来的<b>副本</b>，' +
+          '和文件是否关闭、<code>fp</code> 是否失效没有任何关系。</span>'
+  });
+
+  /* ---- 13. return 0 ---- */
+  S.ret = 0;
+  pushOut('[返回] main 返回 0，程序正常结束', 'out-note');
+  chainPush('return 0');
+  snap({
+    line: 16, tone:'gold',
+    title: '<b>return 0</b>　→　返回 <b>0</b>',
+    desc: '把 0 返回给操作系统，表示程序<b>正常结束</b>。<br>' +
+          '· 如果返回非 0 值，通常表示程序出错；<br>' +
+          '· 很多脚本 / 批处理会检查这个返回值来决定下一步怎么做。' +
+          '<span class="tip"><b>注意第 9 行的错误分支里也写了 <code>return 0</code>。</b><br>' +
+          '按说文件打不开应该返回非 0 表示失败，' +
+          '但原程序写的是 <code>return 0</code>——这其实是个小瑕疵。<br>' +
+          '不过本例假设文件成功创建，那个分支永远不会执行，' +
+          '所以不影响程序的正确性。</span>'
+  });
+
+  /* ---- 14. main 结束 ---- */
+  S.done = true;
+  chainPush('main 结束');
+  snap({
+    line: 17, tone:'gold',
+    title: 'main 函数结束　→　<b>程序运行完毕</b>',
+    desc: '执行到最后一行 <code>}</code>，程序结束。<br>' +
+          '· 局部变量 <code>fp</code>、<code>str</code>、<code>buf</code> 随栈帧一起销毁；<br>' +
+          '· 文件已经在第 15 行关好了，<b>没有资源泄漏</b>；<br>' +
+          '· 磁盘上留下了一个文件 <code>a.txt</code>，' +
+          '内容是 <code>this is a test</code> + 末尾一个 <code>\\0</code>（共 ' + WRITE_LEN + ' 字节）。' +
+          '<span class="win"><b>★ 运行结果（终端屏幕）</b><br>' +
+          '<code>this is a test</code><br><br>' +
+          '原字符串 <code>str</code> 被完整写进文件、又完整读回来、原样显示——' +
+          '证明「<b>内存 → 磁盘 → 内存</b>」的通路完全正常。<br><br>' +
+          '<b>统计：</b><br>' +
+          '· <code>fopen</code> 调用 <b>1</b> 次，<code>fclose</code> 调用 <b>1</b> 次；<br>' +
+          '· <code>strlen</code> 调用 <b>2</b> 次（分别在 <code>fwrite</code> 和 <code>fread</code> 里），' +
+          '都返回 ' + STR_LEN + '；<br>' +
+          '· <code>fwrite</code> 写入 <b>' + WRITE_LEN + ' 字节</b>（含 <code>\\0</code>），返回 <b>' + WRITE_LEN + '</b>；<br>' +
+          '· <code>fseek</code> 调用 <b>1</b> 次，位置 ' + WRITE_LEN + ' → 0；<br>' +
+          '· <code>fread</code> 读取 <b>' + WRITE_LEN + ' 字节</b>（含 <code>\\0</code>），返回 <b>1</b>；<br>' +
+          '· <code>printf</code> 调用 <b>1</b> 次；<br>' +
+          '· 文件读写位置轨迹：<br>' +
+          '　　fopen 后 0；<br>' +
+          '　　fwrite 后 0 → ' + WRITE_LEN + '；<br>' +
+          '　　fseek 后 ' + WRITE_LEN + ' → 0；<br>' +
+          '　　fread 后 0 → ' + WRITE_LEN + '。<br>' +
+          '<b>时间复杂度 O(1)</b>（数据量固定，与文件总大小无关），' +
+          '<b>空间复杂度 O(1)</b>。</span>' +
+          '<span class="tip"><b>对比一下「逐字符读写」的做法：</b><br>' +
+          '<code>fwrite</code>/<code>fread</code> 是一次系统调用搬一整块内存（本例 ' + WRITE_LEN + ' 字节），' +
+          '而 <code>fputc</code>/<code>fgetc</code> 是每次搬 1 个字节。<br>' +
+          '数据量越大，块读写的效率优势越明显——' +
+          '这就是为什么拷贝大文件时都推荐用 <code>fread</code>/<code>fwrite</code>。</span>'
+  });
+
+  return steps;
+}
+
+var STEPS = buildSteps();
+
+/* ============================================================
+   四、提示词
+   ============================================================ */
+var PROMPT_TEXT =
+'【任务】把 C 文件块读写程序做成「逐步执行模拟」单文件 HTML。\n\n' +
+'【C 程序】17 行：fopen w+ 创建 → 判空 → fwrite 写 15 字节 → fseek 回卷 → fread 读 15 字节 → printf 显示 → fclose。\n\n' +
+'【模拟数据】\n' +
+'  str = "this is a test"，strlen(str) = 14，strlen(str)+1 = 15；\n' +
+'  fopen w+ → fp = 0x5A2C；\n' +
+'  fwrite(str, 1, 15, fp) → 写入 15 字节，位置 0 → 15，返回 15；\n' +
+'  fseek(fp, 0, 0) → 位置 15 → 0；\n' +
+'  fread(buf, 15, 1, fp) → 读入 15 字节到 buf，位置 0 → 15，返回 1；\n' +
+'  printf 输出 "this is a test"；main 返回 0。\n\n' +
+'【关键考点】\n' +
+'  1) char str[] 长度自动推断为 15（14 字符 + \\0）；\n' +
+'  2) strlen(str) = 14 vs strlen(str)+1 = 15；\n' +
+'  3) fwrite 四参数：ptr + size + count + fp；实际写入 = size × count；返回元素个数；\n' +
+'  4) fread 四参数：ptr + size + count + fp；实际读取 = size × count；返回元素个数；\n' +
+'  5) fwrite 返回 15 vs fread 返回 1：size/count 拆分不同；\n' +
+'  6) fwrite vs fputs：前者能写 \\0；后者遇 \\0 停；\n' +
+'  7) fread vs fgets：前者不看内容；后者遇 \\n 停；\n' +
+'  8) fseek(fp, 0, 0) 回卷：第 3 个参数 0 就是 SEEK_SET；\n' +
+'  9) "w+" 模式：写+创建/清空，+ 可读可写；\n' +
+'  10) 相对路径 "a.txt"：文件建在当前工作目录；\n' +
+'  11) 打开文件必判空 + 原程序错误分支 return 0 小瑕疵；\n' +
+'  12) printf("%s\\n", buf) 靠 \\0 把关；\n' +
+'  13) buf[15..19] 是垃圾值但不影响输出；\n' +
+'  14) fclose 必须配对；\n' +
+'  15) 块读写 vs 逐字符读写：效率差异；\n' +
+'  16) 时间 O(1)，空间 O(1)。\n';
+
+document.getElementById('promptBody').textContent = PROMPT_TEXT;
+
+/* ============================================================
+   五、面板系统
+   ============================================================ */
+var panels = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+var zTop = 50;
+
+function activate(panel){
+  zTop += 1;
+  panel.style.zIndex = zTop;
+  panels.forEach(function(p){ p.classList.remove('active'); });
+  panel.classList.add('active');
+}
+
+panels.forEach(function(panel){
+  var head = panel.querySelector('.p-head');
+  var handle = panel.querySelector('.p-resize');
+
+  function begin(e, mode){
+    if (e.target.closest('.p-close')) return;
+    activate(panel);
+    var r = panel.getBoundingClientRect();
+    panel._drag = {
+      mode: mode,
+      sx: e.clientX, sy: e.clientY,
+      ox: r.left, oy: r.top,
+      w: r.width, h: r.height
+    };
+    e.preventDefault();
+    try { head.setPointerCapture(e.pointerId); } catch(err){}
+  }
+
+  head.addEventListener('pointerdown', function(e){ begin(e, 'move'); });
+  handle.addEventListener('pointerdown', function(e){ begin(e, 'size'); });
+
+  panel.addEventListener('pointerdown', function(){
+    activate(panel);
+  }, true);
+});
+
+document.addEventListener('pointermove', function(e){
+  panels.forEach(function(panel){
+    if (panel._drag) {
+      var d = panel._drag;
+      var dx = e.clientX - d.sx;
+      var dy = e.clientY - d.sy;
+      if (d.mode === 'move'){
+        panel.style.left = (d.ox + dx) + 'px';
+        panel.style.top  = (d.oy + dy) + 'px';
+      } else {
+        panel.style.width  = Math.max(60, d.w + dx) + 'px';
+        panel.style.height = Math.max(60, d.h + dy) + 'px';
+      }
+    }
+  });
+});
+document.addEventListener('pointerup', function(){
+  panels.forEach(function(panel){ panel._drag = null; });
+});
+
+document.querySelectorAll('.p-close').forEach(function(btn){
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var p = btn.closest('.panel');
+    if (p) p.style.display = 'none';
+  });
+});
+
+var DEFAULTS = {
+  'p-top':     function(W,H){ return {l:16, t:12, w:Math.min(1560, W-32), h:104}; },
+  'p-explain': function(W,H){ return {l:16, t:128, w:Math.min(1260, W-340), h:260}; },
+  'p-file':    function(W,H){ return {l:16, t:400, w:Math.min(1260, W-340), h:260}; },
+  'p-var':     function(W,H){ return {l:16, t:672, w:Math.min(620, W-32), h:Math.max(200, H-684)}; },
+  'p-console': function(W,H){ return {l:Math.min(652, W-680), t:672, w:Math.min(680, W-32-Math.min(652, W-680)), h:Math.max(200, H-684)}; },
+  'p-eval':    function(W,H){ return {l:Math.max(400, W-740), t:128, w:460, h:420}; },
+  'p-model':   function(W,H){ return {l:Math.max(400, W-740), t:560, w:460, h:Math.max(200, H-572)}; },
+  'p-mini':    function(W,H){ return {l:Math.max(240, W-175), t:128, w:155, h:Math.min(720, Math.max(200, H-160))}; },
+  'p-prompt':  function(W,H){ return {l:120, t:160, w:Math.min(1200, W-240), h:Math.min(700, H-320)}; }
+};
+
+function resetLayout(){
+  var W = window.innerWidth, H = window.innerHeight;
+  panels.forEach(function(panel){
+    var id = panel.id;
+    var fn = DEFAULTS[id];
+    if (!fn) return;
+    var d = fn(W, H);
+    panel.style.left = d.l + 'px';
+    panel.style.top = d.t + 'px';
+    panel.style.width = d.w + 'px';
+    panel.style.height = d.h + 'px';
+    panel._drag = null;
+  });
+  zTop = 50;
+  panels.forEach(function(panel, idx){
+    panel.style.zIndex = 50 + idx;
+  });
+  document.getElementById('p-prompt').style.display = 'none';
+}
+
+/* ============================================================
+   六、渲染逻辑
+   ============================================================ */
+var codeLayer = document.getElementById('codeLayer');
+var codeLines = Array.prototype.slice.call(codeInner.querySelectorAll('.code-line'));
+var mmLines   = Array.prototype.slice.call(mmBody.querySelectorAll('.mm-line'));
+var mmViewport = document.getElementById('mmViewport');
+var varBody   = document.getElementById('varBody');
+var fileBody  = document.getElementById('fileBody');
+var consoleBody = document.getElementById('consoleBody');
+var explainBody = document.getElementById('explainBody');
+var evalBody  = document.getElementById('evalBody');
+
+var VAR_ROWS = [
+  { key:'func',      name:'当前函数',                  kind:'k-ctx'   },
+  { key:'fp',        name:'fp（文件指针）',             kind:'k-fp'    },
+  { key:'fpState',   name:'文件 a.txt 状态',            kind:'k-state' },
+  { key:'fileLen',   name:'文件大小',                   kind:'k-size'  },
+  { key:'pos',       name:'文件读写位置',                kind:'k-pos'   },
+  { key:'str',       name:'str（源字符串）',            kind:'k-str'   },
+  { key:'strLen',    name:'strlen(str)',                kind:'k-len'   },
+  { key:'writeLen',  name:'strlen(str)+1',              kind:'k-len'   },
+  { key:'buf',       name:'buf[20]（读取缓冲区）',       kind:'k-buf'   },
+  { key:'fwriteRet', name:'fwrite 返回值',              kind:'k-ret'   },
+  { key:'freadRet',  name:'fread 返回值',               kind:'k-ret'   },
+  { key:'ret',       name:'返回值',                     kind:'k-ret'   }
+];
+
+function varText(key, s){
+  if (!s) return '—';
+  switch (key){
+    case 'func':      return s.func;
+    case 'fp':        return s.fp;
+    case 'fpState':   return s.fpState;
+    case 'fileLen':
+      if (!s.fileOpen && !s.fileClosed) return '—';
+      return s.fileChars.length + ' 字节';
+    case 'pos':
+      if (!s.fileOpen && !s.fileClosed) return '—';
+      return s.pos + ' / ' + s.fileChars.length;
+    case 'str':       return s.str;
+    case 'strLen':    return s.strLen;
+    case 'writeLen':  return s.writeLen;
+    case 'buf':       return s.buf;
+    case 'fwriteRet': return s.fwriteRet;
+    case 'freadRet':  return s.freadRet;
+    case 'ret':       return (s.ret === '—' ? '—' : String(s.ret));
+  }
+  return '—';
+}
+
+function buildVarTable(){
+  var h = '';
+  for (var w = 0; w < VAR_ROWS.length; w++){
+    var r = VAR_ROWS[w];
+    h += '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+           '<span class="var-name">' + r.name + '</span>' +
+           '<span class="var-value dim">—</span>' +
+         '</div>';
+  }
+  varBody.innerHTML = h;
+}
+
+function updateVars(step, prev){
+  var s = step ? step.s : null;
+  for (var w = 0; w < VAR_ROWS.length; w++){
+    var r = VAR_ROWS[w];
+    var row = varBody.querySelector('.var-row[data-key="' + r.key + '"]');
+    if (!row) continue;
+    var valEl = row.querySelector('.var-value');
+    var val = varText(r.key, s);
+    var old = prev ? varText(r.key, prev.s) : '—';
+
+    if (valEl.textContent !== val) {
+      valEl.textContent = val;
+      valEl.title = val;
+      if (val === '—') valEl.classList.add('dim');
+      else valEl.classList.remove('dim');
+      valEl.classList.remove('flash');
+      void valEl.offsetWidth;
+      valEl.classList.add('flash');
+      if (prev && old !== val){
+        row.classList.add('changed');
+        (function(rr){
+          window.setTimeout(function(){ rr.classList.remove('changed'); }, 750);
+        })(row);
+      }
+    }
+  }
+}
+
+/* 文件可视化 */
+function esc(str){
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderFile(s){
+  var h = '';
+  h += '<div class="ll-sec-title"><span class="dot dot-h"></span>' +
+       '文件内容　<span style="color:#7dd3fc">"a.txt"</span>' +
+       '　<span style="color:#5f7796">（程序在当前工作目录创建的文件，最终 ' +
+       WRITE_LEN + ' 字节）</span></div>';
+
+  if (!s || (!s.fileOpen && !s.fileClosed)){
+    h += '<div class="fc-note">文件尚未打开/创建，内容暂不可见…</div>';
+    return h;
+  }
+
+  if (s.fileChars.length === 0){
+    h += '<div class="fc-note">文件已创建，当前 <b>0</b> 字节，读写位置 <b>0</b>（等待写入…）</div>';
+    return h;
+  }
+
+  h += '<div class="fc-track">';
+  for (var i = 0; i < s.fileChars.length; i++){
+    var c = s.fileChars[i];
+    var cls = 'fc-cell';
+    if (i < s.pos) cls += ' read';
+    if (i === s.pos && s.fileOpen) cls += ' cur';
+    if (c.code === 0) cls += ' null-byte';
+    h += '<div class="' + cls + '">' +
+           '<div class="fc-ch">' + esc(c.label) + '</div>' +
+           '<div class="fc-code">' + c.code + '</div>' +
+         '</div>';
+  }
+  var eofCls = 'fc-cell fc-eof';
+  if (s.pos >= s.fileChars.length && s.fileOpen) eofCls += ' cur';
+  h += '<div class="' + eofCls + '">' +
+         '<div class="fc-ch">EOF</div>' +
+         '<div class="fc-code">-1</div>' +
+       '</div>';
+  h += '</div>';
+
+  var note = '';
+  if (s.fileOpen) {
+    note = '文件大小：<b>' + s.fileChars.length + '</b> 字节　│　' +
+           '读写位置：<b>' + s.pos + '</b>　│　' +
+           '绿色 = 已写入/已读出的字节　│　金色 = 当前位置　│　' +
+           '<span style="color:#facc15">␀ = 字符串结束符 \\0</span>';
+  } else if (s.fileClosed) {
+    var content = s.fileChars.map(function (cc) {
+      return cc.label === '␣' ? ' ' : (cc.label === '␀' ? '\\0' : cc.label);
+    }).join('');
+    note = '文件共 <b>' + s.fileChars.length + '</b> 字节，内容：<b>"' +
+           esc(content) + '"</b>（末尾的 \\0 是字符串结束符）　' +
+           '<span class="fc-closed">（fclose 已执行，fp 已失效）</span>';
+  }
+  if (note) h += '<div class="fc-note">' + note + '</div>';
+
+  return h;
+}
+
+/* 控制台 */
+function renderConsole(s){
+  consoleBody.innerHTML = '';
+  if (!s){
+    var d0 = document.createElement('div');
+    d0.className = 'out-line out-wait';
+    d0.textContent = '（等待程序开始运行）';
+    consoleBody.appendChild(d0);
+    return;
+  }
+  for (var i = 0; i < s.out.length; i++){
+    var d = document.createElement('div');
+    d.className = 'out-line ' + s.out[i].c;
+    d.textContent = s.out[i].t;
+    consoleBody.appendChild(d);
+  }
+  if (!s.done){
+    var dw = document.createElement('div');
+    dw.className = 'out-line out-wait';
+    dw.innerHTML = '&nbsp;<span class="cursor">▊</span>';
+    consoleBody.appendChild(dw);
+  } else {
+    var sep = document.createElement('div');
+    sep.className = 'out-line out-note';
+    sep.textContent = '────────  程序运行结果（终端屏幕）  ────────';
+    consoleBody.appendChild(sep);
+
+    var ln = document.createElement('div');
+    ln.className = 'out-line out-final';
+    ln.textContent = 'this is a test';
+    consoleBody.appendChild(ln);
+
+    var sep2 = document.createElement('div');
+    sep2.className = 'out-line out-note';
+    sep2.textContent = '──────────────────────────────────────────';
+    consoleBody.appendChild(sep2);
+  }
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+/* 求值链 */
+function renderEval(s){
+  if (!s || !s.chain || !s.chain.length){
+    evalBody.innerHTML = '<div class="chain-empty">（本步没有可展示的求值动作）</div>';
+    return;
+  }
+  var h = '';
+  for (var i = 0; i < s.chain.length; i++){
+    var isLast = (i === s.chain.length - 1);
+    h += '<div class="chain-item' + (isLast ? ' last' : '') + '">' +
+         esc(s.chain[i].t) + '</div>';
+  }
+  evalBody.innerHTML = h;
+  evalBody.scrollTop = evalBody.scrollHeight;
+}
+
+/* 代码高亮 */
+function updateCode(step){
+  var activeLine = step ? step.line : null;
+  var tone = step ? (step.tone || 'blue') : 'blue';
+  var t = TONES[tone] || TONES.blue;
+
+  for (var w = 0; w < codeLines.length; w++){
+    var el = codeLines[w];
+    var n = Number(el.getAttribute('data-line'));
+    if (activeLine !== null && n === activeLine){
+      el.classList.add('active');
+      el.style.setProperty('--tone', t[0]);
+      el.style.setProperty('--tone-bg', t[1]);
+    } else {
+      el.classList.remove('active');
+    }
+  }
+  for (var q = 0; q < mmLines.length; q++){
+    var me = mmLines[q];
+    if (activeLine !== null && Number(me.getAttribute('data-line')) === activeLine){
+      me.classList.add('active');
+    } else {
+      me.classList.remove('active');
+    }
+  }
+  centerActiveLine();
+}
+
+function centerActiveLine(){
+  var el = codeInner.querySelector('.code-line.active');
+  if (!el) return;
+  var target = el.offsetTop - codeLayer.clientHeight / 2 + el.offsetHeight / 2;
+  if (target < 0) target = 0;
+  var max = codeInner.scrollHeight - codeLayer.clientHeight;
+  if (target > max) target = max;
+  codeLayer.scrollTo({ top: target, behavior: 'smooth' });
+}
+
+function updateMiniViewport(){
+  var totalH = codeInner.scrollHeight;
+  if (!totalH) return;
+  var viewH = codeLayer.clientHeight;
+  var ratio = mmBody.scrollHeight / totalH;
+  mmViewport.style.top = (codeLayer.scrollTop * ratio) + 'px';
+  mmViewport.style.height = Math.max(12, viewH * ratio) + 'px';
+}
+
+codeLayer.addEventListener('scroll', updateMiniViewport);
+window.addEventListener('resize', updateMiniViewport);
+
+mmBody.addEventListener('click', function(e){
+  var rect = mmBody.getBoundingClientRect();
+  var y = e.clientY - rect.top + mmBody.scrollTop;
+  var ratio = codeInner.scrollHeight / mmBody.scrollHeight;
+  codeLayer.scrollTo({
+    top: y * ratio - codeLayer.clientHeight / 2,
+    behavior: 'smooth'
+  });
+});
+
+/* ============================================================
+   七、总渲染
+   ============================================================ */
+var current = -1;
+var playing = false;
+var timer = null;
+var speed = 500;
+
+function render(){
+  var step = (current >= 0) ? STEPS[current] : null;
+  var prev = (current > 0) ? STEPS[current - 1] : null;
+
+  updateCode(step);
+  updateVars(step, prev);
+  fileBody.innerHTML = renderFile(step ? step.s : null);
+  renderConsole(step ? step.s : null);
+  renderEval(step ? step.s : null);
+
+  if (step){
+    explainBody.innerHTML =
+      '<span class="ex-line">第 ' + step.line + ' 行</span>' +
+      '<strong>' + step.title + '</strong> —— ' + step.desc;
+  } else {
+    explainBody.innerHTML =
+      '<em>点击「播放」或「下一步」，开始逐句执行这个文件块读写程序。<br><br>' +
+      '<b>本程序演示：把一整块内存（含 <code>\\0</code>）写进文件，再原样读回来显示。</b><br>' +
+      '· <code>fopen("a.txt","w+")</code> 创建文件并<b>判空</b>；<br>' +
+      '· <code>fwrite(str, 1, 15, fp)</code> 写入 15 字节（含 <code>\\0</code>）；<br>' +
+      '· <code>fseek(fp, 0, 0)</code> 把位置拨回文件头（0 就是 <code>SEEK_SET</code>）；<br>' +
+      '· <code>fread(buf, 15, 1, fp)</code> 读回 15 字节到 <code>buf</code>；<br>' +
+      '· <code>printf("%s\\n", buf)</code> 显示字符串（靠 <code>\\0</code> 把关）；<br>' +
+      '· <code>fclose(fp)</code> 关闭文件，<code>return 0</code> 结束。<br><br>' +
+      '本例数据：<br>' +
+      '· <code>str</code> = <b>"this is a test"</b>，<code>strlen(str)</code> = 14<br>' +
+      '· <code>strlen(str)+1</code> = <b>15</b>（含 <code>\\0</code>）<br>' +
+      '· 文件内容 = 14 个可见字符 + 1 个 <code>\\0</code><br>' +
+      '共 ' + STEPS.length + ' 个执行步骤。<br>' +
+      '<b>左侧代码会自动滚动到当前行；右侧文件卡片会实时标出写入、回卷、读取的全过程。</b></em>';
+  }
+
+  var topTitle = document.querySelector('#p-top .p-title');
+  if (topTitle){
+    topTitle.textContent = 'C 文件块读写 · 步骤 ' +
+      (current >= 0 ? (current + 1) : '—') + ' / ' + STEPS.length;
+  }
+
+  document.getElementById('btnPrev').disabled = (current < 0);
+  document.getElementById('btnNext').disabled = (current >= STEPS.length - 1);
+
+  window.requestAnimationFrame(updateMiniViewport);
+}
+
+/* ============================================================
+   八、播放控制
+   ============================================================ */
+var btnPlay = document.getElementById('btnPlay');
+var btnPrev = document.getElementById('btnPrev');
+var btnNext = document.getElementById('btnNext');
+var btnReset = document.getElementById('btnReset');
+var btnFull = document.getElementById('btnFull');
+var btnPanels = document.getElementById('btnPanels');
+var btnMini = document.getElementById('btnMini');
+var btnLayout = document.getElementById('btnLayout');
+var btnPrompt = document.getElementById('btnPrompt');
+var speedInput = document.getElementById('speed');
+var speedLabel = document.getElementById('speedLabel');
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+  if (playing) btnPlay.classList.add('playing');
+  else btnPlay.classList.remove('playing');
+}
+
+function tick(){
+  if (current >= STEPS.length - 1){ pause(); return; }
+  current += 1;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){
+  pause();
+  if (current < STEPS.length - 1){ current += 1; render(); }
+}
+
+function prevStep(){
+  pause();
+  if (current > -1){ current -= 1; render(); }
+}
+
+function resetAll(){
+  pause();
+  current = -1;
+  codeLayer.scrollTop = 0;
+  render();
+}
+
+btnPlay.addEventListener('click', function(){ if (playing) pause(); else play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+btnFull.addEventListener('click', function(){
+  if (!document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(function(){});
+  } else {
+    document.exitFullscreen().catch(function(){});
+  }
+});
+
+btnLayout.addEventListener('click', function(){
+  resetLayout();
+  render();
+});
+
+var panelsHidden = false;
+btnPanels.addEventListener('click', function(){
+  panelsHidden = !panelsHidden;
+  panels.forEach(function(p){
+    if (p.id === 'p-prompt') return;
+    p.style.display = panelsHidden ? 'none' : 'flex';
+  });
+});
+
+var miniVisible = true;
+btnMini.addEventListener('click', function(){
+  var p = document.getElementById('p-mini');
+  miniVisible = !miniVisible;
+  p.style.display = miniVisible ? 'flex' : 'none';
+});
+
+btnPrompt.addEventListener('click', function(){
+  var p = document.getElementById('p-prompt');
+  if (p.style.display === 'none' || !p.style.display){
+    p.style.display = 'flex';
+    activate(p);
+  } else {
+    p.style.display = 'none';
+  }
+});
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if (playing){
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+document.addEventListener('keydown', function(e){
+  var tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+  if (e.code === 'Space'){
+    e.preventDefault();
+    if (playing) pause(); else play();
+  } else if (e.code === 'ArrowRight'){
+    e.preventDefault(); nextStep();
+  } else if (e.code === 'ArrowLeft'){
+    e.preventDefault(); prevStep();
+  } else if (e.code === 'KeyR'){
+    e.preventDefault(); resetAll();
+  } else if (e.code === 'KeyF'){
+    e.preventDefault();
+    if (!document.fullscreenElement){
+      document.documentElement.requestFullscreen().catch(function(){});
+    } else {
+      document.exitFullscreen().catch(function(){});
+    }
+  } else if (e.code === 'KeyM'){
+    e.preventDefault();
+    var p = document.getElementById('p-mini');
+    miniVisible = !miniVisible;
+    p.style.display = miniVisible ? 'flex' : 'none';
+  } else if (e.code === 'KeyH'){
+    e.preventDefault();
+    panelsHidden = !panelsHidden;
+    panels.forEach(function(p){
+      if (p.id === 'p-prompt') return;
+      p.style.display = panelsHidden ? 'none' : 'flex';
+    });
+  }
+});
+
+resetLayout();
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+render();
+window.addEventListener('load', function(){
+  window.requestAnimationFrame(updateMiniViewport);
+});
+window.setTimeout(updateMiniViewport, 200);
+
+})();
+</script>
+</body>
+</html>

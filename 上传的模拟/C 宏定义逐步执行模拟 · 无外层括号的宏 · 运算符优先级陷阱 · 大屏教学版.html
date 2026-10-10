@@ -1,0 +1,1559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 宏定义逐步执行模拟 · 无外层括号的宏 · 运算符优先级陷阱 · 大屏教学版</title>
+<style>
+/* ============================================================
+   全局变量 —— 字号硬指标（1920×1080 后排可读）
+   ============================================================ */
+:root{
+  --code-font: clamp(40px, 3.8vw, 88px);
+  --ln-font:   clamp(28px, 2.2vw, 52px);
+  --out-font:  clamp(30px, 2.4vw, 60px);
+  --var-font:  clamp(22px, 1.5vw, 38px);
+  --var-num:   clamp(28px, 2vw, 52px);
+  --macro-font:clamp(22px, 1.5vw, 38px);
+  --exp-font:  clamp(20px, 1.35vw, 34px);
+  --explain-font: clamp(22px, 1.5vw, 38px);
+  --btn-font:  clamp(18px, 1.2vw, 30px);
+  --title-font:clamp(20px, 1.3vw, 32px);
+
+  --bg:#0d1117;
+  --panel-bg: rgba(13,20,34,.84);
+  --border:#1e2f49;
+  --text:#dce8f8;
+  --muted:#7d93b3;
+  --accent:#38bdf8;
+  --green:#4ade80;
+  --amber:#fbbf24;
+  --pink:#f472b6;
+  --purple:#c084fc;
+  --teal:#2dd4bf;
+  --orange:#fb923c;
+  --gold:#facc15;
+  --red:#f87171;
+  --rose:#fb7185;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;overflow:hidden;}
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+}
+
+/* ============================================================
+   全屏代码区（不透明，永远是视觉主体）
+   ============================================================ */
+#codeScroll{
+  position:fixed; inset:0;
+  overflow:auto;
+  background:#0d1117;
+  padding:110px 40px 220px 40px;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  line-height:1.45;
+  scrollbar-width:thin;
+  scrollbar-color:#334155 transparent;
+  z-index:1;
+}
+#codeScroll::-webkit-scrollbar{width:14px;height:14px;}
+#codeScroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:14px;}
+#codeScroll::-webkit-scrollbar-track{background:#0a1017;}
+
+.code-line{
+  display:flex; align-items:flex-start;
+  gap:.55em;
+  width:max-content; min-width:100%;
+  padding:.04em .55em .04em .2em;
+  border-left:8px solid transparent;
+  border-radius:10px;
+  white-space:pre;
+  transition:background .3s,border-color .3s,box-shadow .3s;
+}
+.code-line .ln{
+  flex:0 0 auto; width:2.4ch; text-align:right;
+  color:#3f5a7d; font-size:var(--ln-font);
+  user-select:none; padding-top:.18em;
+}
+.code-line .src{flex:0 0 auto;}
+
+/* 当前行通用高亮 */
+.code-line.active{
+  background:linear-gradient(90deg,rgba(56,189,248,.26),rgba(56,189,248,0));
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 2px rgba(56,189,248,.28);
+}
+.code-line.active .ln{color:var(--accent);font-weight:700;}
+.code-line.active .src{color:#ffffff;}
+
+/* 分色高亮 */
+.code-line.pp-hi.active{
+  background:linear-gradient(90deg,rgba(192,132,252,.32),rgba(192,132,252,0));
+  border-left-color:var(--purple);
+  box-shadow:inset 0 0 0 2px rgba(192,132,252,.32);
+}
+.code-line.pp-hi.active .ln{color:var(--purple);}
+.code-line.green-hi.active{
+  background:linear-gradient(90deg,rgba(74,222,128,.30),rgba(74,222,128,0));
+  border-left-color:var(--green);
+  box-shadow:inset 0 0 0 2px rgba(74,222,128,.30);
+}
+.code-line.green-hi.active .ln{color:var(--green);}
+.code-line.out-hi.active{
+  background:linear-gradient(90deg,rgba(45,212,191,.32),rgba(45,212,191,0));
+  border-left-color:var(--teal);
+  box-shadow:inset 0 0 0 2px rgba(45,212,191,.32);
+}
+.code-line.out-hi.active .ln{color:var(--teal);}
+.code-line.mv-hi.active{
+  background:linear-gradient(90deg,rgba(244,114,182,.32),rgba(244,114,182,0));
+  border-left-color:var(--pink);
+  box-shadow:inset 0 0 0 2px rgba(244,114,182,.32);
+}
+.code-line.mv-hi.active .ln{color:var(--pink);}
+.code-line.gold-hi.active{
+  background:linear-gradient(90deg,rgba(250,204,21,.30),rgba(250,204,21,0));
+  border-left-color:var(--gold);
+  box-shadow:inset 0 0 0 2px rgba(250,204,21,.30);
+}
+.code-line.gold-hi.active .ln{color:var(--gold);}
+.code-line.rose-hi.active{
+  background:linear-gradient(90deg,rgba(251,113,133,.34),rgba(251,113,133,0));
+  border-left-color:var(--rose);
+  box-shadow:inset 0 0 0 2px rgba(251,113,133,.34);
+}
+.code-line.rose-hi.active .ln{color:var(--rose);}
+
+/* 语法着色 */
+.cmt{color:#5b6f8c;font-style:italic;}
+.fn{color:var(--accent);}
+.kw{color:var(--pink);font-weight:600;}
+.num{color:var(--amber);}
+.ty{color:var(--teal);font-weight:600;}
+.str{color:var(--green);}
+.pp{color:var(--purple);font-weight:600;}
+.macro-n{color:var(--rose);font-weight:700;}
+
+/* ============================================================
+   悬浮面板通用
+   ============================================================ */
+.panel{
+  position:fixed;
+  background:var(--panel-bg);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  border:1px solid var(--border);
+  border-radius:16px;
+  box-shadow:0 14px 44px rgba(0,0,0,.6);
+  display:flex; flex-direction:column;
+  overflow:hidden;
+  z-index:10;
+  transition:box-shadow .2s,border-color .2s,opacity .2s;
+}
+.panel.hidden{display:none !important;}
+.panel.top{
+  border-color:var(--accent);
+  box-shadow:0 0 0 2px rgba(56,189,248,.42),0 20px 56px rgba(0,0,0,.7);
+}
+.p-head{
+  flex:0 0 auto;
+  display:flex; align-items:center; gap:8px;
+  padding:8px 12px;
+  background:linear-gradient(180deg,rgba(30,47,73,.85),rgba(18,28,46,.85));
+  border-bottom:1px solid var(--border);
+  cursor:move;
+  user-select:none;
+  touch-action:none;
+}
+.p-title{
+  font-size:var(--title-font);
+  font-weight:700; letter-spacing:.04em;
+  color:#9fd8ff;
+  white-space:nowrap;
+}
+.p-close{
+  margin-left:auto;
+  flex:0 0 auto;
+  width:44px; height:44px;
+  min-width:44px;
+  border-radius:10px;
+  border:1px solid #33507d;
+  background:#182741; color:#c7d7ee;
+  font-size:26px; line-height:1;
+  cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:background .15s,color .15s;
+}
+.p-close:hover{background:#7f1d1d;color:#fff;border-color:#ef4444;}
+.p-body{
+  flex:1 1 auto; min-height:0; min-width:0;
+  overflow:auto;
+  padding:12px 14px;
+  scrollbar-width:thin;
+  scrollbar-color:#334155 transparent;
+}
+.p-body::-webkit-scrollbar{width:10px;height:10px;}
+.p-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+.p-resize{
+  position:absolute; right:0; bottom:0;
+  width:26px; height:26px;
+  cursor:nwse-resize;
+  touch-action:none;
+  background:
+    linear-gradient(135deg,transparent 0 46%,#4a6588 46% 54%,transparent 54%),
+    linear-gradient(135deg,transparent 0 68%,#4a6588 68% 76%,transparent 76%);
+  opacity:.85;
+}
+.p-resize:hover{opacity:1;background-color:rgba(56,189,248,.18);}
+
+/* ---------- 面板默认停靠位置 ---------- */
+#p-ctrl   { left:50%; top:14px; transform:translateX(-50%); }
+#p-macro  { left:14px; top:14px; max-width:640px; }
+#p-vars   { left:14px; top:50%; transform:translateY(-50%); }
+#p-expand { right:14px; top:14px; max-width:760px; }
+#p-out    { right:14px; top:52%; max-width:760px; }
+#p-map    { right:14px; bottom:14px; }
+#p-expl   { left:50%; bottom:14px; transform:translateX(-50%); max-width:min(1200px,72vw); }
+
+/* ============================================================
+   控制栏
+   ============================================================ */
+.ctrl-row{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:10px 14px;
+}
+button.ctl{
+  font:inherit;
+  font-size:var(--btn-font);
+  font-weight:600;
+  padding:.45em 1em;
+  min-height:60px;
+  border-radius:12px;
+  border:1px solid var(--border);
+  background:#182741; color:var(--text);
+  cursor:pointer;
+  transition:background .15s,border-color .15s,transform .1s;
+  white-space:nowrap;
+  touch-action:manipulation;
+}
+button.ctl:hover:not(:disabled){background:#213352;border-color:#33507d;}
+button.ctl:active:not(:disabled){transform:translateY(2px);}
+button.ctl:disabled{opacity:.32;cursor:not-allowed;}
+button.ctl.primary{
+  background:linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#38bdf8;color:#04121f;font-weight:800;
+}
+button.ctl.primary.playing{
+  background:linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24;color:#1a1200;
+}
+.speed-box{
+  display:flex; align-items:center; gap:10px;
+  font-size:var(--btn-font); color:var(--muted);
+}
+.speed-box input[type=range]{
+  width:180px; height:34px; accent-color:var(--accent); cursor:pointer;
+}
+.speed-box b{color:var(--accent);min-width:3.4em;display:inline-block;font-variant-numeric:tabular-nums;}
+
+/* ============================================================
+   宏定义条
+   ============================================================ */
+.macro-strip{display:flex;flex-wrap:wrap;gap:12px;}
+.macro-chip{
+  min-width:210px; max-width:340px;
+  background:#0a1322;
+  border:2px solid #1b293f;
+  border-radius:14px;
+  padding:12px 16px;
+  text-align:center;
+  font-family:ui-monospace,Consolas,monospace;
+  transition:all .3s;
+}
+.macro-chip .mn{
+  display:block; font-size:var(--macro-font); font-weight:800; line-height:1.3;
+  color:#fda4af;
+}
+.macro-chip .md{
+  display:block; font-size:calc(var(--macro-font) * .82);
+  color:#cbd5e1; margin-top:6px; word-break:break-all; line-height:1.4;
+}
+.macro-chip .tag{
+  display:inline-block; margin-top:8px;
+  font-size:calc(var(--macro-font) * .68);
+  padding:2px 10px; border-radius:8px;
+  background:rgba(251,113,133,.2); color:#fda4af;
+  font-family:inherit;
+}
+.macro-chip.cM{border-color:rgba(251,113,133,.6);}
+.macro-chip.is-active{
+  box-shadow:0 0 0 4px #fff,0 0 28px rgba(251,113,133,.85);
+  transform:scale(1.06);
+}
+.macro-chip.is-dead{opacity:.28;}
+.macro-chip.is-dead .mn{text-decoration:line-through;}
+
+.legend{
+  margin-top:14px; display:flex; flex-wrap:wrap; gap:10px;
+  font-size:calc(var(--macro-font) * .7); color:#8ba3c4;
+}
+.legend span{display:inline-flex;align-items:center;gap:6px;}
+.legend i{width:16px;height:16px;border-radius:4px;display:inline-block;}
+
+/* ============================================================
+   变量卡片
+   ============================================================ */
+.var-cards{
+  display:grid;
+  grid-template-columns:repeat(5,minmax(80px,1fr));
+  gap:12px;
+}
+.var-card{
+  background:#0d1728;
+  border:2px solid #1b293f;
+  border-radius:14px;
+  padding:12px 10px;
+  font-family:ui-monospace,Consolas,monospace;
+  text-align:center;
+  transition:all .3s;
+}
+.var-card .vn{font-size:var(--var-font);font-weight:800;color:#7d93b3;}
+.var-card .vt{font-size:calc(var(--var-font)*.6);color:#4a6488;margin-left:6px;}
+.var-card .vv{
+  font-size:var(--var-num);font-weight:800;color:#3d5474;
+  display:block;margin-top:6px;word-break:break-all;line-height:1.15;
+}
+.var-card.has{border-color:rgba(56,189,248,.6);background:#0f1e33;}
+.var-card.has .vn{color:#7dd3fc;}
+.var-card.has .vv{color:#7dd3fc;text-shadow:0 0 14px rgba(56,189,248,.6);}
+.var-card.is-active{
+  box-shadow:0 0 0 4px #fff,0 0 30px rgba(56,189,248,.85);
+  transform:scale(1.1);
+}
+.var-card.changed .vv{animation:flashVar .7s ease-out;}
+@keyframes flashVar{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.4);color:#fff;text-shadow:0 0 22px #fff;}
+  100%{transform:scale(1);}
+}
+
+/* ============================================================
+   宏展开 / 求值链
+   ============================================================ */
+.expand-box{
+  background:#050c17;
+  border:1px solid #16233a;
+  border-radius:12px;
+  padding:14px 16px;
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:var(--exp-font);
+  line-height:1.85;
+  white-space:pre;
+}
+.exp-line{color:#9fd8ff;transition:color .3s;}
+.exp-line.exp-warn{color:#fcd34d;}
+.exp-line.exp-final{
+  color:var(--gold);font-weight:800;
+  text-shadow:0 0 16px rgba(250,204,21,.55);
+}
+.exp-empty{color:#3d5474;}
+
+/* ============================================================
+   控制台
+   ============================================================ */
+.console{
+  background:#050c17;
+  border:1px solid #16233a;
+  border-radius:12px;
+  padding:12px 16px;
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);
+  line-height:1.6;
+  white-space:pre;
+  color:#86efac;
+}
+.out-line{white-space:pre;min-height:1.25em;}
+.out-empty{color:#3d5474;}
+.out-note{color:#7dd3fc;}
+.out-ok{color:#86efac;}
+.out-final{color:#facc15;font-weight:800;}
+.out-wait{color:#3d5474;}
+.out-info{color:#c084fc;}
+.out-warn{color:#fbbf24;font-weight:800;}
+.out-out{color:#f472b6;font-weight:800;}
+.cursor{
+  display:inline-block;color:#4ade80;
+  animation:blink 1s step-end infinite;margin-left:2px;
+}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+/* ============================================================
+   解说条
+   ============================================================ */
+.explain{
+  font-size:var(--explain-font);
+  line-height:1.75;
+  color:#b8c9e0;
+}
+.explain .ex-line{
+  display:inline-block;margin-right:12px;padding:3px 14px;
+  border-radius:10px;background:rgba(56,189,248,.18);
+  color:var(--accent);font-weight:800;vertical-align:middle;
+  font-size:calc(var(--explain-font) * .86);
+}
+.explain .ex-line.pp{background:rgba(192,132,252,.26);color:var(--purple);}
+.explain .ex-line.mv{background:rgba(244,114,182,.24);color:var(--pink);}
+.explain .ex-line.out{background:rgba(45,212,191,.24);color:var(--teal);}
+.explain .ex-line.green{background:rgba(74,222,128,.24);color:var(--green);}
+.explain .ex-line.gold{background:rgba(250,204,21,.26);color:var(--gold);}
+.explain .ex-line.rose{background:rgba(251,113,133,.28);color:var(--rose);}
+.explain strong{color:#eaf3ff;}
+.explain code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(148,163,184,.18);border-radius:6px;
+  padding:1px 8px;color:#e2e8f0;
+}
+.explain .tip{
+  display:block;margin-top:12px;padding:12px 16px;border-radius:12px;
+  background:rgba(45,212,191,.12);border-left:6px solid var(--teal);
+  color:#bff5ec;font-size:calc(var(--explain-font)*.94);
+}
+.explain .warn{
+  display:block;margin-top:12px;padding:12px 16px;border-radius:12px;
+  background:rgba(251,191,36,.14);border-left:6px solid var(--amber);
+  color:#ffe6b0;font-size:calc(var(--explain-font)*.94);
+}
+.explain .win{
+  display:block;margin-top:12px;padding:12px 16px;border-radius:12px;
+  background:rgba(250,204,21,.16);border-left:6px solid var(--gold);
+  color:#fff3c4;font-size:calc(var(--explain-font)*.96);font-weight:700;
+}
+.explain .rose-box{
+  display:block;margin-top:12px;padding:12px 16px;border-radius:12px;
+  background:rgba(251,113,133,.18);border-left:6px solid var(--rose);
+  color:#fecdd3;font-size:calc(var(--explain-font)*.96);
+}
+
+/* ============================================================
+   缩略图（VSCode minimap）
+   ============================================================ */
+#p-map .p-body{padding:8px 10px;}
+.map-wrap{
+  position:relative;
+  background:#050c17;
+  border:1px solid #16233a;
+  border-radius:10px;
+  padding:6px 8px;
+  cursor:pointer;
+  overflow:hidden;
+}
+.map-line{
+  display:flex; gap:4px;
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:11px; line-height:1.55;
+  white-space:pre;
+  overflow:hidden;
+  color:#7f93ad;
+  border-radius:4px;
+  padding:0 2px;
+  transition:background .25s,color .25s;
+}
+.map-line .map-ln{
+  flex:0 0 14px; text-align:right; color:#3f5a7d;
+}
+.map-line .map-src{flex:1 1 auto;overflow:hidden;}
+.map-line.map-active{background:rgba(56,189,248,.3);color:#eaf3ff;}
+.map-line.map-active.pp-map{background:rgba(192,132,252,.4);}
+.map-line.map-active.green-map{background:rgba(74,222,128,.38);}
+.map-line.map-active.out-map{background:rgba(45,212,191,.4);}
+.map-line.map-active.mv-map{background:rgba(244,114,182,.4);}
+.map-line.map-active.gold-map{background:rgba(250,204,21,.38);}
+.map-viewport{
+  position:absolute;
+  left:6px; right:6px; top:0;
+  border:2px solid rgba(56,189,248,.9);
+  border-radius:6px;
+  background:rgba(56,189,248,.10);
+  pointer-events:none;
+  transition:top .08s linear,height .12s ease;
+  box-shadow:0 0 16px rgba(56,189,248,.5) inset;
+}
+
+/* ============================================================
+   信息条
+   ============================================================ */
+.info-strip{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:8px 12px;
+  border-bottom:1px solid var(--border);
+  font-family:ui-monospace,Consolas,monospace;
+}
+.info-tag{
+  font-size:calc(var(--var-font)*.72);
+  padding:3px 12px; border-radius:8px;
+  background:rgba(148,163,184,.16); color:#9db1cb;
+  white-space:nowrap;
+}
+.info-val{
+  font-size:var(--var-font); font-weight:800; color:var(--teal);
+  white-space:nowrap;
+}
+.info-val.fn{color:var(--accent);}
+.info-val.gold{color:var(--gold);}
+.info-val.rose{color:var(--rose);}
+.info-sep{color:#2c3f5e;}
+
+/* ============================================================
+   小屏兜底
+   ============================================================ */
+@media (max-width:1180px){
+  :root{
+    --code-font:clamp(20px,4.4vw,44px);
+    --out-font:clamp(16px,3vw,32px);
+  }
+  #codeScroll{padding:150px 16px 260px 16px;}
+  .var-cards{grid-template-columns:repeat(3,minmax(60px,1fr));}
+}
+</style>
+</head>
+<body>
+
+<!-- ================= 全屏代码区 ================= -->
+<div id="codeScroll"></div>
+
+<!-- ================= 控制栏 ================= -->
+<div class="panel" id="p-ctrl">
+  <div class="p-head">
+    <span class="p-title">▶ 播放控制</span>
+    <button class="p-close" data-close="p-ctrl" title="关闭">×</button>
+  </div>
+  <div class="ctrl-row">
+    <button class="ctl" id="btnReset">⟲ 重置</button>
+    <button class="ctl" id="btnPrev">◀ 上一步</button>
+    <button class="ctl primary" id="btnPlay">▶ 自动播放</button>
+    <button class="ctl" id="btnNext">下一步 ▶</button>
+    <span class="speed-box">速度
+      <input type="range" id="speed" min="120" max="2400" step="60" value="900">
+      <b id="speedLabel">0.90s</b>
+    </span>
+    <button class="ctl" id="btnFull">⛶ 全屏</button>
+    <button class="ctl" id="btnMap">▤ 缩略图</button>
+    <button class="ctl" id="btnPanels">▣ 面板</button>
+    <button class="ctl" id="btnLayout">↺ 重置布局</button>
+    <span class="info-tag" id="stepCounter" style="font-size:calc(var(--btn-font)*.85)">步骤 — / 16</span>
+  </div>
+</div>
+
+<!-- ================= 宏定义条 ================= -->
+<div class="panel" id="p-macro">
+  <div class="p-head">
+    <span class="p-title">宏定义环境</span>
+    <button class="p-close" data-close="p-macro" title="关闭">×</button>
+  </div>
+  <div class="info-strip">
+    <span class="info-tag">当前行</span><span class="info-val fn" id="lineVal">—</span>
+    <span class="info-sep">│</span>
+    <span class="info-tag">阶段</span><span class="info-val" id="phaseVal">—</span>
+    <span class="info-sep">│</span>
+    <span class="info-tag">宏环境</span><span class="info-val gold" id="macroVal">0 / 1</span>
+    <span class="info-sep">│</span>
+    <span class="info-tag">已初始化变量</span><span class="info-val rose" id="initVal">0 / 5</span>
+  </div>
+  <div class="p-body">
+    <div class="macro-strip" id="macroStrip"></div>
+    <div class="legend">
+      <span><i style="background:#fb7185"></i>函数宏 M（缺外层括号）</span>
+      <span><i style="background:#c084fc"></i>预处理期</span>
+      <span><i style="background:#4ade80"></i>运行期</span>
+    </div>
+    <div style="margin-top:14px;font-size:calc(var(--macro-font)*.74);color:#8ba3c4;line-height:1.7;font-family:ui-monospace,Consolas,monospace;">
+      <b style="color:#facc15">平台模型</b>：int = 4 字节 / 对齐 4；5 个 int 共 <b style="color:#facc15">20 字节</b>栈空间；字节序 = 小端序；<br>
+      <b style="color:#fb7185">宏是纯文本替换</b>，在预处理阶段完成，运行期已经不存在。
+    </div>
+  </div>
+</div>
+
+<!-- ================= 变量卡片 ================= -->
+<div class="panel" id="p-vars">
+  <div class="p-head">
+    <span class="p-title">局部变量（栈）</span>
+    <button class="p-close" data-close="p-vars" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <div class="var-cards" id="varCards"></div>
+    <div style="margin-top:12px;font-size:calc(var(--macro-font)*.72);color:#8ba3c4;line-height:1.6;font-family:ui-monospace,Consolas,monospace;">
+      未初始化的变量显示为 <b style="color:#fb7185">?</b>（栈上垃圾值）
+    </div>
+  </div>
+</div>
+
+<!-- ================= 宏展开 / 求值链 ================= -->
+<div class="panel" id="p-expand">
+  <div class="p-head">
+    <span class="p-title">★ 宏展开 / 求值链</span>
+    <button class="p-close" data-close="p-expand" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <div class="expand-box" id="expandBox"></div>
+  </div>
+</div>
+
+<!-- ================= 程序输出 ================= -->
+<div class="panel" id="p-out">
+  <div class="p-head">
+    <span class="p-title">程序运行输出 · 控制台</span>
+    <button class="p-close" data-close="p-out" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <div class="console" id="consoleBody"></div>
+  </div>
+</div>
+
+<!-- ================= 缩略图 ================= -->
+<div class="panel" id="p-map">
+  <div class="p-head">
+    <span class="p-title">缩略图</span>
+    <button class="p-close" data-close="p-map" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <div class="map-wrap" id="mapWrap">
+      <div id="mapLines"></div>
+      <div class="map-viewport" id="mapViewport"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 解说条 ================= -->
+<div class="panel" id="p-expl">
+  <div class="p-head">
+    <span class="p-title">当前语句解说</span>
+    <button class="p-close" data-close="p-expl" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <div class="explain" id="explain"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* =========================================================
+     0. 源码数据（严格 8 行）
+     ========================================================= */
+  var CODE = [
+    { n:1, src:'<span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                 <span class="cmt">// 包含标准输入输出头文件</span>' },
+    { n:2, src:'<span class="pp">#define</span> <span class="macro-n">M</span>(x,y) (x)&lt;(y)?x:y          <span class="cmt">// 定义宏，无外层括号</span>' },
+    { n:3, src:'<span class="kw">int</span> <span class="fn">main</span>() {                        <span class="cmt">// 主函数</span>' },
+    { n:4, src:'    <span class="kw">int</span> a=<span class="num">5</span>, b=<span class="num">2</span>, c=<span class="num">3</span>, d=<span class="num">1</span>, t;    <span class="cmt">// 定义变量</span>' },
+    { n:5, src:'    t = <span class="macro-n">M</span>(a+b, c+d) * <span class="num">10</span>;         <span class="cmt">// 宏调用，展开为 (a+b)&lt;(c+d)?a+b:c+d*10</span>' },
+    { n:6, src:'    <span class="fn">printf</span>(<span class="str">"%d"</span>, t);               <span class="cmt">// 输出13</span>' },
+    { n:7, src:'    <span class="kw">return</span> <span class="num">0</span>;' },
+    { n:8, src:'}' }
+  ];
+
+  var VAR_NAMES = ['a', 'b', 'c', 'd', 't'];
+
+  /* =========================================================
+     1. 状态与步骤
+     ========================================================= */
+  function mkState() {
+    var vars = {}, inited = {};
+    for (var i = 0; i < VAR_NAMES.length; i++) {
+      vars[VAR_NAMES[i]] = null;
+      inited[VAR_NAMES[i]] = false;
+    }
+    return {
+      phase: '—',
+      vars: vars,
+      inited: inited,
+      macros: { M: 'no' },
+      hlVar: null,
+      hlMacro: null,
+      expand: [],
+      console: []
+    };
+  }
+
+  function buildSteps() {
+    var steps = [];
+    var S = mkState();
+
+    function snap(o) {
+      steps.push({
+        line: o.line,
+        cls: o.cls || '',
+        title: o.title || '',
+        desc: o.desc || '',
+        state: JSON.parse(JSON.stringify(S))
+      });
+    }
+    function log(cls, text) { S.console.push({ cls: cls, text: text }); }
+
+    /* ---------------- 第 1 步：第 1 行 ---------------- */
+    S.phase = '预处理期'; S.hlMacro = null; S.hlVar = null; S.expand = [];
+    log('out-note', '[预处理] 第 1 行：#include <stdio.h>');
+    log('out-info', '          → 展开标准输入输出头文件，声明 printf');
+    snap({
+      line: 1, cls: 'pp',
+      title: '<b>#include &lt;stdio.h&gt;</b>',
+      desc: '预处理器把标准输入输出头文件的内容展开到本文件中。<br>' +
+            '· 声明了 <code>printf</code> —— 第 6 行要用它输出整数；<br>' +
+            '· 头文件只参与<b>编译</b>，<b>不占用程序运行时的内存</b>。' +
+            '<span class="tip"><b>★ 本程序的核心看点：</b><br>' +
+            '① <code>#define</code> 是<b>纯文本替换</b>，在预处理阶段完成，' +
+            '编译后的程序里根本没有“宏”这个东西；<br>' +
+            '② 宏 <code>M</code> 的替换体 <code>(x)&lt;(y)?x:y</code> ' +
+            '<b>没有外层括号</b>，一个三元表达式裸露在外；<br>' +
+            '③ 调用处写成 <code>M(a+b, c+d) * 10</code>，' +
+            '多出来的 <code>* 10</code> 会和三元表达式“打架”；<br>' +
+            '④ 最终结果不是直觉中的 40，而是 <b>13</b>。</span>'
+    });
+
+    /* ---------------- 第 2 步：第 2 行 宏 M ---------------- */
+    S.macros.M = 'def'; S.hlMacro = 'M';
+    S.expand = ['M(x,y)  →  (x)<(y)?x:y'];
+    log('out-ok', '[预处理] 第 2 行：#define M(x,y) (x)<(y)?x:y');
+    log('out-warn', '          ⚠ 替换体【没有】外层括号：三元表达式裸露在外');
+    snap({
+      line: 2, cls: 'pp',
+      title: '<b>#define M(x,y) (x)&lt;(y)?x:y</b>　→　定义函数宏 M（没有外层括号）',
+      desc: '定义<b>函数宏</b> <code>M(x,y)</code>，替换体是 ' +
+            '<code>(x)&lt;(y)?x:y</code>，用来取两个值中较小的那一个。<br>' +
+            '· 两个形参 <code>x</code>、<code>y</code> ' +
+            '<b>各自都带着一对圆括号</b>，这是对的；<br>' +
+            '· 但<b>整个三元表达式没有外层括号</b> —— ' +
+            '这一点至关重要，因为它决定了 <code>M(...)</code> ' +
+            '在更大的表达式里会如何与别的运算符结合；<br>' +
+            '· 三元运算符 <code>?:</code> 的优先级非常低，' +
+            '只比赋值和逗号高，比 <code>+</code>、<code>*</code> 都低。' +
+            '<span class="warn"><b>★ 裸奔的三元表达式：</b><br>' +
+            '第 5 行写的是 <code>t = M(a+b, c+d) * 10;</code>。<br>' +
+            '宏替换后，<code>* 10</code> 会直接粘在替换体的末尾，' +
+            '变成 <code>(a+b)&lt;(c+d)?a+b:c+d * 10</code>。<br>' +
+            '由于 <code>*</code> 的优先级<b>高于</b> <code>?:</code>，' +
+            '<code>c+d * 10</code> 会被解读成 <code>c + (d*10)</code>。<br>' +
+            '<b>正确写法：</b><code>#define M(x,y) (((x)&lt;(y))?(x):(y))</code>。</span>'
+    });
+
+    /* ---------------- 第 3 步：第 3 行 ---------------- */
+    S.phase = '运行期'; S.hlMacro = null; S.hlVar = null; S.expand = [];
+    log('out-note', '[编译] 第 3 行：int main() {   → 主函数入口');
+    snap({
+      line: 3, cls: 'gold',
+      title: '<b>int main() {</b>　→　主函数开始',
+      desc: '程序从 <code>main</code> 开始执行。<br>' +
+            '· 返回类型 <code>int</code>，无参数；<br>' +
+            '· 前面 2 行的 <code>#include</code> 与 <code>#define</code> ' +
+            '都已在<b>预处理阶段</b>完成，此刻程序里只剩替换后的表达式；<br>' +
+            '· 函数体内的局部变量会分配在<b>栈</b>上，函数返回时自动回收。'
+    });
+
+    /* ---------------- 第 4 步：第 4 行 声明 ---------------- */
+    S.hlVar = null; S.expand = [];
+    log('out-note', '[编译] 第 4 行：int a=5, b=2, c=3, d=1, t;');
+    log('out-info', '          → 在栈上分配 5 个 int，共 5 × 4 = 20 字节');
+    log('out-warn', '          ⚠ t 未初始化，值为栈上垃圾数据');
+    snap({
+      line: 4, cls: 'gold',
+      title: '<b>int a=5, b=2, c=3, d=1, t;</b>　→　声明 5 个整型变量',
+      desc: '声明 5 个 <code>int</code> 变量，在栈上共分配 <b>5 × 4 = 20</b> 字节。<br>' +
+            '· 其中 <code>a</code>、<code>b</code>、<code>c</code>、<code>d</code> ' +
+            '带有<b>初始化式</b>，会被依次赋初值；<br>' +
+            '· <code>t</code> <b>没有初始化</b>，里面是栈上的垃圾数据，' +
+            '本模拟显示为 <b>?</b>。' +
+            '<span class="tip"><b>★ 局部变量不会自动清零：</b><br>' +
+            'C 语言中，函数内的局部变量如果没写初始化式，' +
+            '它的值是<b>不确定</b>的。如果在这里就读 <code>t</code>，' +
+            '属于<b>未定义行为</b>。本程序在第 5 行立刻给 <code>t</code> 赋值，所以没问题。</span>'
+    });
+
+    /* ---------------- 第 5 步：a = 5 ---------------- */
+    S.vars.a = 5; S.inited.a = true; S.hlVar = 'a'; S.expand = [];
+    log('out-ok', '[运行] 第 4 行初始化式：a = 5');
+    snap({
+      line: 4, cls: 'mv',
+      title: '<b>a = 5</b>　→　a 取得初值 5',
+      desc: '执行声明中的初始化式 <code>a = 5</code>，变量 <code>a</code> 变成 <b>5</b>。<br>' +
+            '· 初始化式是在变量定义时执行的赋值语句；<br>' +
+            '· 右侧变量卡片中 <code>a</code> 由 <b>?</b> 变为 <b>5</b> 并闪烁。'
+    });
+
+    /* ---------------- 第 6 步：b = 2 ---------------- */
+    S.vars.b = 2; S.inited.b = true; S.hlVar = 'b';
+    log('out-ok', '[运行] 第 4 行初始化式：b = 2');
+    snap({
+      line: 4, cls: 'mv',
+      title: '<b>b = 2</b>　→　b 取得初值 2',
+      desc: '执行初始化式 <code>b = 2</code>，变量 <code>b</code> 变成 <b>2</b>。<br>' +
+            '· 后面第 5 行展开时，<code>a+b</code> 就用的是 <code>5+2</code>。'
+    });
+
+    /* ---------------- 第 7 步：c = 3 ---------------- */
+    S.vars.c = 3; S.inited.c = true; S.hlVar = 'c';
+    log('out-ok', '[运行] 第 4 行初始化式：c = 3');
+    snap({
+      line: 4, cls: 'mv',
+      title: '<b>c = 3</b>　→　c 取得初值 3',
+      desc: '执行初始化式 <code>c = 3</code>，变量 <code>c</code> 变成 <b>3</b>。<br>' +
+            '· 后面 <code>c+d</code> 中的 <code>c</code> 就是它。'
+    });
+
+    /* ---------------- 第 8 步：d = 1 ---------------- */
+    S.vars.d = 1; S.inited.d = true; S.hlVar = 'd';
+    log('out-ok', '[运行] 第 4 行初始化式：d = 1');
+    snap({
+      line: 4, cls: 'mv',
+      title: '<b>d = 1</b>　→　d 取得初值 1',
+      desc: '执行初始化式 <code>d = 1</code>，变量 <code>d</code> 变成 <b>1</b>。<br>' +
+            '· 至此 <code>a=5</code>、<code>b=2</code>、<code>c=3</code>、' +
+            '<code>d=1</code> 全部就绪；<br>' +
+            '· 只有 <code>t</code> 还是未初始化的 <b>?</b>。' +
+            '<span class="tip"><b>★ 变量值的“快照”思维：</b><br>' +
+            '每一步只看“此刻各个变量里装的是什么”。这 4 个变量的值' +
+            '在后面的宏展开中都会被用到，而且从头到尾没变过。</span>'
+    });
+
+    /* ---------------- 第 9 步：第 5 行 宏展开 ---------------- */
+    S.hlMacro = 'M'; S.hlVar = null;
+    S.expand = [
+      't = M(a+b, c+d) * 10',
+      '   → (a+b)<(c+d)?a+b:c+d * 10     【M 展开：x→a+b，y→c+d】',
+      '     ⚠ 替换体没有外层括号，* 10 直接粘在了末尾！'
+    ];
+    log('out-note', '[运行] 第 5 行：t = M(a+b, c+d) * 10');
+    log('out-info', '          宏展开：M(a+b, c+d)  →  (a+b)<(c+d)?a+b:c+d');
+    log('out-warn', '          加上 * 10 后：(a+b)<(c+d)?a+b:c+d * 10   ← 注意没有括号！');
+    snap({
+      line: 5, cls: 'green',
+      title: '<b>t = M(a+b, c+d) * 10;</b>　→　第一步：宏展开（纯文本替换）',
+      desc: '这是本程序最关键的一步：<b>宏展开</b>。<br>' +
+            '· 形参替换：<code>x → a+b</code>、<code>y → c+d</code>；<br>' +
+            '· 替换体是 <code>(x)&lt;(y)?x:y</code>，替换后得到 ' +
+            '<code>(a+b)&lt;(c+d)?a+b:c+d</code>；<br>' +
+            '· 原来语句末尾的 <code>* 10</code> 原封不动地跟在后面，' +
+            '于是整句变成 <code>(a+b)&lt;(c+d)?a+b:c+d * 10</code>。' +
+            '<span class="warn"><b>★ 关键观察：</b><br>' +
+            '宏只是把文字搬过去，<b>不会自动帮你加括号</b>。<br>' +
+            '如果替换体写成 <code>(((x)&lt;(y))?(x):(y))</code>，' +
+            '结果就会是 <code>(((a+b)&lt;(c+d))?(a+b):(c+d)) * 10</code>，' +
+            '整个三元表达式被括号锁成一个整体，语义才正确。</span>'
+    });
+
+    /* ---------------- 第 10 步：第 5 行 优先级解析 ---------------- */
+    S.hlMacro = 'M'; S.hlVar = null;
+    S.expand = [
+      '(a+b)<(c+d)?a+b:c+d * 10',
+      '   → ((a+b)<(c+d)) ? (a+b) : (c+d*10)',
+      '     【* 的优先级高于 ?:，所以 c+d*10 被拆成 c+(d*10)】',
+      '     【而 < 的优先级又高于 ?:，所以条件部分整体是 (a+b)<(c+d)】'
+    ];
+    log('out-info', '          按 C 运算符优先级解析：');
+    log('out-info', '          ((a+b)<(c+d)) ? (a+b) : (c+d*10)');
+    log('out-warn', '          ← * 绑定到 d，而不是绑定到 (c+d)');
+    snap({
+      line: 5, cls: 'green',
+      title: '<b>t = M(a+b, c+d) * 10;</b>　→　第二步：运算符优先级解析',
+      desc: '把替换后的文本交给编译器解析，它会按<b>运算符优先级</b>来决定谁先和谁结合。<br>' +
+            '· <code>*</code>（乘法）的优先级<b>高于</b> <code>?:</code>（条件运算符）；<br>' +
+            '· <code>&lt;</code>（小于）的优先级也<b>高于</b> <code>?:</code>；<br>' +
+            '· 于是被解析成：' +
+            '<code>((a+b)&lt;(c+d)) ? (a+b) : (c+d*10)</code>。' +
+            '<span class="rose-box"><b>★ 问题的根源：</b><br>' +
+            '写代码的人心里想的是：<code>(小的那个数) × 10</code>。<br>' +
+            '但编译器看到的是：「如果 <code>(a+b)&lt;(c+d)</code> 成立，就取 ' +
+            '<code>a+b</code>；否则取 <code>c+d*10</code>」<br>' +
+            '—— 因为 <code>*10</code> 只绑定了 <code>d</code>，' +
+            '并没有乘到整个三元表达式上。<br>' +
+            '<b>三元运算符的优先级太低，只要替换体不加外层括号，' +
+            '外面接任何算术运算符都会出问题。</b></span>'
+    });
+
+    /* ---------------- 第 11 步：第 5 行 代入求值 ---------------- */
+    S.hlMacro = 'M'; S.hlVar = null;
+    S.expand = [
+      '((a+b)<(c+d)) ? (a+b) : (c+d*10)',
+      '   → (7<4) ? 7 : (3+1*10)      【a=5  b=2  c=3  d=1】',
+      '   → 0 ? 7 : 13                【7<4 为假，条件值为 0】',
+      '   → 13                        【条件为假，取第三个操作数】'
+    ];
+    log('out-info', '          代入：a=5  b=2  c=3  d=1');
+    log('out-info', '          条件：(a+b)<(c+d)  →  (5+2)<(3+1)  →  7<4  →  假(0)');
+    log('out-info', '          分支：条件为假，取第三个操作数 c+d*10 = 3+1*10 = 13');
+    snap({
+      line: 5, cls: 'green',
+      title: '<b>t = M(a+b, c+d) * 10;</b>　→　第三步：代入数值求值',
+      desc: '把变量值代进去，逐步算出结果。<br>' +
+            '· <b>条件部分</b>：<code>(a+b)&lt;(c+d)</code> = ' +
+            '<code>(5+2)&lt;(3+1)</code> = <code>7&lt;4</code> = <b>0（假）</b>；<br>' +
+            '· <b>第三个操作数</b>：<code>c+d*10</code> = ' +
+            '<code>3 + 1*10</code> = <code>3 + 10</code> = <b>13</b>；<br>' +
+            '· <b>三元运算</b>：<code>0 ? 7 : 13</code>，' +
+            '条件为假，取第三个操作数，结果为 <b>13</b>。' +
+            '<span class="warn"><b>★ 如果宏当初写对了会怎样？</b><br>' +
+            '若定义成 <code>#define M(x,y) (((x)&lt;(y))?(x):(y))</code>，' +
+            '第 5 行展开就是 <code>(((a+b)&lt;(c+d))?(a+b):(c+d)) * 10</code>；<br>' +
+            '<code>((7&lt;4)?7:4) * 10 = 4 * 10 = 40</code>。<br>' +
+            '也就是说，正确的宏会得到 <b>40</b>，' +
+            '而当前这个缺括号的宏得到 <b>13</b> —— 差了整整 27！</span>'
+    });
+
+    /* ---------------- 第 12 步：第 5 行 t 赋值 ---------------- */
+    S.hlMacro = null; S.hlVar = 't';
+    S.vars.t = 13; S.inited.t = true;
+    S.expand = ['t = 13'];
+    log('out-ok', '[运行] 第 5 行：t = M(a+b, c+d) * 10  →  t = 13');
+    snap({
+      line: 5, cls: 'mv',
+      title: '<b>t = 13</b>　→　t 取得结果 13',
+      desc: '赋值运算符 <code>=</code> 是<b>右结合</b>的：先算完右边的整个条件表达式，' +
+            '得到 <b>13</b>，再写入左边的 <code>t</code>。<br>' +
+            '· <code>t</code> 从 <b>?</b> 变成 <b>13</b>，右侧变量卡片闪烁；<br>' +
+            '· 至此 5 个变量全部初始化完毕：' +
+            '<code>a=5</code>、<code>b=2</code>、<code>c=3</code>、<code>d=1</code>、' +
+            '<code>t=13</code>。' +
+            '<span class="tip"><b>★ 值域提醒：</b><br>' +
+            '<code>t</code> 是 <code>int</code>，13 在 <code>int</code> 范围内，' +
+            '没有溢出、没有截断，这里的结果就是精确的 13。</span>'
+    });
+
+    /* ---------------- 第 13 步：第 6 行 printf ---------------- */
+    S.hlMacro = null; S.hlVar = null;
+    S.expand = [
+      'printf("%d", t)',
+      '   → printf("%d", 13)',
+      '   → 输出：13',
+      '     ⚠ 格式串里没有 \\n，所以输出后【不换行】'
+    ];
+    log('out-note', '[运行] 第 6 行：printf("%d", t)');
+    log('out-info', '          格式串 "%d" 对应实参 t = 13');
+    log('out-out', '13');
+    snap({
+      line: 6, cls: 'out',
+      title: '<b>printf("%d", t);</b>　→　屏幕输出 <b>13</b>（不换行）',
+      desc: '<code>printf</code> 按格式串 <code>"%d"</code> 输出一个十进制整数。<br>' +
+            '· <code>%d</code> 被实参 <code>t</code> 的值 <b>13</b> 替换；<br>' +
+            '· 注意格式串里<b>没有 <code>\\n</code></b>，' +
+            '所以输出 <code>13</code> 之后光标停在原地，<b>不换行</b>；<br>' +
+            '· 屏幕上看到的就是紧挨在一起的两个字符：<code>13</code>。' +
+            '<span class="tip"><b>★ printf 与换行：</b><br>' +
+            '很多初学者会误以为 <code>printf</code> 自带换行，其实不会。<br>' +
+            '要让输出另起一行，必须在格式串里显式写上 <code>\\n</code>。<br>' +
+            '另外，<code>"%d"</code> 是<b>字符串字面量</b>，里面的字符不会被宏替换。</span>'
+    });
+
+    /* ---------------- 第 14 步：第 7 行 ---------------- */
+    S.phase = '已结束'; S.hlMacro = null; S.hlVar = null;
+    S.expand = [];
+    log('out-empty', '');
+    log('out-final', '==================== 程序运行结果 ====================');
+    log('out-out', '13');
+    log('out-empty', '');
+    log('out-note', '宏映射  ：M(x,y) = (x)<(y)?x:y     ← 替换体没有外层括号');
+    log('out-note', '变量终值：a=5   b=2   c=3   d=1   t=13');
+    log('out-warn', '关键差异：M(a+b,c+d)*10 展开为 (a+b)<(c+d)?a+b:c+d*10');
+    log('out-warn', '          因 * 优先于 ?:，实际是 ((a+b)<(c+d)) ? (a+b) : (c+d*10)');
+    log('out-warn', '          条件 7<4 为假 → 取 c+d*10 = 3+10 = 13  （不是 40！）');
+    log('out-empty', '');
+    log('out-final', '程序正常结束（return 0）');
+    snap({
+      line: 7, cls: 'gold',
+      title: '<b>return 0;</b>　→　程序正常结束，输出 <b>13</b>',
+      desc: '<code>main</code> 返回 <b>0</b>，向操作系统表示程序正常退出。' +
+            '<span class="win"><b>★ 程序完整运行结果（共 1 行，不换行）：</b><br>' +
+            '<code>13</code></span>' +
+            '<span class="rose-box"><b>★ 本程序核心知识点总结：</b><br>' +
+            '① <b>宏是纯文本替换</b>：<code>#define</code> 在预处理阶段完成；<br>' +
+            '② <b>三元宏必须整体加括号</b>：<code>M</code> 的替换体没有外层括号；<br>' +
+            '③ <b>运算符优先级是幕后黑手</b>：<code>*</code> 高于 <code>?:</code>；<br>' +
+            '④ <b>结果从直觉的 40 变成 13</b>；<br>' +
+            '⑤ <b>光给形参加括号还不够</b>：<code>(x)</code>、<code>(y)</code> 都加了，' +
+            '但整个三元表达式没加，照样出事；<br>' +
+            '⑥ <b>宏没有作用域</b>，也不做类型检查；<br>' +
+            '⑦ <b>printf 不会自动换行</b>：格式串里没写 <code>\\n</code>。</span>'
+    });
+
+    /* ---------------- 第 15 步：第 8 行 ---------------- */
+    log('out-note', '[编译] 第 8 行：}   → main 函数结束，程序退出');
+    snap({
+      line: 8, cls: 'gold',
+      title: '<b>}</b>　→　main 函数结束，程序退出',
+      desc: '<code>main</code> 函数体结束，局部变量 <code>a</code>、<code>b</code>、' +
+            '<code>c</code>、<code>d</code>、<code>t</code> ' +
+            '所占的 20 字节栈空间被回收。<br>' +
+            '· 控制权交还给操作系统；<br>' +
+            '· 程序运行结果已经在右侧控制台中完整呈现：只有一行 <b>13</b>。' +
+            '<span class="tip"><b>★ 一句话记住本程序：</b><br>' +
+            '宏只是“换个写法”，它不懂运算符优先级，' +
+            '所以<b>括号必须由宏的作者自己加全</b>。</span>'
+    });
+
+    /* ---------------- 第 16 步：总结 ---------------- */
+    snap({
+      line: 8, cls: 'gold',
+      title: '<b>【总结】</b>宏替换体缺外层括号 —— 13 而不是 40',
+      desc: '<b>执行完整回顾：</b><br>' +
+            '① <code>#include &lt;stdio.h&gt;</code> 声明 <code>printf</code>；<br>' +
+            '② <code>#define M(x,y) (x)&lt;(y)?x:y</code> —— 形参有括号，' +
+            '<b>整体没有外层括号</b>；<br>' +
+            '③ <code>int a=5, b=2, c=3, d=1, t;</code> —— 20 字节栈空间，' +
+            '<code>t</code> 未初始化；<br>' +
+            '④ <code>M(a+b, c+d) * 10</code> 展开为 ' +
+            '<code>(a+b)&lt;(c+d)?a+b:c+d * 10</code>；<br>' +
+            '⑤ 按优先级解析为 <code>((a+b)&lt;(c+d)) ? (a+b) : (c+d*10)</code>；<br>' +
+            '⑥ 代入得 <code>(7&lt;4) ? 7 : (3+1*10)</code> = ' +
+            '<code>0 ? 7 : 13</code> = <b>13</b>；<br>' +
+            '⑦ <code>printf("%d", t)</code> 输出 <b>13</b>（不换行）。' +
+            '<span class="win"><b>★ 最终输出（1 行，不换行）：13</b></span>' +
+            '<span class="rose-box"><b>★ 正确写法示范：</b><br>' +
+            '<code>#define M(x,y) ((x)&lt;(y)?(x):(y))</code>　✔ 外层加括号<br>' +
+            '<code>#define M(x,y) (((x)&lt;(y))?(x):(y))</code>　✔ 最稳妥<br>' +
+            '口诀：<b>整体加括号，每个参数加括号，用到几次就加几次括号。</b></span>' +
+            '<span class="tip"><b>★ 正确宏的结果对比：</b><br>' +
+            '<code>(((a+b)&lt;(c+d))?(a+b):(c+d)) * 10 = ((7&lt;4)?7:4) * 10 = 4 * 10 = 40</code><br>' +
+            '当前缺括号的宏得到 <b>13</b>，正确宏得到 <b>40</b>，相差 <b>27</b>。</span>'
+    });
+
+    return steps;
+  }
+
+  var STEPS = buildSteps();
+
+  /* =========================================================
+     2. DOM
+     ========================================================= */
+  var codeScroll = document.getElementById('codeScroll');
+  var mapLines   = document.getElementById('mapLines');
+  var mapWrap    = document.getElementById('mapWrap');
+  var mapViewport= document.getElementById('mapViewport');
+  var macroStrip = document.getElementById('macroStrip');
+  var varCardsBox= document.getElementById('varCards');
+  var expandBox  = document.getElementById('expandBox');
+  var consoleBody= document.getElementById('consoleBody');
+  var explainEl  = document.getElementById('explain');
+  var stepCounter= document.getElementById('stepCounter');
+  var lineValEl  = document.getElementById('lineVal');
+  var phaseValEl = document.getElementById('phaseVal');
+  var macroValEl = document.getElementById('macroVal');
+  var initValEl  = document.getElementById('initVal');
+  var btnPlay    = document.getElementById('btnPlay');
+  var btnPrev    = document.getElementById('btnPrev');
+  var btnNext    = document.getElementById('btnNext');
+  var btnReset   = document.getElementById('btnReset');
+  var btnFull    = document.getElementById('btnFull');
+  var btnMap     = document.getElementById('btnMap');
+  var btnPanels  = document.getElementById('btnPanels');
+  var btnLayout  = document.getElementById('btnLayout');
+  var speedInput = document.getElementById('speed');
+  var speedLabel = document.getElementById('speedLabel');
+
+  /* =========================================================
+     3. 构建静态子视图
+     ========================================================= */
+  function escHtml(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // 代码区
+  codeScroll.innerHTML = CODE.map(function (l) {
+    return '<div class="code-line" data-line="' + l.n + '">' +
+             '<span class="ln">' + l.n + '</span>' +
+             '<span class="src">' + l.src + '</span>' +
+           '</div>';
+  }).join('');
+
+  // 缩略图
+  mapLines.innerHTML = CODE.map(function (l) {
+    return '<div class="map-line" data-line="' + l.n + '">' +
+             '<span class="map-ln">' + l.n + '</span>' +
+             '<span class="map-src">' + l.src + '</span>' +
+           '</div>';
+  }).join('');
+
+  // 宏定义条
+  macroStrip.innerHTML =
+    '<div class="macro-chip cM" data-macro="M">' +
+      '<span class="mn">M(x,y)</span>' +
+      '<span class="md">(x)&lt;(y)?x:y</span>' +
+      '<span class="tag">函数宏 · 无外层括号</span>' +
+    '</div>';
+
+  // 变量卡片
+  varCardsBox.innerHTML = VAR_NAMES.map(function (n) {
+    return '<div class="var-card" data-var="' + n + '">' +
+             '<span class="vn">' + n + '</span><span class="vt">int</span>' +
+             '<span class="vv">?</span>' +
+           '</div>';
+  }).join('');
+
+  /* =========================================================
+     4. 渲染
+     ========================================================= */
+  var current = -1;
+  var playing = false;
+  var timer = null;
+  var speed = Number(speedInput.value);
+
+  function updateCode(step) {
+    var activeLine = step ? step.line : null;
+    var cls = (step && step.cls) ? step.cls : '';
+    var lines = codeScroll.querySelectorAll('.code-line');
+    for (var i = 0; i < lines.length; i++) {
+      var el = lines[i];
+      var n = Number(el.getAttribute('data-line'));
+      var isActive = (activeLine !== null && n === activeLine);
+      el.className = 'code-line' +
+        (isActive ? ' active' : '') +
+        (isActive && cls ? ' ' + cls + '-hi' : '');
+    }
+    // 缩略图当前行
+    var mls = mapLines.querySelectorAll('.map-line');
+    for (var j = 0; j < mls.length; j++) {
+      var m = mls[j];
+      var mn = Number(m.getAttribute('data-line'));
+      var act = (activeLine !== null && mn === activeLine);
+      var extra = act && cls ? ' ' + cls + '-map' : '';
+      m.className = 'map-line' + (act ? ' map-active' + extra : '');
+    }
+    centerActiveLine();
+  }
+
+  function centerActiveLine() {
+    var el = codeScroll.querySelector('.code-line.active');
+    if (!el) return;
+    var er = el.getBoundingClientRect();
+    var cr = codeScroll.getBoundingClientRect();
+    var delta = (er.top + er.height / 2) - (cr.top + cr.height / 2);
+    if (Math.abs(delta) > 6) {
+      codeScroll.scrollTop = codeScroll.scrollTop + delta;
+    }
+  }
+
+  function updateMinimap() {
+    var total = codeScroll.scrollHeight || 1;
+    var view = codeScroll.clientHeight;
+    var top = codeScroll.scrollTop;
+    var mapH = mapWrap.clientHeight - 12; // 减去 padding
+    if (mapH <= 0) return;
+    var vTop = (top / total) * mapH;
+    var vH = Math.max(8, (view / total) * mapH);
+    mapViewport.style.top = (vTop + 6) + 'px';
+    mapViewport.style.height = vH + 'px';
+  }
+
+  function updateMacros(st) {
+    var chips = macroStrip.querySelectorAll('.macro-chip');
+    for (var i = 0; i < chips.length; i++) {
+      var chip = chips[i];
+      var name = chip.getAttribute('data-macro');
+      var def = st ? st.macros[name] : 'no';
+      var isDead = (def !== 'def');
+      chip.classList.toggle('is-dead', isDead);
+      chip.classList.toggle('is-active', !!(st && st.hlMacro === name && !isDead));
+    }
+  }
+
+  function updateVarCards(st) {
+    var cards = varCardsBox.querySelectorAll('.var-card');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var name = card.getAttribute('data-var');
+      var vv = card.querySelector('.vv');
+      var val = st ? st.vars[name] : null;
+      var has = (val !== null && val !== undefined);
+      var txt = has ? String(val) : '?';
+      if (vv.textContent !== txt) {
+        vv.textContent = txt;
+        card.classList.remove('changed');
+        void card.offsetWidth;
+        if (has) card.classList.add('changed');
+      }
+      card.classList.toggle('has', has);
+      card.classList.toggle('is-active', !!(st && st.hlVar === name));
+    }
+  }
+
+  function updateExpand(st) {
+    var arr = (st && st.expand) ? st.expand : [];
+    if (!arr.length) {
+      expandBox.innerHTML = '<div class="exp-empty">（当前步骤没有宏展开）</div>';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < arr.length; i++) {
+      var cls = 'exp-line';
+      if (i === arr.length - 1) cls += ' exp-final';
+      else if (arr[i].indexOf('⚠') >= 0) cls += ' exp-warn';
+      html += '<div class="' + cls + '">' + escHtml(arr[i]) + '</div>';
+    }
+    expandBox.innerHTML = html;
+    expandBox.scrollTop = expandBox.scrollHeight;
+  }
+
+  function updateConsole(step) {
+    if (!step) {
+      consoleBody.innerHTML = '<div class="out-line out-wait">（等待程序开始…）</div>';
+      return;
+    }
+    var lines = step.state.console;
+    var html = '';
+    for (var i = 0; i < lines.length; i++) {
+      html += '<div class="out-line ' + lines[i].cls + '">' +
+                escHtml(lines[i].text) +
+              '</div>';
+    }
+    consoleBody.innerHTML = html;
+    var last = consoleBody.lastElementChild;
+    if (last && step.line !== 8) {
+      var cur = document.createElement('span');
+      cur.className = 'cursor';
+      cur.textContent = '▊';
+      last.appendChild(cur);
+    }
+    consoleBody.parentNode.scrollTop = consoleBody.parentNode.scrollHeight;
+  }
+
+  function updateInfoBar(step) {
+    if (!step) {
+      lineValEl.textContent = '—';
+      phaseValEl.textContent = '—';
+      macroValEl.textContent = '0 / 1';
+      initValEl.textContent = '0 / 5';
+      return;
+    }
+    var s = step.state;
+    lineValEl.textContent = '第 ' + step.line + ' 行';
+    phaseValEl.textContent = s.phase || '—';
+    var mc = 0, ic = 0, i;
+    if (s.macros.M === 'def') mc = 1;
+    for (i = 0; i < VAR_NAMES.length; i++) {
+      if (s.inited[VAR_NAMES[i]]) ic++;
+    }
+    macroValEl.textContent = mc + ' / 1';
+    initValEl.textContent = ic + ' / 5';
+  }
+
+  function updateExplain(step) {
+    if (step) {
+      explainEl.innerHTML =
+        '<span class="ex-line' + (step.cls ? ' ' + step.cls : '') + '">第 ' +
+        step.line + ' 行</span>' +
+        '<strong>' + step.title + '</strong> —— ' + step.desc;
+      stepCounter.textContent = '步骤 ' + (current + 1) + ' / ' + STEPS.length;
+    } else {
+      explainEl.innerHTML =
+        '<em>点击「自动播放」或「下一步」，开始逐步执行模拟。<br><br>' +
+        '<b>本程序演示：C 语言宏定义（#define）中三元表达式缺少外层括号的陷阱</b><br>' +
+        '· 宏 <code>M(x,y) = (x)&lt;(y)?x:y</code> —— 形参有括号，' +
+        '但整个三元表达式没有外层括号；<br>' +
+        '· 调用处 <code>M(a+b, c+d) * 10</code> 展开后是 ' +
+        '<code>(a+b)&lt;(c+d)?a+b:c+d * 10</code>；<br>' +
+        '· 因为 <code>*</code> 的优先级高于 <code>?:</code>，' +
+        '它被解析成 <code>((a+b)&lt;(c+d)) ? (a+b) : (c+d*10)</code>；<br>' +
+        '· 代入 <code>a=5, b=2, c=3, d=1</code>：' +
+        '<code>(7&lt;4) ? 7 : (3+1*10)</code> = <code>0 ? 7 : 13</code> = ' +
+        '<b>13</b>，而不是直觉中的 40；<br>' +
+        '· 程序输出共 <b>1 行</b>：<code>13</code>（<b>不换行</b>）。<br><br>' +
+        '共 ' + STEPS.length + ' 个执行步骤，请用「自动播放」或方向键逐步查看。</em>';
+      stepCounter.textContent = '步骤 — / ' + STEPS.length;
+    }
+  }
+
+  function render() {
+    var step = current >= 0 ? STEPS[current] : null;
+    var st = step ? step.state : null;
+    updateCode(step);
+    updateMacros(st);
+    updateVarCards(st);
+    updateExpand(st);
+    updateConsole(step);
+    updateInfoBar(step);
+    updateExplain(step);
+    updateMinimap();
+    btnPrev.disabled = current < 0;
+    btnNext.disabled = current >= STEPS.length - 1;
+  }
+
+  /* =========================================================
+     5. 播放控制
+     ========================================================= */
+  function updatePlayBtn() {
+    btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+    btnPlay.classList.toggle('playing', playing);
+  }
+  function tick() {
+    if (current >= STEPS.length - 1) { pause(); return; }
+    current += 1;
+    render();
+    if (current >= STEPS.length - 1) pause();
+  }
+  function play() {
+    if (playing) return;
+    if (current >= STEPS.length - 1) { current = -1; render(); }
+    playing = true;
+    updatePlayBtn();
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+    tick();
+  }
+  function pause() {
+    playing = false;
+    window.clearInterval(timer);
+    timer = null;
+    updatePlayBtn();
+  }
+  function nextStep() {
+    pause();
+    if (current < STEPS.length - 1) { current += 1; render(); }
+  }
+  function prevStep() {
+    pause();
+    if (current > -1) { current -= 1; render(); }
+  }
+  function resetAll() {
+    pause();
+    current = -1;
+    codeScroll.scrollTop = 0;
+    render();
+  }
+
+  /* =========================================================
+     6. 面板系统：拖动 / 缩放 / 置顶 / 关闭
+     ========================================================= */
+  var zTop = 10;
+  function activate(panel) {
+    zTop += 1;
+    panel.style.zIndex = zTop;
+    var all = document.querySelectorAll('.panel');
+    for (var i = 0; i < all.length; i++) all[i].classList.remove('top');
+    panel.classList.add('top');
+  }
+
+  function makeDraggable(panel, handle) {
+    var sx, sy, ox, oy, dragging = false;
+    handle.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('button, input, .p-resize')) return;
+      activate(panel);
+      dragging = true;
+      sx = e.clientX; sy = e.clientY;
+      var r = panel.getBoundingClientRect();
+      panel.style.left = r.left + 'px';
+      panel.style.top = r.top + 'px';
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.transform = 'none';
+      ox = r.left; oy = r.top;
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault();
+    });
+    handle.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      panel.style.left = (ox + e.clientX - sx) + 'px';
+      panel.style.top = (oy + e.clientY - sy) + 'px';
+    });
+    handle.addEventListener('pointerup', function (e) {
+      dragging = false;
+      try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
+    });
+    handle.addEventListener('pointercancel', function () { dragging = false; });
+  }
+
+  function makeResizable(panel, handle) {
+    var sx, sy, ow, oh, resizing = false;
+    handle.addEventListener('pointerdown', function (e) {
+      activate(panel);
+      resizing = true;
+      sx = e.clientX; sy = e.clientY;
+      var r = panel.getBoundingClientRect();
+      ow = r.width; oh = r.height;
+      panel.style.width = ow + 'px';
+      panel.style.height = oh + 'px';
+      panel.style.maxWidth = 'none';
+      panel.style.maxHeight = 'none';
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    handle.addEventListener('pointermove', function (e) {
+      if (!resizing) return;
+      panel.style.width = Math.max(20, ow + e.clientX - sx) + 'px';
+      panel.style.height = Math.max(20, oh + e.clientY - sy) + 'px';
+    });
+    handle.addEventListener('pointerup', function (e) {
+      resizing = false;
+      try { handle.releasePointerCapture(e.pointerId); } catch (_) {}
+    });
+    handle.addEventListener('pointercancel', function () { resizing = false; });
+  }
+
+  function initPanels() {
+    var panels = document.querySelectorAll('.panel');
+    for (var i = 0; i < panels.length; i++) {
+      (function (panel) {
+        var head = panel.querySelector('.p-head');
+        var resize = panel.querySelector('.p-resize');
+        if (head) makeDraggable(panel, head);
+        if (resize) makeResizable(panel, resize);
+        panel.addEventListener('pointerdown', function () { activate(panel); });
+        panel.addEventListener('focusin', function () { activate(panel); });
+        // 关闭按钮
+        var closeBtn = panel.querySelector('.p-close');
+        if (closeBtn) {
+          closeBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            panel.classList.add('hidden');
+          });
+        }
+        // 补上 resize 把手（若 HTML 中没有）
+        if (!resize) {
+          var rh = document.createElement('div');
+          rh.className = 'p-resize';
+          panel.appendChild(rh);
+          makeResizable(panel, rh);
+        }
+      })(panels[i]);
+    }
+  }
+
+  function resetLayout() {
+    var panels = document.querySelectorAll('.panel');
+    for (var i = 0; i < panels.length; i++) {
+      var p = panels[i];
+      p.style.left = '';
+      p.style.top = '';
+      p.style.right = '';
+      p.style.bottom = '';
+      p.style.width = '';
+      p.style.height = '';
+      p.style.maxWidth = '';
+      p.style.maxHeight = '';
+      p.style.transform = '';
+      p.style.zIndex = '';
+      p.classList.remove('top');
+      p.classList.remove('hidden');
+    }
+    zTop = 10;
+    setTimeout(function () {
+      updateMinimap();
+      centerActiveLine();
+    }, 60);
+  }
+
+  /* =========================================================
+     7. 事件绑定
+     ========================================================= */
+  btnPlay.addEventListener('click', function () { if (playing) pause(); else play(); });
+  btnNext.addEventListener('click', nextStep);
+  btnPrev.addEventListener('click', prevStep);
+  btnReset.addEventListener('click', resetAll);
+  btnLayout.addEventListener('click', resetLayout);
+
+  btnFull.addEventListener('click', function () {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(function () {});
+    } else {
+      document.exitFullscreen();
+    }
+  });
+
+  btnMap.addEventListener('click', function () {
+    var m = document.getElementById('p-map');
+    m.classList.toggle('hidden');
+  });
+
+  btnPanels.addEventListener('click', function () {
+    toggleAllPanels();
+  });
+
+  var panelsVisible = true;
+  function toggleAllPanels() {
+    panelsVisible = !panelsVisible;
+    var panels = document.querySelectorAll('.panel');
+    for (var i = 0; i < panels.length; i++) {
+      if (panelsVisible) panels[i].classList.remove('hidden');
+      else panels[i].classList.add('hidden');
+    }
+  }
+
+  speedInput.addEventListener('input', function () {
+    speed = Number(speedInput.value);
+    speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+    if (playing) {
+      window.clearInterval(timer);
+      timer = window.setInterval(tick, speed);
+    }
+  });
+
+  // 缩略图点击跳转
+  mapWrap.addEventListener('click', function (e) {
+    var r = mapWrap.getBoundingClientRect();
+    var ratio = (e.clientY - r.top) / r.height;
+    ratio = Math.max(0, Math.min(1, ratio));
+    codeScroll.scrollTop = ratio * codeScroll.scrollHeight - codeScroll.clientHeight / 2;
+  });
+
+  // 滚动同步
+  var rafPending = false;
+  codeScroll.addEventListener('scroll', function () {
+    if (rafPending) return;
+    rafPending = true;
+    requestAnimationFrame(function () {
+      rafPending = false;
+      updateMinimap();
+    });
+  });
+
+  window.addEventListener('resize', function () {
+    updateMinimap();
+    centerActiveLine();
+  });
+
+  // 快捷键
+  document.addEventListener('keydown', function (e) {
+    if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (playing) pause(); else play();
+    } else if (e.code === 'ArrowRight') {
+      e.preventDefault(); nextStep();
+    } else if (e.code === 'ArrowLeft') {
+      e.preventDefault(); prevStep();
+    } else if (e.code === 'KeyR') {
+      resetAll();
+    } else if (e.code === 'KeyF') {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(function () {});
+      } else {
+        document.exitFullscreen();
+      }
+    } else if (e.code === 'KeyM') {
+      document.getElementById('p-map').classList.toggle('hidden');
+    } else if (e.code === 'KeyH') {
+      toggleAllPanels();
+    }
+  });
+
+  /* =========================================================
+     8. 初始化
+     ========================================================= */
+  initPanels();
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  render();
+  // 字体加载完成后同步一次缩略图
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(function () {
+      updateMinimap();
+      centerActiveLine();
+    });
+  }
+  window.addEventListener('load', function () {
+    updateMinimap();
+  });
+
+})();
+</script>
+</body>
+</html>

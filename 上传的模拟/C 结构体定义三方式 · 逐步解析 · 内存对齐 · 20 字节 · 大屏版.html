@@ -1,0 +1,1732 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 结构体定义三方式 · 逐步解析 · 内存对齐 · 20 字节 · 大屏版</title>
+<style>
+:root{
+  --bg:#0a1020;
+  --code-font: clamp(28px, 3.2vw, 68px);
+  --code-lh: 1.55;
+  --out-font: clamp(20px, 1.6vw, 36px);
+  --var-font: clamp(18px, 1.35vw, 30px);
+  --cell-font: clamp(18px, 1.35vw, 30px);
+  --cell-idx: clamp(14px, 1.0vw, 24px);
+  --explain-font: clamp(18px, 1.4vw, 30px);
+  --btn-font: clamp(16px, 1.05vw, 24px);
+  --title-font: clamp(18px, 1.3vw, 30px);
+  --blue:#38bdf8; --teal:#2dd4bf; --green:#4ade80; --gold:#facc15;
+  --pink:#f472b6; --purple:#c084fc; --orange:#fb923c; --muted:#7d93b3;
+  --border:#1e2f49;
+  --panel-bg: rgba(13,22,38,0.85);
+  --panel-bg-hover: rgba(15,26,45,0.95);
+  --panel-border: rgba(56,189,248,0.28);
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;overflow:hidden;}
+body{
+  background: radial-gradient(1200px 700px at 15% -10%, #17294a 0%, var(--bg) 65%);
+  color:#dce8f8;
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ============ 全屏代码区 ============ */
+.code-fullscreen{
+  position:fixed; inset:0; z-index:1;
+  background:#0d1117;
+  overflow:hidden;
+}
+.code-scroll{
+  position:absolute; inset:0;
+  overflow:auto;
+  padding: 2.5vh 0;
+  scrollbar-width:thin; scrollbar-color:#334155 transparent;
+  scroll-behavior:smooth;
+}
+.code-scroll::-webkit-scrollbar{width:12px;height:12px;}
+.code-scroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:12px;}
+.code-line{
+  display:flex; align-items:flex-start; gap:.9em;
+  padding:.05em 2.5vw .05em 1vw;
+  border-left: 6px solid transparent;
+  white-space: pre;
+  font-family: ui-monospace,"Cascadia Mono",Consolas,monospace;
+  font-size: var(--code-font);
+  line-height: var(--code-lh);
+  transition: background .35s, border-color .35s, opacity .35s;
+  color:#c9d6e8;
+}
+.code-line .ln{
+  flex: 0 0 auto;
+  width: 3.2ch; text-align:right;
+  color:#3f5a7d; user-select:none;
+  font-variant-numeric: tabular-nums;
+}
+.code-line .src{flex:1 1 auto;}
+.code-line.executed{opacity:.42;}
+.code-line.active{
+  background: linear-gradient(90deg, rgba(56,189,248,.3), rgba(56,189,248,.02));
+  border-left-color: var(--blue);
+  box-shadow: inset 0 0 0 2px rgba(56,189,248,.28);
+  color:#ffffff;
+  opacity:1;
+}
+.code-line.active .ln{color:var(--blue); font-weight:700;}
+/* 语法高亮 */
+.pp{color:var(--purple);font-weight:600;}
+.str{color:var(--green);}
+.cmt{color:#5b6f8c;font-style:italic;}
+.fn{color:var(--blue);}
+.kw{color:var(--pink);font-weight:600;}
+.num{color:var(--gold);}
+.op{color:var(--orange);font-weight:700;}
+.ty{color:var(--teal);font-weight:700;}
+
+/* ============ 通用浮动面板 ============ */
+.floating-panel{
+  position: fixed;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 18px 50px rgba(0,0,0,.55);
+  display:flex; flex-direction:column;
+  min-width:0; min-height:0;
+  transition: background .2s, box-shadow .2s;
+  z-index: 10;
+}
+.floating-panel:hover{background: var(--panel-bg-hover);}
+.floating-panel.active{
+  box-shadow: 0 0 0 2px var(--blue), 0 22px 60px rgba(0,0,0,.7);
+}
+.floating-panel.hidden{display:none;}
+
+.panel-head{
+  flex:0 0 auto;
+  display:flex; align-items:center; gap:.5em;
+  padding: .35em .55em;
+  background: rgba(10,20,36,.88);
+  border-bottom: 1px solid var(--panel-border);
+  border-radius: 14px 14px 0 0;
+  cursor: move;
+  user-select: none;
+  font-size: var(--btn-font);
+  color:#9fb6d2;
+  letter-spacing:.05em;
+}
+.panel-head .panel-title{
+  flex:1 1 auto;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  font-weight:700;
+}
+.panel-btn{
+  flex:0 0 auto;
+  width:2em;height:2em;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:.4em; border:1px solid var(--panel-border);
+  background: rgba(30,47,73,.6); color:#c9d6e8;
+  cursor:pointer; font-size:1em;
+  font-family:inherit;
+  transition: background .15s;
+}
+.panel-btn:hover{background: rgba(56,189,248,.35);}
+.panel-body{
+  flex:1 1 auto;
+  min-height:0;
+  overflow:auto;
+  padding: .5em .7em;
+  scrollbar-width:thin; scrollbar-color:#334155 transparent;
+}
+.panel-body::-webkit-scrollbar{width:10px;height:10px;}
+.panel-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+
+.resize-handle{
+  position:absolute; right:-2px; bottom:-2px;
+  width: 28px; height: 28px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, rgba(56,189,248,.6) 50%);
+  border-radius: 0 0 14px 0;
+  touch-action:none;
+  z-index: 2;
+}
+.resize-handle::after{
+  content:''; position:absolute; right:7px; bottom:7px;
+  width:9px; height:9px;
+  border-right:2px solid rgba(200,220,255,.9);
+  border-bottom:2px solid rgba(200,220,255,.9);
+}
+
+/* ============ 顶部控制栏 ============ */
+#topbarPanel{
+  top: 12px; left:50%;
+  transform: translateX(-50%);
+  max-width: 96vw;
+}
+#topbarPanel .panel-body{
+  display:flex; flex-wrap:wrap; align-items:center; gap:.5em;
+  padding:.5em .7em;
+}
+.ctrl-btn{
+  font:inherit;
+  font-size: var(--btn-font);
+  padding:.35em .8em;
+  border-radius:.5em;
+  border:1px solid var(--panel-border);
+  background: rgba(30,47,73,.78);
+  color:#dce8f8;
+  cursor:pointer;
+  white-space:nowrap;
+  min-height: 2.2em;
+  transition: background .15s, transform .1s;
+}
+.ctrl-btn:hover{background: rgba(56,189,248,.38);}
+.ctrl-btn:active{transform: translateY(1px);}
+.ctrl-btn.primary{
+  background: linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#38bdf8; color:#04121f; font-weight:700;
+}
+.ctrl-btn.primary.playing{
+  background: linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24; color:#1a1200;
+}
+.speed-box{
+  display:flex; align-items:center; gap:.5em;
+  font-size: var(--btn-font); color:#9fb6d2;
+}
+.speed-box input[type=range]{
+  width: 9em; accent-color: var(--blue); cursor:pointer;
+  height: 1.6em;
+}
+.speed-box b{color:var(--blue); font-variant-numeric: tabular-nums; min-width:3.5em;}
+
+/* ============ 状态 + 变量面板 ============ */
+#varsPanel{ top: 110px; left: 14px; width: 640px; height: 640px; }
+.info-strip{
+  display:flex; flex-wrap:wrap; align-items:center; gap:.55em;
+  font-size: var(--var-font);
+  padding: .3em .1em .5em;
+  border-bottom:1px dashed rgba(56,189,248,.25);
+  margin-bottom:.5em;
+}
+.info-tag{
+  font-size: .78em; padding:.12em .5em;
+  background: rgba(148,163,184,.2); color:#9db1cb;
+  border-radius:.3em;
+  white-space:nowrap;
+}
+.info-val{font-family: ui-monospace, Consolas, monospace; font-weight:700; color:var(--teal);}
+.info-val.fn{color:var(--blue);}
+.info-val.gold{color:var(--gold);}
+.info-val.pink{color:var(--pink);}
+
+.plat-note{
+  font-size:.78em; line-height:1.6;
+  padding:.5em .7em; margin:.3em 0 .55em;
+  background: rgba(192,132,252,.12);
+  border-left: 4px solid var(--purple);
+  border-radius:.4em;
+  color:#e0ccff;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.plat-note b{color:#f0e6ff;}
+.plat-note code{color:#7dd3fc;}
+
+.var-table{display:flex; flex-direction:column; gap:.28em;}
+.var-row{
+  display:flex; justify-content:space-between; align-items:center; gap:.6em;
+  padding: .3em .65em; border-radius:.5em;
+  background:#0d1728; border:1px solid #1b293f;
+  font-size: var(--var-font);
+  transition: background .3s, border-color .3s;
+}
+.var-row.changed{
+  border-color: rgba(56,189,248,.9);
+  background: rgba(56,189,248,.14);
+}
+.var-row.k-ctx{border-left:4px solid #7d93b3;}
+.var-row.k-val{border-left:4px solid var(--blue);}
+.var-row.k-sw{border-left:4px solid var(--teal);}
+.var-row.k-mode{border-left:4px solid var(--pink);}
+.var-row.k-tag{border-left:4px solid var(--purple);}
+.var-row.k-str{border-left:4px solid var(--green);}
+.var-row.k-mem{border-left:4px solid var(--teal);}
+.var-row.k-gold{border-left:4px solid var(--gold);}
+.var-row.k-out{border-left:4px solid var(--orange);}
+.var-name{
+  color:#8aa2c0; font-size:.85em; white-space:nowrap;
+  flex:0 0 auto;
+}
+.var-value{
+  flex:1 1 auto; min-width:0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-weight:700;
+  color:var(--blue);
+  text-align:right;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.var-value.wrap{white-space:normal; word-break:break-word; text-align:left; line-height:1.35;}
+.var-row.k-sw .var-value{color:var(--teal);}
+.var-row.k-mode .var-value{color:var(--pink);}
+.var-row.k-tag .var-value{color:var(--purple);}
+.var-row.k-str .var-value{color:var(--green);}
+.var-row.k-mem .var-value{color:var(--teal);}
+.var-row.k-gold .var-value{color:var(--gold);}
+.var-row.k-out .var-value{color:var(--orange);}
+.var-row.k-ctx .var-value{color:#b8c9e0; font-weight:500;}
+.var-value.dim{color:#5f7796; font-weight:500;}
+@keyframes flash{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.12);color:#fff;text-shadow:0 0 10px var(--blue);}
+  100%{transform:scale(1);}
+}
+.var-value.flash{animation:flash .45s ease-out;}
+
+/* ============ 内存布局面板 ============ */
+#memPanel{ top: 110px; right: 14px; width: 660px; height: 480px; }
+.mem-head{
+  font-size: var(--var-font); color:#9db1cb;
+  font-family: ui-monospace, Consolas, monospace;
+  margin:.1em 0 .5em; line-height:1.6;
+}
+.mem-head b{color:var(--blue);}
+.mem-grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(3.2em, 1fr));
+  gap:.4em;
+}
+.mem-cell{
+  position:relative;
+  display:flex; align-items:center; justify-content:center;
+  aspect-ratio: 1.1 / 1;
+  border-radius:.4em;
+  background:#0d1728; border:1px solid #1b293f;
+  color:#5f7796;
+  font-size: var(--cell-font); font-weight:700;
+  font-family: ui-monospace, Consolas, monospace;
+  transition: all .32s;
+  min-height:3.2em;
+}
+.mem-cell.c-name   {background:rgba(56,189,248,.18);border-color:rgba(56,189,248,.6);color:#7dd3fc;}
+.mem-cell.c-sex    {background:rgba(244,114,182,.18);border-color:rgba(244,114,182,.6);color:#f9a8d4;}
+.mem-cell.c-pad    {background:rgba(100,116,139,.28);border-color:rgba(100,116,139,.65);color:#cbd5e1;}
+.mem-cell.c-age    {background:rgba(251,191,36,.18);border-color:rgba(251,191,36,.6);color:#fde68a;}
+.mem-cell.c-score  {background:rgba(192,132,252,.18);border-color:rgba(192,132,252,.6);color:#d8b4fe;}
+.mem-cell.is-active{
+  box-shadow:0 0 0 3px rgba(255,255,255,.85), 0 0 20px rgba(255,255,255,.4);
+  transform:scale(1.08);
+  z-index:2;
+}
+@keyframes padPulse{
+  0%,100%{transform:scale(1); box-shadow:0 0 0 2px var(--gold);}
+  50%{transform:scale(1.16); box-shadow:0 0 0 4px var(--gold), 0 0 22px rgba(250,204,21,.7);}
+}
+.mem-cell.is-pad-active{
+  animation:padPulse .9s ease-in-out infinite;
+}
+.mem-cell .mem-tag{
+  position:absolute; bottom:2px; right:3px;
+  font-size:.5em; opacity:.8;
+}
+.mem-legend{
+  display:flex; flex-wrap:wrap; gap:.4em .9em;
+  margin-top:.6em; font-size:.85em; color:#9db1cb;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.mem-legend span{display:inline-flex; align-items:center; gap:.3em;}
+.mem-legend i{
+  display:inline-block;width:.85em;height:.85em;border-radius:.2em;
+}
+.mem-legend i.c-name   {background:rgba(56,189,248,.75);}
+.mem-legend i.c-sex    {background:rgba(244,114,182,.75);}
+.mem-legend i.c-pad    {background:rgba(100,116,139,.9);}
+.mem-legend i.c-age    {background:rgba(251,191,36,.75);}
+.mem-legend i.c-score  {background:rgba(192,132,252,.75);}
+
+/* ============ 成员表面板 ============ */
+#memberPanel{ top: 610px; right: 14px; width: 660px; height: 380px; }
+.member-tbl{
+  width:100%; border-collapse:collapse;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: var(--var-font);
+}
+.member-tbl th, .member-tbl td{
+  padding:.35em .5em; text-align:left;
+  border-bottom:1px solid #1b293f;
+}
+.member-tbl th{
+  color:#9db1cb; font-size:.85em; font-weight:700;
+  background:#0d1728; position:sticky; top:0; z-index:1;
+}
+.member-tbl td{color:#c9d6e8;}
+.member-tbl tr.pending td{color:#4c6689; font-style:italic;}
+.member-tbl tr.active td{
+  background: rgba(56,189,248,.16);
+  color:#fff; font-weight:700;
+}
+.member-tbl tr.pad-row td{color:var(--gold); font-style:italic;}
+.member-tbl tr.total-row td{
+  color:var(--gold); font-weight:800; border-top:2px solid var(--gold);
+  background: rgba(250,204,21,.08);
+}
+
+/* ============ 三方式对比面板 ============ */
+#comparePanel{
+  top: 110px; left: 670px; width: 620px; height: 320px;
+  display: none;
+}
+#comparePanel.open{display:flex;}
+.cmp-tbl{
+  width:100%; border-collapse:collapse;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: var(--var-font);
+}
+.cmp-tbl th, .cmp-tbl td{
+  padding:.4em .55em; text-align:left;
+  border-bottom:1px solid #1b293f;
+}
+.cmp-tbl th{
+  color:#9db1cb; font-size:.85em; font-weight:700;
+  background:#0d1728;
+}
+.cmp-tbl td{color:#c9d6e8;}
+.cmp-tbl tr.m1 td:first-child,
+.cmp-tbl tr.m2 td:first-child,
+.cmp-tbl tr.m3 td:first-child{
+  color:var(--pink); font-weight:700;
+}
+.cmp-tbl tr.highlight td{
+  background: rgba(56,189,248,.15);
+  box-shadow: inset 0 0 0 1px rgba(56,189,248,.35);
+}
+.cmp-tbl td.ok{color:var(--green); font-weight:700;}
+.cmp-tbl td.no{color:var(--pink); font-weight:700;}
+
+/* ============ 编译器输出面板 ============ */
+#outPanel{
+  bottom: 12px; left: 50%; transform: translateX(-50%);
+  width: 940px; height: 260px;
+}
+.console{
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: var(--out-font);
+  line-height: 1.5;
+  color:#86efac;
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding:.5em .9em;
+}
+.out-line{margin:0; white-space:pre;}
+.out-line.out-empty{color:#3d5474;}
+.out-line.out-note{color:#7dd3fc;}
+.out-line.out-ok{color:#86efac;}
+.out-line.out-pad{color:var(--gold); font-weight:700;}
+.out-line.out-final{color:var(--gold); font-weight:800;}
+.out-line.out-info{color:var(--purple); font-weight:700;}
+.out-line.out-wait{color:#3d5474;}
+.cursor{
+  display:inline-block; color:#4ade80; font-weight:400;
+  animation: blink 1s step-end infinite; margin-left:2px;
+}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+/* ============ 说明条 ============ */
+#explainPanel{
+  top: 110px; left: 50%; transform: translateX(-50%);
+  width: 820px; height: 420px;
+  display: none;
+}
+#explainPanel.open{display:flex;}
+.explain{
+  font-size: var(--explain-font);
+  line-height: 1.65;
+  color:#b8c9e0;
+}
+.explain .ex-line{
+  display:inline-block; margin-right:.5em; padding:.05em .6em;
+  border-radius:.4em; background: rgba(56,189,248,.2);
+  color: var(--blue); font-weight:800; font-size:.8em; vertical-align:middle;
+}
+.explain .ex-line.gold{background: rgba(250,204,21,.28); color:var(--gold);}
+.explain .ex-line.mv{background: rgba(244,114,182,.28); color:var(--pink);}
+.explain strong{color:#eaf3ff;}
+.explain code{
+  font-family: ui-monospace, Consolas, monospace;
+  background: rgba(148,163,184,.15); border-radius:.3em;
+  padding:0 .35em; color:#e2e8f0;
+}
+.explain .tip,.explain .warn,.explain .win{
+  display:block; margin-top:.55em; padding:.6em .8em;
+  border-radius:.45em; font-size:.9em; line-height:1.55;
+}
+.explain .tip{background: rgba(45,212,191,.12); border-left:4px solid var(--teal); color:#bff5ec;}
+.explain .warn{background: rgba(251,191,36,.14); border-left:4px solid var(--gold); color:#ffe6b0;}
+.explain .win{background: rgba(250,204,21,.16); border-left:4px solid var(--gold); color:#fff3c4; font-weight:600;}
+
+/* ============ 缩略图 ============ */
+#minimapPanel{
+  top: 110px; right: 14px;
+  width: 220px; height: 800px;
+  z-index: 5;
+}
+#minimapPanel .panel-body{padding:.3em .4em;}
+.mini-wrap{
+  position:relative;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color:#8aa2c0;
+  white-space: pre;
+  overflow:hidden;
+}
+.mini-line{
+  padding:0 .3em;
+  overflow:hidden; text-overflow:clip;
+  border-left: 3px solid transparent;
+}
+.mini-line.active{
+  background: rgba(56,189,248,.35);
+  border-left-color: var(--blue);
+  color:#fff;
+}
+.mini-line.sep{opacity:.6;}
+.mini-viewport{
+  position:absolute; left:0; right:0;
+  border: 2px solid rgba(56,189,248,.75);
+  background: rgba(56,189,248,.08);
+  pointer-events:none;
+  border-radius: 3px;
+}
+
+/* ============ 提示词面板 ============ */
+#promptPanel{
+  top: 50%; left:50%; transform: translate(-50%,-50%);
+  width: 900px; height: 600px; display:none;
+  z-index: 300;
+}
+#promptPanel.open{display:flex;}
+#promptPanel .panel-body{
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+  line-height:1.6;
+  white-space: pre-wrap;
+  color:#a9bdd8;
+}
+
+@media (max-width: 1100px){
+  .code-fullscreen{position:relative; inset:auto; height: 60vh;}
+  body{overflow:auto; height:auto;}
+}
+</style>
+</head>
+<body>
+
+<!-- ==================== 全屏代码区 ==================== -->
+<div class="code-fullscreen">
+  <div class="code-scroll" id="codeScroll"></div>
+</div>
+
+<!-- ==================== 顶部控制栏 ==================== -->
+<div class="floating-panel" id="topbarPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">▶ 编译模拟控制</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <button class="ctrl-btn" id="btnReset" title="R">⟲ 重置</button>
+    <button class="ctrl-btn" id="btnPrev" title="←">◀ 上一步</button>
+    <button class="ctrl-btn primary" id="btnPlay" title="空格">▶ 自动播放</button>
+    <button class="ctrl-btn" id="btnNext" title="→">下一步 ▶</button>
+    <div class="speed-box">
+      速度 <input type="range" id="speed" min="100" max="2400" step="50" value="800">
+      <b id="speedLabel">0.80s</b>
+    </div>
+    <button class="ctrl-btn" id="btnFullscreen" title="F">⛶ 全屏</button>
+    <button class="ctrl-btn" id="btnTogglePanels" title="H">👁 面板</button>
+    <button class="ctrl-btn" id="btnToggleMinimap" title="M">🗺 缩略图</button>
+    <button class="ctrl-btn" id="btnToggleExplain" title="E">💡 解说</button>
+    <button class="ctrl-btn" id="btnToggleCompare" title="C">⚖ 对比</button>
+    <button class="ctrl-btn" id="btnResetLayout">↺ 布局</button>
+    <button class="ctrl-btn" id="btnPrompt">📝 提示词</button>
+    <span class="info-val" id="stepCounter" style="font-size:var(--btn-font);color:var(--gold);">— / —</span>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 状态 + 变量面板 ==================== -->
+<div class="floating-panel" id="varsPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">📊 类型表 · 状态 · 变量</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="info-strip">
+      <span class="info-tag">当前方式</span>
+      <span class="info-val pink" id="modeVal">—</span>
+      <span class="info-tag">当前阶段</span>
+      <span class="info-val fn" id="phaseVal">—</span>
+      <span class="info-tag">已用</span>
+      <span class="info-val" id="offsetVal">—</span>
+      <span class="info-tag">大小</span>
+      <span class="info-val gold" id="sizeVal">—</span>
+    </div>
+
+    <div class="plat-note">
+      <b>平台模型</b>：<code>char=1 字节/对齐1</code>　<code>int=4 字节/对齐4</code>　<code>float=4 字节/对齐4</code>。<br>
+      <b>对齐规则</b>：成员起始偏移必须是其对齐要求的整数倍；不满足时在成员前插入填充字节。<br>
+      <b>总大小规则</b>：结构体总大小必须是最大对齐的整数倍。<br>
+      <b>本结构体布局</b>：name(8) + sex(1) + <b>填充(3)</b> + age(4) + score(4) = <b>20</b> 字节。
+    </div>
+
+    <div class="var-table" id="varTable"></div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 内存布局面板 ==================== -->
+<div class="floating-panel" id="memPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">🧠 内存布局 · 20 字节</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div id="memHead" class="mem-head"></div>
+    <div class="mem-grid" id="memGrid"></div>
+    <div class="mem-legend">
+      <span><i class="c-name"></i>name[8]</span>
+      <span><i class="c-sex"></i>sex</span>
+      <span><i class="c-pad"></i>填充</span>
+      <span><i class="c-age"></i>age</span>
+      <span><i class="c-score"></i>score</span>
+    </div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 三方式对比面板 ==================== -->
+<div class="floating-panel" id="comparePanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">⚖ 三种定义方式对比（按 C 键开关）</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <table class="cmp-tbl" id="cmpTbl">
+      <thead>
+        <tr>
+          <th>对比项</th>
+          <th>方式①</th>
+          <th>方式②</th>
+          <th>方式③</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="m1"><td>类型标签</td><td>student</td><td>student</td><td class="no">无（匿名）</td></tr>
+        <tr class="m2"><td>类型可复用</td><td class="ok">✔</td><td class="ok">✔</td><td class="no">✘</td></tr>
+        <tr class="m3"><td>变量声明位置</td><td>独立一行</td><td>类型末尾</td><td>类型末尾</td></tr>
+        <tr><td>推荐程度</td><td class="ok">★★★</td><td>★★</td><td class="no">★</td></tr>
+        <tr><td>结构体大小</td><td>20 字节</td><td>20 字节</td><td>20 字节</td></tr>
+        <tr><td>内存布局</td><td>完全相同</td><td>完全相同</td><td>完全相同</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 成员表面板 ==================== -->
+<div class="floating-panel" id="memberPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">📋 成员表 · 偏移 · 大小 · 对齐</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <table class="member-tbl" id="memberTbl">
+      <thead>
+        <tr><th>成员</th><th>类型</th><th>大小</th><th>对齐</th><th>偏移</th><th>结束</th></tr>
+      </thead>
+      <tbody id="memberTbody"></tbody>
+    </table>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 编译器输出面板 ==================== -->
+<div class="floating-panel" id="outPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">🖥 编译器输出（只追加，不回退）</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="console" id="consoleBody"></div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 说明条 ==================== -->
+<div class="floating-panel" id="explainPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">💡 当前语句解说（按 E 开关）</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="explain" id="explain"></div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 缩略图 ==================== -->
+<div class="floating-panel" id="minimapPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">🗺 缩略图</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="mini-wrap" id="miniWrap">
+      <div id="miniLines"></div>
+      <div class="mini-viewport" id="miniViewport"></div>
+    </div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 提示词面板 ==================== -->
+<div class="floating-panel" id="promptPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">📝 教学提示词</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body" id="promptInner"></div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   1. 源代码 21 个编号行 + 3 行注释分隔 = 共 24 个可视行
+   ========================================================= */
+const CODE_LINES = [
+  { ln:'',  sep:true,  html:'<span class="cmt">// ============== 方式①：先定义结构，后定义变量（推荐） ==============</span>', dataLine:0 },
+  { ln:'1', html:'<span class="kw">struct</span> <span class="ty">student</span> {                     <span class="cmt">// 定义结构体</span>', dataLine:1 },
+  { ln:'2', html:'    <span class="kw">char</span> name[<span class="num">8</span>];                    <span class="cmt">// 姓名：8 字节</span>', dataLine:2 },
+  { ln:'3', html:'    <span class="kw">char</span> sex;                        <span class="cmt">// 性别：1 字节</span>', dataLine:3 },
+  { ln:'4', html:'    <span class="kw">int</span> age;                         <span class="cmt">// 年龄：4 字节</span>', dataLine:4 },
+  { ln:'5', html:'    <span class="kw">float</span> score;                     <span class="cmt">// 成绩：4 字节</span>', dataLine:5 },
+  { ln:'6', html:'};                                  <span class="cmt">// 分号不能省略</span>', dataLine:6 },
+  { ln:'7', html:'<span class="kw">struct</span> <span class="ty">student</span> x, y;                 <span class="cmt">// 定义两个结构体变量 x 和 y</span>', dataLine:7 },
+  { ln:'',  sep:true,  html:'<span class="cmt">// ============== 方式②：定义结构体的同时定义变量 ==============</span>', dataLine:8 },
+  { ln:'9', html:'<span class="kw">struct</span> <span class="ty">student</span> {                     <span class="cmt">// 定义结构体并同时定义变量 x 和 y</span>', dataLine:9 },
+  { ln:'10',html:'    <span class="kw">char</span> name[<span class="num">8</span>];', dataLine:10 },
+  { ln:'11',html:'    <span class="kw">char</span> sex;', dataLine:11 },
+  { ln:'12',html:'    <span class="kw">int</span> age;', dataLine:12 },
+  { ln:'13',html:'    <span class="kw">float</span> score;', dataLine:13 },
+  { ln:'14',html:'} x, y;                              <span class="cmt">// 定义类型的同时定义变量</span>', dataLine:14 },
+  { ln:'',  sep:true,  html:'<span class="cmt">// ============== 方式③：省略结构体名（不推荐） ==============</span>', dataLine:15 },
+  { ln:'16',html:'<span class="kw">struct</span> {                             <span class="cmt">// 定义时省略结构体名</span>', dataLine:16 },
+  { ln:'17',html:'    <span class="kw">char</span> name[<span class="num">8</span>];', dataLine:17 },
+  { ln:'18',html:'    <span class="kw">char</span> sex;', dataLine:18 },
+  { ln:'19',html:'    <span class="kw">int</span> age;', dataLine:19 },
+  { ln:'20',html:'    <span class="kw">float</span> score;', dataLine:20 },
+  { ln:'21',html:'} x, y;                              <span class="cmt">// 类型无名字，之后无法再用</span>', dataLine:21 }
+];
+
+/* =========================================================
+   2. 构建步骤（共 34 步）
+   ========================================================= */
+function buildSteps(){
+  const steps = [];
+
+  // 状态
+  let S = {
+    mode: 0, phase: 'idle', structTag: null,
+    members: [], offset: 0, maxAlign: 1, totalSize: null,
+    pads: [], activeMember: null, activeRange: null,
+    activePad: null, variables: []
+  };
+
+  function resetFor(mode){
+    S.mode = mode; S.phase = 'defining'; S.structTag = null;
+    S.members = []; S.offset = 0; S.maxAlign = 1; S.totalSize = null;
+    S.pads = []; S.activeMember = null; S.activeRange = null;
+    S.activePad = null; S.variables = [];
+  }
+
+  function snap(o){
+    steps.push({
+      line: o.line,
+      cls: o.cls || 'ans',
+      ctx: o.ctx || '—',
+      expr: o.expr || '—',
+      exprVal: o.exprVal || '—',
+      note: o.note || '—',
+      title: o.title || '',
+      desc: o.desc || '',
+      s: {
+        mode: S.mode, phase: S.phase, structTag: S.structTag,
+        members: S.members.map(m => Object.assign({}, m)),
+        offset: S.offset, maxAlign: S.maxAlign, totalSize: S.totalSize,
+        pads: S.pads.map(p => Object.assign({}, p)),
+        activeMember: S.activeMember,
+        activeRange: S.activeRange ? S.activeRange.slice() : null,
+        activePad: S.activePad ? Object.assign({}, S.activePad) : null,
+        variables: S.variables.slice()
+      }
+    });
+  }
+
+  // 添加一个成员（含对齐处理，2 或 3 步）
+  function addMember(o){
+    const curOff = S.offset;
+    const needPad = (curOff % o.align !== 0);
+    const padSize = needPad ? (o.align - (curOff % o.align)) % o.align : 0;
+    const padEnd = needPad ? (curOff + padSize - 1) : null;
+
+    // 步骤 A：对齐检查
+    if (needPad){
+      snap({
+        line: o.line, cls: 'ans',
+        ctx: '方式' + S.mode + ' · 解析成员 ' + (S.members.length + 1) + '/4：' + o.name + '（检查对齐）',
+        expr: o.cType + ' ' + o.name + ';',
+        exprVal: '类型 ' + o.cType + '，大小 ' + o.size + ' 字节，对齐 ' + o.align + ' 字节',
+        note: '★ 当前偏移 ' + curOff + '，' + curOff + ' % ' + o.align + ' = ' + (curOff % o.align) + ' ≠ 0，不满足对齐！',
+        title: '成员 <b>' + o.name + '</b>：检测到对齐冲突',
+        desc: '编译器解析成员声明 <code>' + o.cType + ' ' + o.name + ';</code>。<br>' +
+              '· 类型：<code>' + o.cType + '</code>，大小 <b>' + o.size + '</b> 字节；<br>' +
+              '· <b>对齐要求：' + o.align + ' 字节</b>——起始地址必须是 ' + o.align + ' 的倍数；<br>' +
+              '· 当前偏移是 <b>' + curOff + '</b>，<code>' + curOff + ' % ' + o.align + ' = ' + (curOff % o.align) + ' ≠ 0</code>，<b>不满足对齐</b>；<br>' +
+              '· 如果硬放在偏移 ' + curOff + '，它会跨越 ' + o.align + ' 字节对齐边界；<br>' +
+              '· 所以编译器必须先<b>插入填充字节</b>，把偏移「顶」到 ' + o.align + ' 的倍数。' +
+              '<span class="tip"><b>需要填充几个字节？</b><br>' +
+              '公式：<code>填充 = (对齐 - 当前偏移 % 对齐) % 对齐</code><br>' +
+              '代入：<code>(' + o.align + ' - ' + curOff + ' % ' + o.align + ') % ' + o.align + ' = ' + padSize + '</code><br>' +
+              '所以填充 <b>' + padSize + '</b> 字节，让偏移从 ' + curOff + ' 变成 ' + (curOff + padSize) + '。</span>'
+      });
+      // 步骤 B：插入填充
+      S.pads.push({ offset: curOff, size: padSize, before: o.name });
+      S.activePad = { offset: curOff, size: padSize };
+      S.activeMember = o.name;
+      S.activeRange = null;
+      snap({
+        line: o.line, cls: 'gold',
+        ctx: '方式' + S.mode + ' · 插入填充字节',
+        expr: o.cType + ' ' + o.name + ';   // 偏移 ' + curOff + ' 处插入 ' + padSize + ' 字节填充',
+        exprVal: '填充 ' + padSize + ' 字节 @ 偏移 ' + curOff + ' ~ ' + padEnd + '；' +
+                 o.name + ' 落在偏移 ' + (curOff + padSize) + ' ~ ' + (curOff + padSize + o.size - 1),
+        note: '★ 当前已用 ' + (curOff + padSize + o.size) + ' 字节，最大对齐提升为 ' + Math.max(S.maxAlign, o.align),
+        title: '插入 <b>' + padSize + ' 字节填充</b>　→　' + o.name + ' 落在偏移 ' + (curOff + padSize),
+        desc: '为满足 ' + o.align + ' 字节对齐，编译器在偏移 <b>' + curOff + '</b> 处插入 <b>' + padSize + '</b> 字节填充。<br>' +
+              '· 填充大小 = <code>(' + o.align + ' - ' + curOff + ' % ' + o.align + ') % ' + o.align + ' = ' + padSize + '</code>；<br>' +
+              '· 填充字节<b>不存任何数据</b>，纯粹为了「占位」；<br>' +
+              '· <code>' + o.name + '</code> 从偏移 <b>' + (curOff + padSize) + '</b> 开始（是 ' + o.align + ' 的倍数），' +
+              '占据 <b>' + (curOff + padSize) + ' ~ ' + (curOff + padSize + o.size - 1) + '</b>。' +
+              '<span class="warn"><b>填充是隐形成本</b>——不存数据但占用内存。<br>' +
+              '本结构体因为成员顺序安排了 <b>' + padSize + '</b> 字节填充。' +
+              '如果把 <code>int age</code> 提到 <code>char sex</code> 前面，可能就不需要填充了——' +
+              '这就是「<b>成员顺序影响大小</b>」。</span>'
+      });
+    } else {
+      // 无填充：只做一次对齐检查（已含放置说明）
+      snap({
+        line: o.line, cls: 'mv',
+        ctx: '方式' + S.mode + ' · 解析成员 ' + (S.members.length + 1) + '/4：' + o.name,
+        expr: o.cType + ' ' + o.name + ';',
+        exprVal: '类型 ' + o.cType + '，大小 ' + o.size + ' 字节，对齐 ' + o.align + ' 字节',
+        note: '成员 ' + o.name + ' 落在偏移 ' + curOff + ' ~ ' + (curOff + o.size - 1) + '，当前已用 ' + (curOff + o.size) + ' 字节',
+        title: '成员 <b>' + o.name + '</b>：<code>' + o.cType + '</code>　→　偏移 ' + curOff + '，占 ' + o.size + ' 字节',
+        desc: '编译器解析成员声明 <code>' + o.cType + ' ' + o.name + ';</code>。<br>' +
+              '· 类型：<code>' + o.cType + '</code>，大小 <b>' + o.size + '</b> 字节；<br>' +
+              '· <b>对齐要求：' + o.align + ' 字节</b>；<br>' +
+              '· 当前偏移是 <b>' + curOff + '</b>，<code>' + curOff + ' % ' + o.align + ' = 0</code>，<b>恰好对齐</b>，无需填充；<br>' +
+              '· <code>' + o.name + '</code> 从偏移 <b>' + curOff + '</b> 开始，占据 <b>' + curOff + ' ~ ' + (curOff + o.size - 1) + '</b>；<br>' +
+              '· 更新当前偏移为 <b>' + (curOff + o.size) + '</b>，最大对齐 ' + Math.max(S.maxAlign, o.align) + '。'
+      });
+    }
+
+    // 放置成员
+    const off = curOff + padSize;
+    S.members.push({
+      name: o.name, cType: o.cType, size: o.size, align: o.align,
+      color: o.color, offset: off, endOffset: off + o.size - 1
+    });
+    S.activePad = null;
+    S.activeMember = o.name;
+    S.activeRange = [off, off + o.size - 1];
+    S.offset = off + o.size;
+    S.maxAlign = Math.max(S.maxAlign, o.align);
+  }
+
+  /* ============ 方式①（共 12 步） ============ */
+  resetFor(1); S.structTag = 'student';
+  snap({
+    line: 1, cls:'gold',
+    ctx: '方式① · 编译器 · 开始解析结构体定义',
+    expr: 'struct student {',
+    exprVal: '识别关键字 struct，注册类型标签 student',
+    note: '类型表新增条目：struct student（不完整类型）',
+    title: '<b>struct student {</b>　→　方式①：先定义类型',
+    desc: '编译器看到 <code>struct</code> 关键字，开始定义一个<b>结构体类型</b>。<br>' +
+          '· 类型标签是 <code>student</code>，之后可用 <code>struct student</code> 声明变量；<br>' +
+          '· 此刻类型还<b>不完整</b>（大小未知），只在类型表登记；<br>' +
+          '· 接下来逐条读取成员声明，处理对齐与填充。' +
+          '<span class="tip"><b>方式①的特点：</b>类型定义与变量声明<b>分开两步</b>——' +
+          '先写 <code>struct student {...};</code>，再写 <code>struct student x, y;</code>。' +
+          '这是最推荐的写法——类型可以复用。</span>'
+  });
+
+  addMember({ name:'name',  cType:'char[8]', size:8,  align:1, color:'name',  line:2 });
+  addMember({ name:'sex',   cType:'char',    size:1,  align:1, color:'sex',   line:3 });
+  addMember({ name:'age',   cType:'int',     size:4,  align:4, color:'age',   line:4 });
+  addMember({ name:'score', cType:'float',   size:4,  align:4, color:'score', line:5 });
+
+  // 方式① 第 6 行 }; 结束定义
+  let tailPad1 = (S.maxAlign - (S.offset % S.maxAlign)) % S.maxAlign;
+  S.totalSize = S.offset + tailPad1;
+  S.phase = 'done';
+  S.activeMember = null; S.activeRange = null; S.activePad = null;
+  snap({
+    line: 6, cls:'gold',
+    ctx: '方式① · 编译器 · 结构体定义结束',
+    expr: '};',
+    exprVal: 'struct student 定义完成，大小 = ' + S.totalSize + ' 字节',
+    note: '★ 类型表更新：struct student 现在是完整类型',
+    title: '<b>};</b>　→　方式①：类型定义完成，大小 = <b>' + S.totalSize + '</b> 字节',
+    desc: '编译器遇到 <code>};</code>，结构体定义结束。<br>' +
+          '· 当前已用 <b>' + S.offset + '</b> 字节，最大对齐 <b>' + S.maxAlign + '</b>；<br>' +
+          '· 尾部填充检查：<code>' + S.offset + ' % ' + S.maxAlign + ' = ' + (S.offset % S.maxAlign) + '</code>，' +
+          (tailPad1 === 0 ? '<b>恰好整除，不需要补字节</b>；' : '<b>需要补 ' + tailPad1 + ' 字节</b>；') + '<br>' +
+          '· <b>struct student 最终大小 = ' + S.totalSize + ' 字节</b>；<br>' +
+          '· 类型表现在是「完整类型」，可以用于声明变量。' +
+          '<span class="win"><b>★ 方式① 类型定义完成！struct student = ' + S.totalSize + ' 字节</b><br>' +
+          'name[8] @ 0~7　sex @ 8　<b>填充 @ 9~11</b>　age @ 12~15　score @ 16~19</span>'
+  });
+
+  // 方式① 第 7 行 struct student x, y;
+  S.variables = [
+    { name:'x', type:'struct student', size: S.totalSize },
+    { name:'y', type:'struct student', size: S.totalSize }
+  ];
+  snap({
+    line: 7, cls:'gold',
+    ctx: '方式① · 编译器 · 声明结构体变量',
+    expr: 'struct student x, y;',
+    exprVal: '分配两个 struct student 变量：x（' + S.totalSize + ' 字节）、y（' + S.totalSize + ' 字节）',
+    note: '★ 变量 x、y 各占 ' + S.totalSize + ' 字节，类型可复用',
+    title: '<b>struct student x, y;</b>　→　方式①：定义变量 x 和 y',
+    desc: '用刚刚定义的 <code>struct student</code> 类型，声明两个变量 <code>x</code> 和 <code>y</code>。<br>' +
+          '· 每个变量占 <b>' + S.totalSize + '</b> 字节，两个共 <b>' + (S.totalSize * 2) + '</b> 字节；<br>' +
+          '· 可通过 <code>x.age</code>、<code>y.score</code> 访问各自的成员。<br>' +
+          '· 类型 <code>struct student</code> 现在可以<b>在任何地方复用</b>——' +
+          '需要更多变量只需再写 <code>struct student z;</code>。' +
+          '<span class="tip"><b>方式① 的优点（推荐）：</b><br>' +
+          '· 类型可复用，代码结构清晰；<br>' +
+          '· 便于头文件组织（类型放 <code>.h</code>，变量放 <code>.c</code>）；<br>' +
+          '· 易于扩展和维护。</span>'
+  });
+
+  /* ============ 方式②（共 11 步） ============ */
+  resetFor(2); S.structTag = 'student';
+  snap({
+    line: 9, cls:'gold',
+    ctx: '方式② · 编译器 · 开始解析结构体定义',
+    expr: 'struct student {',
+    exprVal: '识别关键字 struct，注册类型标签 student',
+    note: '类型表新增条目：struct student（不完整类型）',
+    title: '<b>struct student {</b>　→　方式②：定义类型的同时定义变量',
+    desc: '与方式①相同的开头，但<b>在结构体定义的末尾会直接写变量名</b>。<br>' +
+          '· 类型标签仍是 <code>student</code>，类型表照样登记；<br>' +
+          '· 末尾带有变量名，所以这个定义<b>同时完成两件事</b>：定义类型 + 定义变量；<br>' +
+          '· 接下来同样逐个解析成员、处理对齐。'
+  });
+
+  addMember({ name:'name',  cType:'char[8]', size:8,  align:1, color:'name',  line:10 });
+  addMember({ name:'sex',   cType:'char',    size:1,  align:1, color:'sex',   line:11 });
+  addMember({ name:'age',   cType:'int',     size:4,  align:4, color:'age',   line:12 });
+  addMember({ name:'score', cType:'float',   size:4,  align:4, color:'score', line:13 });
+
+  // 方式② 第 14 行 } x, y;  —— 结束定义 + 同时定义变量
+  let tailPad2 = (S.maxAlign - (S.offset % S.maxAlign)) % S.maxAlign;
+  S.totalSize = S.offset + tailPad2;
+  S.phase = 'done';
+  S.activeMember = null; S.activeRange = null; S.activePad = null;
+  S.variables = [
+    { name:'x', type:'struct student', size: S.totalSize },
+    { name:'y', type:'struct student', size: S.totalSize }
+  ];
+  snap({
+    line: 14, cls:'gold',
+    ctx: '方式② · 编译器 · 定义结束 + 同时定义变量',
+    expr: '} x, y;',
+    exprVal: 'struct student 定义完成（' + S.totalSize + ' 字节）；同时定义变量 x、y（各 ' + S.totalSize + ' 字节）',
+    note: '★ 类型与变量一步完成：struct student x, y;',
+    title: '<b>} x, y;</b>　→　方式②：类型完成 + 变量同时定义',
+    desc: '编译器遇到 <code>} x, y;</code>，<b>一步完成两件事</b>：<br>' +
+          '· ① 把 <code>struct student</code> 标记为完整类型（大小 <b>' + S.totalSize + '</b> 字节）；<br>' +
+          '· ② 立即用这个类型定义变量 <code>x</code> 和 <code>y</code>，各占 <b>' + S.totalSize + '</b> 字节。<br>' +
+          '· 尾部填充检查：<code>' + S.offset + ' % ' + S.maxAlign + ' = ' + (S.offset % S.maxAlign) + '</code>，' +
+          (tailPad2 === 0 ? '无需补字节' : '需补 ' + tailPad2 + ' 字节') + '。' +
+          '<span class="win"><b>★ 方式② 完成：struct student = ' + S.totalSize + ' 字节；x、y 各 ' + S.totalSize + ' 字节</b></span>' +
+          '<span class="tip"><b>方式② 的特点：</b>写法紧凑，少写一行 <code>struct student x, y;</code>；' +
+          '但类型定义与变量声明混在一起，可读性稍差。<br>' +
+          '标签 <code>student</code> 依然有效——后续仍可写 <code>struct student z;</code>。</span>'
+  });
+
+  /* ============ 方式③（共 11 步） ============ */
+  resetFor(3); S.structTag = null;   // 匿名
+  snap({
+    line: 16, cls:'gold',
+    ctx: '方式③ · 编译器 · 开始解析匿名结构体',
+    expr: 'struct {',
+    exprVal: '识别关键字 struct，但没有标签名',
+    note: '类型表登记为匿名结构，无法通过名字引用',
+    title: '<b>struct {</b>　→　方式③：定义匿名结构体（不推荐）',
+    desc: '编译器看到 <code>struct</code> 后面<b>没有标签名</b>，直接跟了 <code>{</code>。<br>' +
+          '· 这是一个<b>匿名结构体</b>——它照样有类型，但类型<b>没有名字</b>；<br>' +
+          '· 编译器只能在内部登记它，之后<b>无法再用这个类型</b>声明新变量；<br>' +
+          '· 所以这种写法<b>必须</b>在定义时就把变量名写上。' +
+          '<span class="warn"><b>为什么不推荐？</b><br>' +
+          '· 无法复用：不能再写 <code>struct { ... } z;</code> 定义新变量；<br>' +
+          '· 无法传参：函数参数没法写这个类型；<br>' +
+          '· 无法嵌套：不能在其他结构体里使用这个类型；<br>' +
+          '· 代码可读性差：别人看代码不知道这是什么类型。</span>'
+  });
+
+  addMember({ name:'name',  cType:'char[8]', size:8,  align:1, color:'name',  line:17 });
+  addMember({ name:'sex',   cType:'char',    size:1,  align:1, color:'sex',   line:18 });
+  addMember({ name:'age',   cType:'int',     size:4,  align:4, color:'age',   line:19 });
+  addMember({ name:'score', cType:'float',   size:4,  align:4, color:'score', line:20 });
+
+  // 方式③ 第 21 行 } x, y;
+  let tailPad3 = (S.maxAlign - (S.offset % S.maxAlign)) % S.maxAlign;
+  S.totalSize = S.offset + tailPad3;
+  S.phase = 'done';
+  S.activeMember = null; S.activeRange = null; S.activePad = null;
+  S.variables = [
+    { name:'x', type:'匿名结构（不可复用）', size: S.totalSize },
+    { name:'y', type:'匿名结构（不可复用）', size: S.totalSize }
+  ];
+  snap({
+    line: 21, cls:'gold',
+    ctx: '方式③ · 编译器 · 定义结束 + 同时定义变量',
+    expr: '} x, y;',
+    exprVal: '匿名结构体大小 = ' + S.totalSize + ' 字节；变量 x、y 各 ' + S.totalSize + ' 字节，但类型没有名字',
+    note: '★ x、y 定义完成，但无法再用此类型定义新变量',
+    title: '<b>} x, y;</b>　→　方式③：变量定义完成，但类型没名字',
+    desc: '编译器完成匿名结构体的定义，同时定义变量 <code>x</code> 和 <code>y</code>。<br>' +
+          '· 每个变量 <b>' + S.totalSize + '</b> 字节，和方式①、②完全一样；<br>' +
+          '· <b>但类型没有名字</b>——你之后<b>无法</b>再写 <code>struct ??? z;</code> 定义第三个变量；<br>' +
+          '· 编译器的类型表里，这个类型只能<b>通过 x 或 y 间接指代</b>。' +
+          '<span class="win"><b>★ 方式③ 完成（不推荐）：struct（匿名）= ' + S.totalSize + ' 字节；x、y 各 ' + S.totalSize + ' 字节</b></span>' +
+          '<span class="warn"><b>三种方式对比：</b><br>' +
+          '· 方式①：先定义类型，再声明变量——<b>类型可复用</b>，最推荐；<br>' +
+          '· 方式②：定义类型时同时声明变量——<b>类型也可复用</b>，写法紧凑；<br>' +
+          '· 方式③：匿名结构——<b>类型无法复用</b>，只适合一次性用途。<br>' +
+          '三种方式生成的结构体内存布局<b>完全相同</b>：20 字节。</span>'
+  });
+
+  return steps;
+}
+
+const STEPS = buildSteps();
+console.log('[STEPS] 共 ' + STEPS.length + ' 步');
+
+/* =========================================================
+   3. 渲染全屏代码
+   ========================================================= */
+const codeScroll = document.getElementById('codeScroll');
+const codeEls = [];
+CODE_LINES.forEach((line, idx) => {
+  const div = document.createElement('div');
+  div.className = 'code-line' + (line.sep ? ' sep' : '');
+  div.setAttribute('data-line', String(line.dataLine));
+  div.setAttribute('data-idx', String(idx));
+  div.innerHTML = '<span class="ln">' + (line.ln || '') + '</span><span class="src">' + line.html + '</span>';
+  codeScroll.appendChild(div);
+  codeEls.push(div);
+});
+
+/* =========================================================
+   4. 缩略图内容
+   ========================================================= */
+const miniLines = document.getElementById('miniLines');
+const miniWrap = document.getElementById('miniWrap');
+const miniViewport = document.getElementById('miniViewport');
+let miniHTML = '';
+CODE_LINES.forEach((line) => {
+  miniHTML += '<div class="mini-line' + (line.sep ? ' sep' : '') +
+    '" data-line="' + line.dataLine + '" data-idx="' + CODE_LINES.indexOf(line) + '">' +
+    line.html + '</div>';
+});
+miniLines.innerHTML = miniHTML;
+const miniEls = miniLines.querySelectorAll('.mini-line');
+
+/* =========================================================
+   5. 变量表骨架
+   ========================================================= */
+const VAR_ROWS = [
+  { key:'ctx',      name:'当前执行位置',   kind:'k-ctx' },
+  { key:'expr',     name:'正在执行的语句', kind:'k-val' },
+  { key:'exprVal',  name:'语句结果',       kind:'k-val' },
+  { key:'note',     name:'关键状态提示',   kind:'k-sw' },
+  { key:'mode',     name:'方式编号',       kind:'k-mode' },
+  { key:'tag',      name:'类型标签',       kind:'k-tag' },
+  { key:'phase',    name:'当前阶段',       kind:'k-str' },
+  { key:'offset',   name:'已用字节',       kind:'k-mem' },
+  { key:'maxAlign', name:'最大对齐',       kind:'k-mem' },
+  { key:'total',    name:'结构体总大小',   kind:'k-gold' },
+  { key:'padBytes', name:'填充字节数',     kind:'k-out' },
+  { key:'vars',     name:'已定义变量',     kind:'k-tag' }
+];
+const varTable = document.getElementById('varTable');
+varTable.innerHTML = VAR_ROWS.map(r =>
+  '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+    '<span class="var-name">' + r.name + '</span>' +
+    '<span class="var-value dim">—</span>' +
+  '</div>'
+).join('');
+
+/* =========================================================
+   6. 其他 DOM
+   ========================================================= */
+const modeVal = document.getElementById('modeVal');
+const phaseVal = document.getElementById('phaseVal');
+const offsetVal = document.getElementById('offsetVal');
+const sizeVal = document.getElementById('sizeVal');
+const memHead = document.getElementById('memHead');
+const memGrid = document.getElementById('memGrid');
+const memberTbody = document.getElementById('memberTbody');
+const cmpTbl = document.getElementById('cmpTbl');
+const consoleBody = document.getElementById('consoleBody');
+const explainEl = document.getElementById('explain');
+const stepCounter = document.getElementById('stepCounter');
+
+/* =========================================================
+   7. 渲染函数
+   ========================================================= */
+function modeLabel(m){
+  if (m === 0) return '—';
+  if (m === 1) return '①（推荐）';
+  if (m === 2) return '②（紧凑）';
+  return '③（不推荐）';
+}
+function phaseLabel(p){
+  if (p === 'idle') return '尚未开始';
+  if (p === 'defining') return '定义中';
+  return '已完成';
+}
+function padBytesOf(s){
+  let n = 0;
+  s.pads.forEach(p => n += p.size);
+  return n;
+}
+
+function varText(key, step){
+  if (!step) return '—';
+  const s = step.s;
+  switch (key){
+    case 'ctx':      return step.ctx;
+    case 'expr':     return step.expr;
+    case 'exprVal':  return step.exprVal;
+    case 'note':     return step.note;
+    case 'mode':     return modeLabel(s.mode);
+    case 'tag':
+      if (s.phase === 'idle') return '尚未声明';
+      if (s.structTag === null) return '匿名结构体（无标签）';
+      return 'struct ' + s.structTag;
+    case 'phase':    return phaseLabel(s.phase);
+    case 'offset':   return s.offset + ' 字节';
+    case 'maxAlign': return s.maxAlign + ' 字节';
+    case 'total':    return (s.totalSize === null) ? '计算中…' : (s.totalSize + ' 字节');
+    case 'padBytes': return padBytesOf(s) + ' 字节';
+    case 'vars':
+      if (!s.variables || !s.variables.length) return '尚未定义';
+      return s.variables.map(v => v.name + '(' + v.size + ')').join('、');
+    default: return '—';
+  }
+}
+
+function updateVars(step, prev){
+  VAR_ROWS.forEach(r => {
+    const row = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+    if (!row) return;
+    const valEl = row.querySelector('.var-value');
+    const val = varText(r.key, step);
+    const old = prev ? varText(r.key, prev) : '—';
+    if (valEl.textContent !== val){
+      valEl.textContent = val;
+      valEl.title = val;
+      const isDim = val === '—' || val.indexOf('尚未') >= 0 || val.indexOf('计算中') >= 0;
+      valEl.classList.toggle('dim', isDim);
+      valEl.classList.toggle('wrap', val.length > 18 || val.indexOf('匿名') >= 0);
+      if (val !== old){
+        valEl.classList.remove('flash');
+        void valEl.offsetWidth;
+        valEl.classList.add('flash');
+        row.classList.add('changed');
+        setTimeout(() => row.classList.remove('changed'), 700);
+      }
+    }
+  });
+}
+
+function updateInfoBar(step){
+  if (!step){
+    modeVal.textContent = '—';
+    phaseVal.textContent = '—';
+    offsetVal.textContent = '—';
+    sizeVal.textContent = '—';
+    return;
+  }
+  const s = step.s;
+  modeVal.textContent = modeLabel(s.mode);
+  phaseVal.textContent = phaseLabel(s.phase);
+  offsetVal.textContent = s.offset + ' B';
+  sizeVal.textContent = (s.totalSize === null) ? '—' : (s.totalSize + ' B');
+}
+
+function findMemberAt(i, members){
+  for (const m of members){
+    if (i >= m.offset && i <= m.endOffset) return m;
+  }
+  return null;
+}
+function isPadAt(i, pads){
+  for (const p of pads){
+    if (i >= p.offset && i < p.offset + p.size) return p;
+  }
+  return null;
+}
+
+function updateMemView(step){
+  if (!step){
+    memHead.textContent = '';
+    memGrid.innerHTML = '<span style="color:#3d5474;font-size:var(--var-font)">（尚未开始解析）</span>';
+    return;
+  }
+  const s = step.s;
+  const totalCells = Math.max(20, s.totalSize || s.offset);
+
+  memHead.innerHTML = modeLabel(s.mode) + ' · <b>' +
+    (s.structTag === null ? '匿名结构体' : 'struct ' + s.structTag) + '</b>　│　' +
+    '已用 <b>' + s.offset + '</b> 字节' +
+    (s.totalSize !== null ? '　│　总大小 <b>' + s.totalSize + '</b>' : '') +
+    '　│　最大对齐 <b>' + s.maxAlign + '</b>';
+
+  let h = '';
+  for (let i=0; i<totalCells; i++){
+    const m = findMemberAt(i, s.members);
+    const p = isPadAt(i, s.pads);
+    let cls = 'mem-cell';
+    let tag = '';
+    if (p){ cls += ' c-pad'; tag = 'pad'; }
+    else if (m){ cls += ' c-' + m.color; tag = m.name.substring(0,5); }
+    const isActive = (s.activeRange && i >= s.activeRange[0] && i <= s.activeRange[1]);
+    if (isActive) cls += ' is-active';
+    const isPadActive = (s.activePad && i >= s.activePad.offset && i < s.activePad.offset + s.activePad.size);
+    if (isPadActive) cls += ' is-pad-active';
+    h += '<div class="' + cls + '">' + i +
+         (tag ? '<span class="mem-tag">' + tag + '</span>' : '') + '</div>';
+  }
+  memGrid.innerHTML = h;
+}
+
+function updateMemberTable(step){
+  if (!step){
+    memberTbody.innerHTML = '';
+    return;
+  }
+  const s = step.s;
+  const ALL = [
+    { key:'name',   cType:'char[8]',  size:8,  align:1, offset:0,  endOffset:7 },
+    { key:'sex',    cType:'char',     size:1,  align:1, offset:8,  endOffset:8 },
+    { key:'age',    cType:'int',      size:4,  align:4, offset:12, endOffset:15 },
+    { key:'score',  cType:'float',    size:4,  align:4, offset:16, endOffset:19 }
+  ];
+  let h = '';
+  ALL.forEach(item => {
+    // 填充行（仅 age 前）
+    if (item.key === 'age'){
+      const pad = s.pads.find(p => p.before === 'age');
+      if (pad){
+        h += '<tr class="pad-row"><td>填充</td><td>—</td><td>' + pad.size + '</td>' +
+             '<td>—</td><td>' + pad.offset + '</td><td>' + (pad.offset + pad.size - 1) + '</td></tr>';
+      }
+    }
+    const joined = s.members.some(m => m.name === item.key);
+    const isActive = s.activeMember === item.key;
+    if (joined){
+      h += '<tr class="' + (isActive ? 'active' : '') + '">' +
+        '<td>' + item.key + '</td>' +
+        '<td>' + item.cType + '</td>' +
+        '<td>' + item.size + '</td>' +
+        '<td>' + item.align + '</td>' +
+        '<td>' + item.offset + '</td>' +
+        '<td>' + item.endOffset + '</td></tr>';
+    } else {
+      h += '<tr class="pending"><td>' + item.key + '</td><td>' + item.cType + '</td>' +
+           '<td>' + item.size + '</td><td>' + item.align + '</td>' +
+           '<td>待定义</td><td>—</td></tr>';
+    }
+  });
+  if (s.totalSize !== null){
+    h += '<tr class="total-row"><td>合计</td><td>struct</td><td>' + s.totalSize + '</td>' +
+         '<td>' + s.maxAlign + '</td><td>0</td><td>' + (s.totalSize - 1) + '</td></tr>';
+  }
+  memberTbody.innerHTML = h;
+}
+
+function updateCompare(step){
+  // 高亮当前方式列
+  const cols = cmpTbl.querySelectorAll('tbody tr');
+  const mode = step ? step.s.mode : 0;
+  cols.forEach(tr => {
+    tr.classList.remove('highlight');
+    tr.querySelectorAll('td').forEach((td, i) => {
+      td.style.background = '';
+      td.style.boxShadow = '';
+    });
+    if (mode > 0){
+      const idx = mode; // 1,2,3
+      const td = tr.children[idx];
+      if (td){
+        td.style.background = 'rgba(56,189,248,.15)';
+        td.style.boxShadow = 'inset 0 0 0 1px rgba(56,189,248,.35)';
+      }
+    }
+  });
+}
+
+function buildLogLines(step){
+  if (!step) return [{ cls:'out-wait', text:'（等待编译开始）' }];
+  const s = step.s;
+  if (s.phase === 'idle' || s.mode === 0) return [{ cls:'out-wait', text:'（等待编译开始）' }];
+  const lines = [];
+  const mLbl = '方式' + (s.mode === 1 ? '①' : s.mode === 2 ? '②' : '③');
+  const tag = s.structTag === null ? '匿名结构体' : ('struct ' + s.structTag);
+  lines.push({ cls:'out-note', text:'[' + mLbl + '] 解析 ' + tag + ' ...' });
+  for (const m of s.members){
+    for (const p of s.pads){
+      if (p.before === m.name){
+        lines.push({ cls:'out-pad', text:'  (填充 ' + p.size + ' 字节 @ 偏移 ' + p.offset + ')' });
+      }
+    }
+    let tn = (m.cType + ' ' + m.name);
+    while (tn.length < 22) tn += ' ';
+    let off = '偏移 ' + m.offset;
+    while (off.length < 12) off += ' ';
+    lines.push({ cls:'out-ok', text:'  + ' + tn + off + '大小 ' + m.size });
+  }
+  if (s.totalSize !== null){
+    lines.push({ cls:'out-final', text:'[类型完成] ' + tag + ' = ' + s.totalSize + ' 字节' });
+    if (s.variables && s.variables.length){
+      lines.push({ cls:'out-info', text:'[变量定义] ' +
+        s.variables.map(v => v.name + ' (' + v.size + ' 字节)').join(', ') });
+    }
+  } else {
+    lines.push({ cls:'out-wait', text:'... 正在计算布局 ...' });
+  }
+  return lines;
+}
+
+function updateConsole(step){
+  const lines = buildLogLines(step);
+  consoleBody.innerHTML = '';
+  lines.forEach(l => {
+    const d = document.createElement('div');
+    d.className = 'out-line ' + l.cls;
+    d.textContent = l.text;
+    consoleBody.appendChild(d);
+  });
+  if (step && step.s.phase !== 'done'){
+    const last = consoleBody.lastElementChild;
+    if (last){
+      const c = document.createElement('span');
+      c.className = 'cursor';
+      c.textContent = '▊';
+      last.appendChild(c);
+    }
+  }
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+function renderExplain(step){
+  if (!step){
+    explainEl.innerHTML =
+      '<em>点击「自动播放」或「下一步」开始。</em><br><br>' +
+      '<b>本程序演示：三种结构体定义方式 + 内存对齐与填充</b><br>' +
+      '· <b>方式①</b>：<code>struct student {...};</code> 先定义类型，再声明变量——<b>推荐</b>；<br>' +
+      '· <b>方式②</b>：<code>struct student {...} x, y;</code>——类型定义与变量一步完成；<br>' +
+      '· <b>方式③</b>：<code>struct {...} x, y;</code>——匿名结构，<b>类型无法复用，不推荐</b>。<br><br>' +
+      '<b>结构体内存布局（三种方式完全相同）：</b><br>' +
+      'name[8] @ 0~7　sex @ 8　<b>填充 @ 9~11</b>　age @ 12~15　score @ 16~19<br>' +
+      '总大小 = <b>20</b> 字节，填充 = <b>3</b> 字节。<br>' +
+      '共 ' + STEPS.length + ' 个执行步骤。';
+    return;
+  }
+  const line = '<span class="ex-line' + (step.cls ? ' ' + step.cls : '') + '">第 ' + step.line + ' 行</span>';
+  explainEl.innerHTML = line + '<strong>' + step.title + '</strong> —— ' + step.desc;
+}
+
+/* ---------- 代码高亮 ---------- */
+function updateCode(step){
+  const activeLine = step ? step.line : null;
+  codeEls.forEach(el => {
+    const n = Number(el.getAttribute('data-line'));
+    el.classList.toggle('active', activeLine !== null && n === activeLine);
+  });
+  if (step){
+    codeEls.forEach(el => {
+      const n = Number(el.getAttribute('data-line'));
+      el.classList.toggle('executed', n < step.line && n > 0);
+    });
+  } else {
+    codeEls.forEach(el => el.classList.remove('executed'));
+  }
+  centerActiveLine();
+}
+
+function centerActiveLine(){
+  const el = codeScroll.querySelector('.code-line.active');
+  if (!el) return;
+  const er = el.getBoundingClientRect();
+  const cr = codeScroll.getBoundingClientRect();
+  const delta = (er.top + er.height/2) - (cr.top + cr.height/2);
+  if (Math.abs(delta) > 4){
+    codeScroll.scrollTop = Math.max(0, codeScroll.scrollTop + delta);
+  }
+}
+
+/* ---------- 缩略图同步 ---------- */
+function updateMinimap(step){
+  const activeLine = step ? step.line : null;
+  miniEls.forEach(el => {
+    const n = Number(el.getAttribute('data-line'));
+    el.classList.toggle('active', activeLine !== null && n === activeLine);
+  });
+  const totalH = codeScroll.scrollHeight;
+  const clientH = codeScroll.clientHeight;
+  const scrollTop = codeScroll.scrollTop;
+  const miniH = miniWrap.clientHeight;
+  if (totalH <= 0 || miniH <= 0) return;
+  const ratio = miniH / totalH;
+  miniViewport.style.top = (scrollTop * ratio) + 'px';
+  miniViewport.style.height = Math.max(20, clientH * ratio) + 'px';
+}
+
+let rafMini = null;
+function scheduleMinimap(){
+  if (rafMini) return;
+  rafMini = requestAnimationFrame(() => {
+    rafMini = null;
+    updateMinimap(current >= 0 ? STEPS[current] : null);
+  });
+}
+codeScroll.addEventListener('scroll', scheduleMinimap);
+window.addEventListener('resize', scheduleMinimap);
+miniWrap.addEventListener('click', (e) => {
+  const rect = miniWrap.getBoundingClientRect();
+  const ratio = (e.clientY - rect.top) / rect.height;
+  codeScroll.scrollTo({ top: Math.max(0, ratio * codeScroll.scrollHeight - codeScroll.clientHeight/2), behavior:'smooth' });
+});
+
+/* =========================================================
+   8. 总渲染
+   ========================================================= */
+let current = -1;
+let playing = false;
+let timer = null;
+let speed = Number(document.getElementById('speed').value);
+
+const btnPlay = document.getElementById('btnPlay');
+const btnPrev = document.getElementById('btnPrev');
+const btnNext = document.getElementById('btnNext');
+const btnReset = document.getElementById('btnReset');
+const speedLabel = document.getElementById('speedLabel');
+
+function render(){
+  const step = current >= 0 ? STEPS[current] : null;
+  const prev = current > 0 ? STEPS[current-1] : null;
+
+  updateCode(step);
+  updateVars(step, prev);
+  updateInfoBar(step);
+  updateMemView(step);
+  updateMemberTable(step);
+  updateCompare(step);
+  updateConsole(step);
+  renderExplain(step);
+  scheduleMinimap();
+
+  stepCounter.textContent = step
+    ? ('步骤 ' + (current+1) + ' / ' + STEPS.length)
+    : ('步骤 — / ' + STEPS.length);
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+}
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+function tick(){
+  if (current >= STEPS.length - 1){ pause(); return; }
+  current++;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  clearInterval(timer);
+  timer = setInterval(tick, speed);
+  tick();
+}
+function pause(){
+  playing = false;
+  clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+function nextStep(){ pause(); if (current < STEPS.length-1){ current++; render(); } }
+function prevStep(){ pause(); if (current > -1){ current--; render(); } }
+function resetAll(){ pause(); current = -1; render(); }
+
+btnPlay.addEventListener('click', () => playing ? pause() : play());
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+document.getElementById('speed').addEventListener('input', function(){
+  speed = Number(this.value);
+  speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+  if (playing){ clearInterval(timer); timer = setInterval(tick, speed); }
+});
+
+/* =========================================================
+   9. 面板交互
+   ========================================================= */
+let zTop = 100;
+function activate(panel){
+  panel.style.zIndex = String(++zTop);
+  document.querySelectorAll('.floating-panel').forEach(p => p.classList.remove('active'));
+  panel.classList.add('active');
+}
+function makeDraggable(panel){
+  const handle = panel.querySelector('[data-drag]');
+  if (!handle) return;
+  let sx, sy, ox, oy, dragging = false;
+  const start = e => {
+    const ev = e.touches ? e.touches[0] : e;
+    sx = ev.clientX; sy = ev.clientY;
+    const r = panel.getBoundingClientRect();
+    ox = r.left; oy = r.top;
+    dragging = true; activate(panel);
+    e.preventDefault();
+  };
+  const move = e => {
+    if (!dragging) return;
+    const ev = e.touches ? e.touches[0] : e;
+    panel.style.left = (ox + ev.clientX - sx) + 'px';
+    panel.style.top  = (oy + ev.clientY - sy) + 'px';
+    panel.style.right = 'auto'; panel.style.bottom = 'auto';
+    panel.style.transform = 'none';
+  };
+  const end = () => { dragging = false; };
+  handle.addEventListener('mousedown', start);
+  handle.addEventListener('touchstart', start, {passive:false});
+  document.addEventListener('mousemove', move);
+  document.addEventListener('touchmove', move, {passive:false});
+  document.addEventListener('mouseup', end);
+  document.addEventListener('touchend', end);
+}
+function makeResizable(panel){
+  const handle = panel.querySelector('[data-resize]');
+  if (!handle) return;
+  let sx, sy, ow, oh, resizing = false;
+  const start = e => {
+    const ev = e.touches ? e.touches[0] : e;
+    sx = ev.clientX; sy = ev.clientY;
+    const r = panel.getBoundingClientRect();
+    ow = r.width; oh = r.height;
+    resizing = true; activate(panel);
+    e.preventDefault(); e.stopPropagation();
+  };
+  const move = e => {
+    if (!resizing) return;
+    const ev = e.touches ? e.touches[0] : e;
+    panel.style.width = Math.max(0, ow + ev.clientX - sx) + 'px';
+    panel.style.height = Math.max(0, oh + ev.clientY - sy) + 'px';
+  };
+  const end = () => { resizing = false; };
+  handle.addEventListener('mousedown', start);
+  handle.addEventListener('touchstart', start, {passive:false});
+  document.addEventListener('mousemove', move);
+  document.addEventListener('touchmove', move, {passive:false});
+  document.addEventListener('mouseup', end);
+  document.addEventListener('touchend', end);
+}
+const panels = document.querySelectorAll('.floating-panel');
+const DEFAULT_LAYOUT = {};
+panels.forEach(p => {
+  const r = p.getBoundingClientRect();
+  DEFAULT_LAYOUT[p.id] = {
+    left: p.style.left || (r.left + 'px'),
+    top: p.style.top || (r.top + 'px'),
+    right: p.style.right || 'auto',
+    bottom: p.style.bottom || 'auto',
+    width: p.style.width || (r.width + 'px'),
+    height: p.style.height || (r.height + 'px'),
+    transform: p.style.transform || ''
+  };
+  makeDraggable(p);
+  makeResizable(p);
+  p.addEventListener('mousedown', () => activate(p));
+  p.addEventListener('touchstart', () => activate(p), {passive:true});
+  const cb = p.querySelector('[data-close]');
+  if (cb) cb.addEventListener('click', e => { e.stopPropagation(); p.classList.add('hidden'); scheduleMinimap(); });
+});
+
+/* 全屏 */
+document.getElementById('btnFullscreen').addEventListener('click', () => {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+  else document.exitFullscreen();
+});
+
+/* 面板显隐 */
+let panelsVisible = true;
+document.getElementById('btnTogglePanels').addEventListener('click', () => {
+  panelsVisible = !panelsVisible;
+  panels.forEach(p => {
+    if (p.id === 'promptPanel') return;
+    if (p.id === 'explainPanel'){ p.classList.toggle('open', panelsVisible); return; }
+    if (p.id === 'comparePanel'){ p.classList.toggle('open', panelsVisible); return; }
+    p.classList.toggle('hidden', !panelsVisible);
+  });
+  scheduleMinimap();
+});
+
+/* 缩略图显隐 */
+document.getElementById('btnToggleMinimap').addEventListener('click', () => {
+  document.getElementById('minimapPanel').classList.toggle('hidden');
+  scheduleMinimap();
+});
+
+/* 解说显隐 */
+document.getElementById('btnToggleExplain').addEventListener('click', () => {
+  document.getElementById('explainPanel').classList.toggle('open');
+});
+
+/* 对比面板显隐 */
+document.getElementById('btnToggleCompare').addEventListener('click', () => {
+  document.getElementById('comparePanel').classList.toggle('open');
+});
+
+/* 重置布局 */
+document.getElementById('btnResetLayout').addEventListener('click', () => {
+  panels.forEach(p => {
+    if (DEFAULT_LAYOUT[p.id]){
+      const d = DEFAULT_LAYOUT[p.id];
+      p.style.left = d.left; p.style.top = d.top;
+      p.style.right = d.right; p.style.bottom = d.bottom;
+      p.style.width = d.width; p.style.height = d.height;
+      p.style.transform = d.transform;
+      p.classList.remove('hidden');
+    }
+  });
+  zTop = 100;
+  panels.forEach((p, i) => { p.style.zIndex = String(10 + i); });
+  scheduleMinimap();
+});
+
+/* 提示词 */
+document.getElementById('btnPrompt').addEventListener('click', () => {
+  const p = document.getElementById('promptPanel');
+  p.classList.toggle('open');
+  if (p.classList.contains('open')) activate(p);
+});
+
+/* =========================================================
+   10. 键盘快捷键
+   ========================================================= */
+document.addEventListener('keydown', e => {
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  if (e.code === 'Space'){ e.preventDefault(); playing ? pause() : play(); }
+  else if (e.code === 'ArrowRight'){ nextStep(); }
+  else if (e.code === 'ArrowLeft'){ prevStep(); }
+  else if (e.code === 'KeyR'){ resetAll(); }
+  else if (e.code === 'KeyF'){
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  }
+  else if (e.code === 'KeyM'){
+    document.getElementById('minimapPanel').classList.toggle('hidden');
+    scheduleMinimap();
+  }
+  else if (e.code === 'KeyH'){
+    panelsVisible = !panelsVisible;
+    panels.forEach(p => {
+      if (p.id === 'promptPanel') return;
+      if (p.id === 'explainPanel'){ p.classList.toggle('open', panelsVisible); return; }
+      if (p.id === 'comparePanel'){ p.classList.toggle('open', panelsVisible); return; }
+      p.classList.toggle('hidden', !panelsVisible);
+    });
+    scheduleMinimap();
+  }
+  else if (e.code === 'KeyE'){
+    document.getElementById('explainPanel').classList.toggle('open');
+  }
+  else if (e.code === 'KeyC'){
+    document.getElementById('comparePanel').classList.toggle('open');
+  }
+});
+
+/* =========================================================
+   11. 提示词
+   ========================================================= */
+document.getElementById('promptInner').textContent =
+'【教学提示词】C 结构体定义三方式 · 逐步解析 · 内存对齐与填充\n' +
+'\n' +
+'三种方式：\n' +
+'  方式① struct student { ... };  struct student x, y;    （推荐）\n' +
+'  方式② struct student { ... } x, y;                     （紧凑）\n' +
+'  方式③ struct { ... } x, y;                             （匿名，不推荐）\n' +
+'\n' +
+'平台模型：char=1字节/对齐1，int=4字节/对齐4，float=4字节/对齐4\n' +
+'对齐规则：成员起始偏移必须是自身对齐的整数倍，否则前插填充\n' +
+'总大小：必须是最大对齐的整数倍\n' +
+'\n' +
+'关键布局（三种方式完全相同）：\n' +
+'  name[8]  @ 偏移 0~7   (8字节，对齐1)\n' +
+'  sex      @ 偏移 8     (1字节，对齐1)\n' +
+'  [填充]   @ 偏移 9~11  (3字节，因为 9%4=1≠0)\n' +
+'  age      @ 偏移 12~15 (4字节，对齐4)\n' +
+'  score    @ 偏移 16~19 (4字节，对齐4)\n' +
+'  总大小 = 20 字节，总填充 = 3 字节，最大对齐 = 4 字节\n' +
+'\n' +
+'共 34 步：方式① 12 步，方式② 11 步，方式③ 11 步\n' +
+'  - 无填充的成员：2 步（对齐检查 + 放置）\n' +
+'  - 有填充的成员：3 步（对齐检查 + 插入填充 + 放置）\n' +
+'\n' +
+'关键对比：\n' +
+'  · 方式①：类型可复用，变量在独立一行声明——最推荐\n' +
+'  · 方式②：类型可复用，变量在类型末尾声明——写法紧凑\n' +
+'  · 方式③：类型匿名，无法复用——只在一次性场景用\n' +
+'  · 三种方式的内存布局完全相同（20 字节）\n' +
+'\n' +
+'快捷键：Space 播放/暂停，←/→ 上/下一步，R 重置，F 全屏，M 缩略图，H 面板，E 解说，C 对比\n';
+
+/* =========================================================
+   12. 初始化
+   ========================================================= */
+speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+panels.forEach((p, i) => { p.style.zIndex = String(10 + i); });
+render();
+scheduleMinimap();
+
+})();
+</script>
+</body>
+</html>

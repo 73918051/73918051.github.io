@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 逐步执行模拟 · 二维数组 · 指针数组 p[3] · *p[0] / *(p[0]+1) / *(p[1]+2)</title>
+<style>
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;overflow:hidden;background:#0d1117;color:#dbe7f6;
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+  :root{
+    --code-font: clamp(32px, 4.2vw, 100px);
+    --out-font : clamp(28px, 3.6vw, 88px);
+    --var-font : clamp(14px, 1.3vw, 38px);
+    --exp-font : clamp(18px, 1.6vw, 46px);
+    --btn-font : clamp(14px, 1.1vw, 30px);
+    --ttl-font : clamp(12px, 1.0vw, 26px);
+    --arr-val  : clamp(16px, 1.4vw, 44px);
+    --arr-addr : clamp(11px, 0.9vw, 26px);
+  }
+  /* 全屏代码区 */
+  #codeArea{
+    position:fixed;inset:0;overflow:auto;padding:2vh 2vw;
+    scrollbar-width:thin;scrollbar-color:#2c3f5e transparent;
+  }
+  #codeArea::-webkit-scrollbar{width:12px;height:12px;}
+  #codeArea::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:12px;}
+  .code-line{
+    display:flex;align-items:baseline;gap:.5em;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:var(--code-font);line-height:1.5;
+    white-space:pre;border-left:8px solid transparent;
+    border-radius:12px;padding:0 .35em;
+    opacity:.5;transition:background .25s,border-color .25s,opacity .25s;
+  }
+  .code-line .ln{flex:0 0 auto;min-width:2.6ch;text-align:right;color:#3f5a7d;user-select:none;}
+  .code-line .src{flex:0 0 auto;}
+  .code-line.active{
+    opacity:1;background:linear-gradient(90deg,rgba(56,189,248,.24),rgba(56,189,248,0));
+    border-left-color:#38bdf8;box-shadow:inset 0 0 0 2px rgba(56,189,248,.18);
+  }
+  .code-line.active .ln{color:#38bdf8;font-weight:700;}
+  .code-line.active .src{color:#fff;}
+  .code-line.done{opacity:.32;}
+  .pp{color:#c084fc;font-weight:700;}
+  .str{color:#4ade80;}
+  .cmt{color:#5b6f8c;font-style:italic;}
+  .fn{color:#38bdf8;}
+  .kw{color:#f472b6;font-weight:700;}
+  .num{color:#fbbf24;}
+  .op{color:#fb923c;font-weight:700;}
+  /* 面板 */
+  .panel{
+    position:fixed;z-index:100;
+    background:rgba(17,29,49,.88);
+    -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+    border:1px solid #1e2f49;border-radius:14px;
+    display:flex;flex-direction:column;overflow:hidden;
+    box-shadow:0 14px 44px rgba(0,0,0,.6);
+    color:#dbe7f6;font-size:var(--var-font);
+  }
+  .panel.front{border-color:#38bdf8;box-shadow:0 0 0 2px rgba(56,189,248,.35),0 14px 44px rgba(0,0,0,.65);}
+  .p-head{
+    flex:0 0 auto;display:flex;align-items:center;gap:10px;
+    padding:6px 12px;background:rgba(30,47,73,.9);
+    cursor:move;user-select:none;touch-action:none;
+  }
+  .p-title{font-size:var(--ttl-font);font-weight:700;letter-spacing:.03em;color:#9fd0ff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .p-close{
+    margin-left:auto;flex:0 0 auto;
+    width:clamp(28px,2.1vw,46px);height:clamp(28px,2.1vw,46px);
+    border-radius:8px;border:1px solid #2a3d5c;background:#16233a;
+    color:#9fb6d2;font-size:clamp(15px,1.3vw,30px);line-height:1;cursor:pointer;
+  }
+  .p-close:hover{background:#7f1d1d;color:#fff;border-color:#ef4444;}
+  .p-body{flex:1 1 auto;min-height:0;overflow:auto;padding:8px 12px;}
+  .p-body::-webkit-scrollbar{width:10px;height:10px;}
+  .p-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+  .p-resize{
+    position:absolute;right:0;bottom:0;width:22px;height:22px;
+    cursor:nwse-resize;opacity:.55;touch-action:none;
+    background:linear-gradient(135deg,transparent 46%,#38bdf8 46%,#38bdf8 56%,transparent 56%,
+      transparent 68%,#38bdf8 68%,#38bdf8 78%,transparent 78%);
+    border-bottom-right-radius:14px;
+  }
+  .p-resize:hover{opacity:1;}
+  body.hide-panels .panel{display:none;}
+  body.hide-map #minimap{display:none;}
+  /* 控制栏 */
+  #panelControl{left:16px;top:16px;width:auto;}
+  #panelControl .p-body{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:10px 14px;}
+  button.ctl{
+    font:inherit;font-size:var(--btn-font);font-weight:700;
+    min-height:clamp(38px,3vw,68px);padding:0 clamp(10px,1vw,22px);
+    border-radius:12px;border:1px solid #2a3d5c;background:#182741;color:#dbe7f6;
+    cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,transform .08s;
+    touch-action:manipulation;
+  }
+  button.ctl:hover{background:#213352;border-color:#38bdf8;}
+  button.ctl:active{transform:translateY(1px);}
+  button.ctl:disabled{opacity:.32;cursor:not-allowed;}
+  button.ctl.primary{background:linear-gradient(180deg,#0ea5e9,#0284c7);border-color:#38bdf8;color:#04121f;}
+  button.ctl.primary.playing{background:linear-gradient(180deg,#f59e0b,#d97706);border-color:#fbbf24;color:#1a1200;}
+  .speed{display:flex;align-items:center;gap:8px;font-size:var(--btn-font);color:#8fa8c8;}
+  .speed input[type=range]{width:clamp(80px,7vw,200px);accent-color:#38bdf8;cursor:pointer;height:36px;}
+  .speed b{color:#38bdf8;font-variant-numeric:tabular-nums;min-width:4.2ch;display:inline-block;}
+  /* 状态面板 */
+  .stack-strip{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:4px 0 8px;border-bottom:1px dashed rgba(60,90,130,.35);}
+  .frame{
+    font-family:ui-monospace,Consolas,monospace;font-weight:700;
+    font-size:calc(var(--var-font)*.9);
+    padding:2px 12px;border-radius:8px;background:#0d1728;border:2px solid #1b293f;color:#8aa2c0;
+  }
+  .frame.on{border-color:#38bdf8;background:rgba(56,189,248,.2);color:#fff;box-shadow:0 0 14px rgba(56,189,248,.5);}
+  .arrow{color:#3f5a7d;font-size:var(--var-font);}
+  .empty{color:#3d5474;font-size:calc(var(--var-font)*.9);font-family:ui-monospace,monospace;}
+  .kv{display:flex;gap:10px;align-items:flex-start;padding:4px 0;border-bottom:1px dashed rgba(60,90,130,.35);}
+  .kv:last-child{border-bottom:none;}
+  .kv .k{flex:0 0 auto;color:#7d93b3;font-size:calc(var(--var-font)*.82);white-space:nowrap;padding-top:2px;}
+  .kv .v{
+    flex:1 1 auto;min-width:0;text-align:right;
+    font-family:ui-monospace,Consolas,monospace;font-weight:700;
+    color:#38bdf8;word-break:break-word;line-height:1.35;
+  }
+  .kv .v.pink{color:#f472b6;}
+  .kv .v.purple{color:#c084fc;}
+  .kv .v.orange{color:#fb923c;}
+  .kv .v.teal{color:#2dd4bf;}
+  .kv .v.gold{color:#facc15;}
+  .kv .v.dim{color:#5f7796;font-weight:500;}
+  /* 数组 3x3 网格 */
+  .arr-head{font-size:calc(var(--var-font)*.78);color:#9db1cb;font-family:ui-monospace,monospace;margin-bottom:8px;line-height:1.5;}
+  .arr-head b{color:#38bdf8;}
+  .arr2d{display:grid;grid-template-columns:1.6em repeat(3,minmax(70px,1fr));gap:8px;}
+  .arr2d-h{display:flex;align-items:center;justify-content:center;font-size:calc(var(--var-font)*.85);color:#7d93b3;font-weight:700;}
+  .arr-cell-2d{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+    padding:8px 4px;border-radius:12px;background:#0d1728;border:2px solid #1b293f;
+    min-height:clamp(60px,6vw,120px);transition:all .28s;
+  }
+  .arr-val-2d{font-size:var(--arr-val);font-weight:700;color:#c8d7ec;line-height:1.15;}
+  .arr-val-2d.unknown{color:#5a7396;}
+  .arr-addr-2d{font-size:var(--arr-addr);color:#3d5474;line-height:1.1;}
+  .arr-marks-2d{display:flex;gap:4px;min-height:1.1em;align-items:center;flex-wrap:wrap;justify-content:center;}
+  .arr-cell-2d.is-hl{background:rgba(250,204,21,.09);border-color:rgba(250,204,21,.4);}
+  .arr-cell-2d.is-p0{border-color:#f472b6;background:rgba(244,114,182,.18);box-shadow:0 0 0 3px rgba(244,114,182,.4);}
+  .arr-cell-2d.is-p0 .arr-val-2d,.arr-cell-2d.is-p0 .arr-addr-2d{color:#f472b6;}
+  .arr-cell-2d.is-p1{border-color:#c084fc;background:rgba(192,132,252,.18);box-shadow:0 0 0 3px rgba(192,132,252,.4);}
+  .arr-cell-2d.is-p1 .arr-val-2d,.arr-cell-2d.is-p1 .arr-addr-2d{color:#c084fc;}
+  .arr-cell-2d.is-p2{border-color:#fb923c;background:rgba(251,146,60,.18);box-shadow:0 0 0 3px rgba(251,146,60,.4);}
+  .arr-cell-2d.is-p2 .arr-val-2d,.arr-cell-2d.is-p2 .arr-addr-2d{color:#fb923c;}
+  .arr-cell-2d.is-tmp{border-color:#2dd4bf;background:rgba(45,212,191,.24);box-shadow:0 0 0 3px rgba(45,212,191,.45);}
+  .arr-cell-2d.is-tmp .arr-val-2d,.arr-cell-2d.is-tmp .arr-addr-2d{color:#2dd4bf;}
+  .arr-cell-2d.is-read{border-color:#facc15;background:rgba(250,204,21,.28);box-shadow:0 0 0 3px rgba(250,204,21,.5);}
+  .arr-cell-2d.is-read .arr-val-2d,.arr-cell-2d.is-read .arr-addr-2d{color:#facc15;}
+  @keyframes cellPulse{0%{transform:scale(1);}45%{transform:scale(1.12);}100%{transform:scale(1);}}
+  .arr-cell-2d.pulse{animation:cellPulse .55s ease-out;}
+  .mk{font-size:var(--arr-addr);font-weight:700;padding:0 6px;border-radius:6px;line-height:1.5;white-space:nowrap;}
+  .mk-p0{background:rgba(244,114,182,.35);color:#fbcfe8;}
+  .mk-p1{background:rgba(192,132,252,.35);color:#e9d5ff;}
+  .mk-p2{background:rgba(251,146,60,.35);color:#fed7aa;}
+  .mk-tmp{background:rgba(45,212,191,.35);color:#99f6e4;}
+  .mk-read{background:rgba(250,204,21,.4);color:#fff3c4;}
+  /* 指针关系图 */
+  .ptr-wrap{display:flex;flex-direction:column;gap:10px;}
+  .ptr-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .pnode{
+    display:flex;flex-direction:column;align-items:center;gap:1px;
+    padding:6px 12px;border-radius:10px;background:#0d1728;border:2px solid #1b293f;
+    font-family:ui-monospace,Consolas,monospace;min-width:110px;
+  }
+  .pnode .pl{font-size:calc(var(--var-font)*.95);font-weight:700;color:#c8d7ec;}
+  .pnode .pa{font-size:var(--arr-addr);color:#4c6689;}
+  .pnode .pv{font-size:calc(var(--var-font)*.85);font-weight:700;color:#9fb6d2;}
+  .pnode.is-p0{border-color:#f472b6;background:rgba(244,114,182,.16);}
+  .pnode.is-p0 .pl,.pnode.is-p0 .pv{color:#f472b6;}
+  .pnode.is-p1{border-color:#c084fc;background:rgba(192,132,252,.16);}
+  .pnode.is-p1 .pl,.pnode.is-p1 .pv{color:#c084fc;}
+  .pnode.is-p2{border-color:#fb923c;background:rgba(251,146,60,.16);}
+  .pnode.is-p2 .pl,.pnode.is-p2 .pv{color:#fb923c;}
+  .pnode.is-target{border-color:#3f5a7d;background:rgba(148,163,184,.1);}
+  .pnode.is-target .pl,.pnode.is-target .pv{color:#c8d7ec;}
+  .pnode.is-tmp{border-color:#2dd4bf;background:rgba(45,212,191,.16);}
+  .pnode.is-tmp .pl,.pnode.is-tmp .pv{color:#2dd4bf;}
+  .pnode.is-gold{border-color:#facc15;background:rgba(250,204,21,.16);}
+  .pnode.is-gold .pl,.pnode.is-gold .pv{color:#facc15;}
+  .parrow{display:flex;flex-direction:column;align-items:center;font-size:calc(var(--var-font)*1.1);font-weight:700;
+    animation:arrowPulse 1.6s ease-in-out infinite;}
+  .parrow .pa{font-size:var(--arr-addr);}
+  .parrow.c-pink{color:#f472b6;}
+  .parrow.c-purple{color:#c084fc;}
+  .parrow.c-orange{color:#fb923c;}
+  .parrow.c-teal{color:#2dd4bf;}
+  @keyframes arrowPulse{0%,100%{opacity:.5;transform:translateX(0);}50%{opacity:1;transform:translateX(5px);}}
+  /* 输出面板 */
+  #outBody{
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:var(--out-font);line-height:1.6;color:#86efac;white-space:pre-wrap;word-break:break-word;
+  }
+  .out-line{min-height:1.4em;}
+  .out-empty{color:#3d5474;font-size:calc(var(--out-font)*.6);}
+  .out-note{color:#7d93b3;font-size:calc(var(--out-font)*.45);margin-top:.4em;line-height:1.5;}
+  .out-result{color:#86efac;}
+  .out-final{color:#facc15;font-weight:700;}
+  .out-foot{color:#7d93b3;font-size:calc(var(--out-font)*.42);margin-top:.7em;line-height:1.5;}
+  .cursor{display:inline-block;color:#4ade80;font-weight:400;animation:blink 1s step-end infinite;margin-left:2px;}
+  @keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+  /* 说明面板 */
+  #explainBody{font-size:var(--exp-font);line-height:1.6;color:#b8c9e0;}
+  #explainBody .tag{
+    display:inline-block;margin-right:10px;padding:2px 14px;border-radius:10px;
+    background:rgba(56,189,248,.2);color:#38bdf8;font-weight:700;
+    font-size:calc(var(--exp-font)*.8);vertical-align:middle;
+  }
+  #explainBody .tag.gold{background:rgba(250,204,21,.22);color:#facc15;}
+  #explainBody .tag.mv{background:rgba(244,114,182,.22);color:#f472b6;}
+  #explainBody strong{color:#fff;}
+  #explainBody code{
+    font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.18);border-radius:6px;padding:0 6px;color:#e2e8f0;
+  }
+  #explainBody .tip{display:block;margin-top:.6em;padding:.5em .8em;border-radius:10px;
+    background:rgba(45,212,191,.12);border-left:6px solid #2dd4bf;color:#bff5ec;
+    font-size:calc(var(--exp-font)*.85);line-height:1.6;}
+  #explainBody .warn{display:block;margin-top:.6em;padding:.5em .8em;border-radius:10px;
+    background:rgba(251,191,36,.14);border-left:6px solid #fbbf24;color:#ffe6b0;
+    font-size:calc(var(--exp-font)*.85);line-height:1.6;}
+  #explainBody .win{display:block;margin-top:.6em;padding:.55em .8em;border-radius:10px;
+    background:rgba(250,204,21,.16);border-left:6px solid #facc15;color:#fff3c4;
+    font-size:calc(var(--exp-font)*.85);line-height:1.6;font-weight:600;}
+  /* 缩略图 */
+  #minimap{
+    position:fixed;right:16px;top:16px;width:220px;z-index:120;
+    background:rgba(13,17,23,.82);
+    -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+    border:1px solid #1e2f49;border-radius:12px;padding:8px 6px;
+    box-shadow:0 10px 30px rgba(0,0,0,.5);
+    user-select:none;
+  }
+  #minimap .mm-head{
+    display:flex;align-items:center;gap:6px;font-size:12px;color:#7d93b3;
+    padding:0 2px 6px;cursor:move;touch-action:none;
+  }
+  #minimap .mm-close{
+    margin-left:auto;width:22px;height:22px;line-height:1;border-radius:6px;
+    border:1px solid #2a3d5c;background:#16233a;color:#9fb6d2;cursor:pointer;font-size:14px;
+  }
+  #minimap .mm-close:hover{background:#7f1d1d;color:#fff;}
+  #mmBody{position:relative;cursor:pointer;}
+  .mm-line{
+    height:24px;overflow:hidden;white-space:pre;
+    font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:24px;
+    color:#7f94b3;opacity:.75;
+  }
+  .mm-line .pp{color:#c084fc;}
+  .mm-line .str{color:#4ade80;}
+  .mm-line .kw{color:#f472b6;}
+  .mm-line .num{color:#fbbf24;}
+  .mm-line .op{color:#fb923c;}
+  .mm-line .fn{color:#38bdf8;}
+  .mm-line .cmt{color:#4a5f7d;font-style:italic;}
+  .mm-line.cur{background:rgba(56,189,248,.28);border-radius:3px;opacity:1;}
+  #mmView{
+    position:absolute;left:0;right:0;border:2px solid #38bdf8;
+    background:rgba(56,189,248,.12);border-radius:4px;pointer-events:none;
+  }
+</style>
+</head>
+<body>
+
+<!-- 全屏代码区 -->
+<div id="codeArea">
+  <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                 <span class="cmt">// 包含标准输入输出头文件</span></span></div>
+  <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="kw">int</span> <span class="fn">main</span>() {                         <span class="cmt">// 定义主函数</span></span></div>
+  <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="kw">static</span> <span class="kw">int</span> a[<span class="num">3</span>][<span class="num">3</span>] <span class="op">=</span> {<span class="num">1</span>,<span class="num">2</span>,<span class="num">3</span>,<span class="num">4</span>,<span class="num">5</span>,<span class="num">6</span>,<span class="num">7</span>,<span class="num">8</span>,<span class="num">9</span>}; <span class="cmt">// 定义二维数组</span></span></div>
+  <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">    <span class="kw">int</span> <span class="op">*</span>p[] <span class="op">=</span> {a[<span class="num">0</span>], a[<span class="num">1</span>], a[<span class="num">2</span>]};   <span class="cmt">// 定义指针数组，存放每行首地址</span></span></div>
+  <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">    <span class="fn">printf</span>(<span class="str">"%d-%d\n"</span>, <span class="op">*</span>p[<span class="num">0</span>], <span class="op">*</span>p[<span class="num">1</span>]);  <span class="cmt">// 输出1-4</span></span></div>
+  <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">    <span class="fn">printf</span>(<span class="str">"%d-%d"</span>, <span class="op">*</span>(p[<span class="num">0</span>]<span class="op">+</span><span class="num">1</span>), <span class="op">*</span>(p[<span class="num">1</span>]<span class="op">+</span><span class="num">2</span>)); <span class="cmt">// 输出2-6</span></span></div>
+  <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">    <span class="kw">return</span> <span class="num">0</span>;                       <span class="cmt">// 返回0，程序结束</span></span></div>
+  <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">}</span></div>
+</div>
+
+<!-- 缩略图 -->
+<div id="minimap">
+  <div class="mm-head" id="mmHead">缩略图 · arr2d_ptrarr.c
+    <button class="mm-close" id="mmClose">×</button>
+  </div>
+  <div id="mmBody"><div id="mmView"></div></div>
+</div>
+
+<!-- 控制台 -->
+<div class="panel" id="panelControl">
+  <div class="p-head" data-drag="1">
+    <span class="p-title">控制台</span>
+    <button class="p-close" data-close="panelControl">×</button>
+  </div>
+  <div class="p-body">
+    <button class="ctl" id="btnReset">⟲ 重置</button>
+    <button class="ctl" id="btnPrev">◀ 上一步</button>
+    <button class="ctl primary" id="btnPlay">▶ 播放</button>
+    <button class="ctl" id="btnNext">下一步 ▶</button>
+    <span class="speed">速度
+      <input type="range" id="speed" min="200" max="2400" step="50" value="800">
+      <b id="speedLabel">0.80s</b>
+    </span>
+    <button class="ctl" id="btnFull">⛶ 全屏</button>
+    <button class="ctl" id="btnMap">🗺 缩略图</button>
+    <button class="ctl" id="btnPanels">👁 面板</button>
+    <button class="ctl" id="btnLayout">↺ 重置布局</button>
+  </div>
+  <div class="p-resize" data-resize="1"></div>
+</div>
+
+<!-- 输出面板 -->
+<div class="panel" id="panelOut">
+  <div class="p-head" data-drag="1">
+    <span class="p-title">程序运行结果（屏幕输出）</span>
+    <button class="p-close" data-close="panelOut">×</button>
+  </div>
+  <div class="p-body" id="outBody"></div>
+  <div class="p-resize" data-resize="1"></div>
+</div>
+
+<!-- 状态面板 -->
+<div class="panel" id="panelState">
+  <div class="p-head" data-drag="1">
+    <span class="p-title">调用栈 · 变量 · 状态</span>
+    <button class="p-close" data-close="panelState">×</button>
+  </div>
+  <div class="p-body">
+    <div class="stack-strip">
+      <span class="k" style="font-size:calc(var(--var-font)*.82);color:#7d93b3;">调用栈</span>
+      <span id="stackBody"><span class="empty">（空）</span></span>
+    </div>
+    <div class="kv"><span class="k">平台模型</span><span class="v gold" style="text-align:left;">sizeof(int)=2 · 指针 2 字节（16 位模型）</span></div>
+    <div class="kv"><span class="k">p[0]（int *）</span><span class="v pink" id="vP0">尚未声明</span></div>
+    <div class="kv"><span class="k">p[1]（int *）</span><span class="v purple" id="vP1">尚未声明</span></div>
+    <div class="kv"><span class="k">p[2]（int *）</span><span class="v orange" id="vP2">尚未声明</span></div>
+    <div class="kv"><span class="k">正在读取 / 临时地址</span><span class="v teal" id="vFocus">（无）</span></div>
+    <div class="kv"><span class="k">printf 次数</span><span class="v" id="vCnt">0</span></div>
+    <div class="kv"><span class="k">屏幕输出缓冲</span><span class="v gold" id="vOut">（空）</span></div>
+  </div>
+  <div class="p-resize" data-resize="1"></div>
+</div>
+
+<!-- 数组可视化 -->
+<div class="panel" id="panelArray">
+  <div class="p-head" data-drag="1">
+    <span class="p-title">二维数组可视化 · int a[3][3]</span>
+    <button class="p-close" data-close="panelArray">×</button>
+  </div>
+  <div class="p-body" id="arrBody"></div>
+  <div class="p-resize" data-resize="1"></div>
+</div>
+
+<!-- 指针关系图 -->
+<div class="panel" id="panelPtr">
+  <div class="p-head" data-drag="1">
+    <span class="p-title">指针数组 p[3] 与 a 的关系</span>
+    <button class="p-close" data-close="panelPtr">×</button>
+  </div>
+  <div class="p-body" id="ptrBody"></div>
+  <div class="p-resize" data-resize="1"></div>
+</div>
+
+<!-- 说明面板 -->
+<div class="panel" id="panelExplain">
+  <div class="p-head" data-drag="1">
+    <span class="p-title">当前语句说明</span>
+    <button class="p-close" data-close="panelExplain">×</button>
+  </div>
+  <div class="p-body" id="explainBody"></div>
+  <div class="p-resize" data-resize="1"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   1. 内存模型（16 位：sizeof(int)=2，指针 2 字节）
+   ============================================================ */
+var A_BASE = 0x1000, ISTEP = 2, ROWS = 3, COLS = 3;
+var P_BASE = 0x1020, PSTEP = 2;
+var A_VALS = [1,2,3,4,5,6,7,8,9];
+
+function hex(v){ var s = v.toString(16).toUpperCase(); while(s.length<4) s='0'+s; return '0x'+s; }
+function cellAddr(r,c){ return hex(A_BASE + (r*COLS + c)*ISTEP); }
+function rowAddr(r){ return hex(A_BASE + r*COLS*ISTEP); }
+function pAddr(i){ return hex(P_BASE + i*PSTEP); }
+
+/* ============================================================
+   2. 构建 18 个执行步骤
+   ============================================================ */
+var STEPS = [];
+var outText = '', printfCount = 0;
+var aVals = [null,null,null,null,null,null,null,null,null];
+var pVals = [null, null, null];
+var aAlloc = false, pAlloc = false;
+var hl = null;             // 高亮格数组 [[r,c],...]
+var readCell = null;       // { r, c, label }
+var tmpCell = null;        // { r, c, label }
+
+function isHl(cell){
+  if(!hl) return false;
+  for(var i=0;i<hl.length;i++) if(hl[i][0]===cell[0]&&hl[i][1]===cell[1]) return true;
+  return false;
+}
+function pDisp(i){
+  if(!pAlloc) return '尚未声明';
+  if(pVals[i] === null) return '未初始化';
+  return hex(pVals[i]) + ' → a['+i+'][0]';
+}
+function focusDisp(){
+  if(readCell){
+    var v = aVals[readCell.r*COLS + readCell.c];
+    return '读 ' + readCell.label + ' → a['+readCell.r+']['+readCell.c+'] = ' + (v===null?'?':v);
+  }
+  if(tmpCell) return '临时 ' + tmpCell.label + ' = ' + cellAddr(tmpCell.r, tmpCell.c);
+  return '（无）';
+}
+function outPreview(s){
+  if(s==='') return '（空）';
+  return s.replace(/\n/g,'⏎');
+}
+function snap(o){
+  STEPS.push({
+    line: o.line,
+    func: o.func || 'main',
+    stack: o.stack || ['main'],
+    cls: o.cls || 'ans',
+    title: o.title || '',
+    desc: o.desc || '',
+    expr: o.expr || '',
+    exprVal: o.exprVal || '',
+    note: o.note || '',
+    aAlloc: aAlloc,
+    aVals: aVals.slice(),
+    pAlloc: pAlloc,
+    pVals: pVals.slice(),
+    hl: hl ? hl.map(function(x){return x.slice();}) : null,
+    readCell: readCell ? {r:readCell.r, c:readCell.c, label:readCell.label} : null,
+    tmpCell:  tmpCell  ? {r:tmpCell.r,  c:tmpCell.c,  label:tmpCell.label}  : null,
+    out: outText,
+    printfCount: printfCount,
+    vars: {
+      p0: pDisp(0), p1: pDisp(1), p2: pDisp(2),
+      focus: focusDisp(),
+      outBuf: outPreview(outText)
+    }
+  });
+}
+
+/* ---------- 步骤 1：第 1 行 预处理 ---------- */
+snap({
+  line: 1, func: '—', stack: [],
+  cls: 'ans',
+  title: '#include &lt;stdio.h&gt;　预处理指令',
+  desc: '<code>#include</code> 是<b>预处理指令</b>，不是 C 语句，运行时不会执行它。<br>' +
+        '· 预处理器把 <code>stdio.h</code> 的内容原样插入到这一行；<br>' +
+        '· 本程序有 2 次 <code>printf</code> 调用，全靠它拿到函数声明；<br>' +
+        '· 它<b>不产生机器指令</b>，此时栈里什么都没有，数组和指针也还没出现。' +
+        '<span class="tip">本程序将输出 <b>2 行</b>：<code>1-4␊</code> / <code>2-6</code>（第 2 行末尾<b>无空格、无换行</b>），' +
+        '退出码 <b>0</b>。</span>'
+});
+
+/* ---------- 步骤 2：第 2 行 main 入口 ---------- */
+snap({
+  line: 2, cls: 'gold',
+  title: 'int main() {　程序从这里开始',
+  desc: '操作系统调用 <code>main</code>，为其建立<b>栈帧</b>。' +
+        '<span class="tip"><b>本程序四大观察重点：</b><br>' +
+        '① <b>二维数组的行优先布局</b>：<code>a[3][3]</code> 的 9 个 int 在内存里' +
+        '<b>连续排成一行</b>，地址步长 2 字节；<br>' +
+        '② <b>数组名退化</b>：<code>a[0]</code>、<code>a[1]</code>、<code>a[2]</code> ' +
+        '出现在表达式里时，分别退化为<b>每行首元素的地址</b>；<br>' +
+        '③ <b>指针数组 <code>int *p[3]</code></b>：p 是「3 个指针组成的数组」，' +
+        '每个元素都是 <code>int *</code>；<br>' +
+        '④ <b><code>p[i] + k</code> 的落点</b>：从第 i 行首出发前进 k 个 int，' +
+        '即 <code>a[i][k]</code>。</span>'
+});
+
+/* ---------- 步骤 3：第 3 行 分配数组 a ---------- */
+aAlloc = true;
+snap({
+  line: 3, cls: 'ans',
+  expr: 'static int a[3][3];',
+  exprVal: 'a 分配在 ' + cellAddr(0,0) + '，9 个 int × 2 字节 = 18 字节',
+  note: '9 个格子里还是未定义的垃圾值（图中用 ? 表示）',
+  title: 'static int a[3][3];　→　分配 9 个 int（共 <b>18</b> 字节）',
+  desc: '先为二维数组 a 分配内存。<br>' +
+        '· <code>int a[3][3]</code>：3 行 3 列，共 <b>9 个 int</b>，每个 2 字节，合计 <b>18 字节</b>；<br>' +
+        '· 起始地址 <code>' + cellAddr(0,0) + '</code>，<b>行优先（row-major）</b>存放：' +
+        '先放第 0 行 3 个，再放第 1 行 3 个，最后放第 2 行 3 个；<br>' +
+        '· 每个元素地址相差 <b>2 字节</b>：<br>' +
+        '　a[0][0]@' + cellAddr(0,0) + '　a[0][1]@' + cellAddr(0,1) + '　a[0][2]@' + cellAddr(0,2) + '<br>' +
+        '　a[1][0]@' + cellAddr(1,0) + '　a[1][1]@' + cellAddr(1,1) + '　a[1][2]@' + cellAddr(1,2) + '<br>' +
+        '　a[2][0]@' + cellAddr(2,0) + '　a[2][1]@' + cellAddr(2,1) + '　a[2][2]@' + cellAddr(2,2) + '；<br>' +
+        '· 此刻还没有初始化，图中用 <code>?</code> 表示。' +
+        '<span class="tip"><b>二维数组的地址公式：</b><br>' +
+        '<code>&amp;a[r][c] = 首地址 + (r × 列数 + c) × sizeof(int)</code>。<br>' +
+        '行与行之间是紧挨着的，没有空隙。</span>' +
+        '<span class="warn"><b>关于 static：</b><br>' +
+        '加 <code>static</code> 后，a 不在栈上，而在<b>静态存储区</b>，整个程序运行期间一直存在；' +
+        '并且如果不写初始化列表，它会被自动清零。</span>'
+});
+
+/* ---------- 步骤 4：第 3 行 第 0 行 ---------- */
+aVals[0] = 1; aVals[1] = 2; aVals[2] = 3;
+hl = [[0,0],[0,1],[0,2]];
+snap({
+  line: 3, cls: 'mv',
+  expr: 'a[0][0]=1, a[0][1]=2, a[0][2]=3',
+  exprVal: '第 0 行写入 1, 2, 3',
+  note: '初始化列表从 a[0][0] 开始按行优先顺序填充',
+  title: '第 0 行 ← <b>1, 2, 3</b>',
+  desc: '初始化列表 <code>{1,2,3,4,5,6,7,8,9}</code> 从 <code>a[0][0]</code> 开始填充。<br>' +
+        '· <code>a[0][0] = 1</code>（地址 ' + cellAddr(0,0) + '）；<br>' +
+        '· <code>a[0][1] = 2</code>（地址 ' + cellAddr(0,1) + '）；<br>' +
+        '· <code>a[0][2] = 3</code>（地址 ' + cellAddr(0,2) + '）。' +
+        '<span class="tip"><b>为什么能写成一层花括号？</b><br>' +
+        'C 语言允许用<b>一层花括号</b>给二维数组按行优先顺序初始化，' +
+        '写 <code>{1,2,3,4,5,6,7,8,9}</code> 和写 <code>{{1,2,3},{4,5,6},{7,8,9}}</code> 是<b>完全等价</b>的。</span>'
+});
+hl = null;
+
+/* ---------- 步骤 5：第 3 行 第 1 行 ---------- */
+aVals[3] = 4; aVals[4] = 5; aVals[5] = 6;
+hl = [[1,0],[1,1],[1,2]];
+snap({
+  line: 3, cls: 'mv',
+  expr: 'a[1][0]=4, a[1][1]=5, a[1][2]=6',
+  exprVal: '第 1 行写入 4, 5, 6',
+  note: '第 1 行的首地址 a[1][0] 是 ' + cellAddr(1,0),
+  title: '第 1 行 ← <b>4, 5, 6</b>',
+  desc: '继续按行优先顺序填充第 1 行。<br>' +
+        '· <code>a[1][0] = 4</code>（地址 ' + cellAddr(1,0) + '）；<br>' +
+        '· <code>a[1][1] = 5</code>（地址 ' + cellAddr(1,1) + '）；<br>' +
+        '· <code>a[1][2] = 6</code>（地址 ' + cellAddr(1,2) + '）。' +
+        '<span class="warn"><b>注意行首地址：</b><br>' +
+        '<code>a[1][0]</code> 的地址是 <code>' + cellAddr(1,0) + '</code>，' +
+        '它紧跟在 <code>a[0][2]</code>（' + cellAddr(0,2) + '）后面，只差 2 字节。<br>' +
+        '这就是「二维数组在内存里其实是一维的」最直观的证据。</span>'
+});
+hl = null;
+
+/* ---------- 步骤 6：第 3 行 第 2 行 ---------- */
+aVals[6] = 7; aVals[7] = 8; aVals[8] = 9;
+hl = [[2,0],[2,1],[2,2]];
+snap({
+  line: 3, cls: 'mv',
+  expr: 'a[2][0]=7, a[2][1]=8, a[2][2]=9',
+  exprVal: '第 2 行写入 7, 8, 9',
+  note: '9 个元素全部初始化完毕',
+  title: '第 2 行 ← <b>7, 8, 9</b>',
+  desc: '填充最后一行，二维数组初始化完成。<br>' +
+        '· <code>a[2][0] = 7</code>（地址 ' + cellAddr(2,0) + '）；<br>' +
+        '· <code>a[2][1] = 8</code>（地址 ' + cellAddr(2,1) + '）；<br>' +
+        '· <code>a[2][2] = 9</code>（地址 ' + cellAddr(2,2) + '）。' +
+        '<span class="win"><b>★ 数组 a 的最终布局：</b><br>' +
+        '　　<b>[0]</b>　<b>[1]</b>　<b>[2]</b><br>' +
+        '<b>[0]</b>　1　　2　　3　　（' + cellAddr(0,0) + ' ~ ' + cellAddr(0,2) + '）<br>' +
+        '<b>[1]</b>　4　　5　　6　　（' + cellAddr(1,0) + ' ~ ' + cellAddr(1,2) + '）<br>' +
+        '<b>[2]</b>　7　　8　　9　　（' + cellAddr(2,0) + ' ~ ' + cellAddr(2,2) + '）</span>'
+});
+hl = null;
+
+/* ---------- 步骤 7：第 4 行 分配指针数组 ---------- */
+pAlloc = true;
+snap({
+  line: 4, cls: 'ans',
+  expr: 'int *p[3];',
+  exprVal: 'p 分配在 ' + pAddr(0) + '，3 个指针 × 2 字节 = 6 字节',
+  note: '3 个指针格子里还是未定义的垃圾值',
+  title: 'int *p[3];　→　分配 3 个指针（共 <b>6</b> 字节）',
+  desc: '为指针数组 p 分配内存。<br>' +
+        '· <code>int *p[3]</code> 是「<b>3 个 int * 组成的数组</b>」；<br>' +
+        '· 因为 <code>[]</code> 的优先级高于 <code>*</code>，所以 p 先和 <code>[3]</code> ' +
+        '结合，p 是<b>数组</b>，元素类型是 <code>int *</code>；<br>' +
+        '· 每个指针 2 字节，共 <b>6 字节</b>，起始地址 ' + pAddr(0) + '：<br>' +
+        '　p[0]@' + pAddr(0) + '　p[1]@' + pAddr(1) + '　p[2]@' + pAddr(2) + '；<br>' +
+        '· 此刻三个格子都还没赋值，图中用 <code>?</code> 表示。' +
+        '<span class="warn"><b>易混淆：<code>int *p[3]</code> vs <code>int (*p)[3]</code></b><br>' +
+        '· <code>int *p[3]</code>　→ p 是<b>数组</b>，3 个元素，每个是 <code>int *</code>　（本程序用的就是这个）；<br>' +
+        '· <code>int (*p)[3]</code> → p 是<b>指针</b>，指向「3 个 int 的数组」，每 +1 前进 6 字节。<br>' +
+        '括号的位置决定了 p 到底是「数组」还是「指针」——<b>这是 C 语言最经典的语法陷阱之一。</b></span>'
+});
+
+/* ---------- 步骤 8：第 4 行 p[0] = a[0] ---------- */
+pVals[0] = A_BASE + 0*COLS*ISTEP;
+hl = [[0,0]];
+snap({
+  line: 4, cls: 'mv',
+  expr: 'p[0] = a[0];',
+  exprVal: 'a[0] 退化为 &a[0][0] = ' + rowAddr(0) + '，写入 p[0]',
+  note: 'p[0] 指向第 0 行首元素 a[0][0]',
+  title: '<b>p[0] = a[0] = ' + rowAddr(0) + '</b>　→　指向 a[0][0]（值 1）',
+  desc: '初始化指针数组的第 0 个元素。<br>' +
+        '· <code>a[0]</code> 是一个「3 个 int 的数组」，但在表达式里会' +
+        '<b>退化为指向其首元素的指针</b>，即 <code>&amp;a[0][0] = ' + rowAddr(0) + '</code>；<br>' +
+        '· 把它写入 <code>p[0]</code>（住在 ' + pAddr(0) + '）；<br>' +
+        '· 于是 <b>p[0] → a[0][0]</b>（值 1）。' +
+        '<span class="tip"><b>为什么 <code>a[0]</code> 会退化？</b><br>' +
+        'C 语言规定：数组名在表达式中会「退化」成指向首元素的指针，' +
+        '除了 <code>sizeof</code>、<code>&amp;</code> 和字符串初始化这三种情况。<br>' +
+        '<code>a[0]</code> 本身是一个长度为 3 的 int 数组，所以它退化后就是 ' +
+        '<code>int *</code>，指向 <code>a[0][0]</code>。</span>'
+});
+hl = null;
+
+/* ---------- 步骤 9：第 4 行 p[1] = a[1] ---------- */
+pVals[1] = A_BASE + 1*COLS*ISTEP;
+hl = [[1,0]];
+snap({
+  line: 4, cls: 'mv',
+  expr: 'p[1] = a[1];',
+  exprVal: 'a[1] 退化为 &a[1][0] = ' + rowAddr(1) + '，写入 p[1]',
+  note: 'p[1] 指向第 1 行首元素 a[1][0]',
+  title: '<b>p[1] = a[1] = ' + rowAddr(1) + '</b>　→　指向 a[1][0]（值 4）',
+  desc: '初始化指针数组的第 1 个元素。<br>' +
+        '· <code>a[1]</code> 退化为 <code>&amp;a[1][0] = ' + rowAddr(1) + '</code>；<br>' +
+        '· 写入 <code>p[1]</code>（住在 ' + pAddr(1) + '）；<br>' +
+        '· 于是 <b>p[1] → a[1][0]</b>（值 4）。' +
+        '<span class="warn"><b>注意：<code>a[1]</code> 不是 <code>a[0]+1</code>！</b><br>' +
+        '<code>a[0]</code> 的地址是 ' + rowAddr(0) + '，<code>a[1]</code> 的地址是 ' + rowAddr(1) + '，两者相差 <b>' + (COLS*ISTEP) + ' 字节</b>（整整一行的长度 = 3 × 2）。<br>' +
+        '如果写成 <code>a[0] + 1</code>，那是 <code>' + cellAddr(0,1) + '</code>，是 <code>a[0][1]</code> 而不是 <code>a[1][0]</code>。</span>'
+});
+hl = null;
+
+/* ---------- 步骤 10：第 4 行 p[2] = a[2] ---------- */
+pVals[2] = A_BASE + 2*COLS*ISTEP;
+hl = [[2,0]];
+snap({
+  line: 4, cls: 'mv',
+  expr: 'p[2] = a[2];',
+  exprVal: 'a[2] 退化为 &a[2][0] = ' + rowAddr(2) + '，写入 p[2]',
+  note: 'p[2] 指向第 2 行首元素 a[2][0]',
+  title: '<b>p[2] = a[2] = ' + rowAddr(2) + '</b>　→　指向 a[2][0]（值 7）',
+  desc: '初始化指针数组的第 2 个元素，指针数组初始化完成。<br>' +
+        '· <code>a[2]</code> 退化为 <code>&amp;a[2][0] = ' + rowAddr(2) + '</code>；<br>' +
+        '· 写入 <code>p[2]</code>（住在 ' + pAddr(2) + '）；<br>' +
+        '· 于是 <b>p[2] → a[2][0]</b>（值 7）。' +
+        '<span class="win"><b>★ 指针数组 p 的最终布局：</b><br>' +
+        '<code>p[0] @' + pAddr(0) + ' = ' + rowAddr(0) + ' → a[0][0]（值 1）</code><br>' +
+        '<code>p[1] @' + pAddr(1) + ' = ' + rowAddr(1) + ' → a[1][0]（值 4）</code><br>' +
+        '<code>p[2] @' + pAddr(2) + ' = ' + rowAddr(2) + ' → a[2][0]（值 7）</code></span>'
+});
+hl = null;
+
+/* ---------- 步骤 11：第 5 行 求值 *p[0] ---------- */
+readCell = { r:0, c:0, label:'*p[0]' };
+tmpCell = null;
+snap({
+  line: 5, cls: 'ans',
+  expr: '*p[0]   →   p[0] 是 ' + rowAddr(0) + '，解引用取到 a[0][0]',
+  exprVal: '*p[0] = a[0][0] = 1',
+  note: '先取 p[0]（是个地址），再解引用取值',
+  title: '<b>*p[0]</b>　→　p[0] = ' + rowAddr(0) + '，解引用得 <b>1</b>',
+  desc: '开始执行 <code>printf("%d-%d\\n", *p[0], *p[1]);</code>。这是第 1 小步：<b>求值 <code>*p[0]</code></b>。<br>' +
+        '· <code>p[0]</code> 是「指针数组的第 0 个元素」，它的<b>值</b>是 <code>' + rowAddr(0) + '</code>（是个地址）；<br>' +
+        '· <code>*p[0]</code> 对<b>这个地址</b>解引用，取出 ' + rowAddr(0) + ' 处的值，即 <code>a[0][0] = 1</code>；<br>' +
+        '· 结果是一个 <code>int</code>，交给 printf 打印。' +
+        '<span class="warn"><b>区分 <code>p[0]</code> 和 <code>*p[0]</code>：</b><br>' +
+        '· <code>p[0]</code>　→ 是一个<b>指针</b>，值为 ' + rowAddr(0) + '；<br>' +
+        '· <code>*p[0]</code> → 是一个<b>整数</b>，值为 <b>1</b>。<br>' +
+        '前者是「门牌号」，后者是「屋里的东西」。</span>'
+});
+
+/* ---------- 步骤 12：第 5 行 求值 *p[1] ---------- */
+readCell = { r:1, c:0, label:'*p[1]' };
+snap({
+  line: 5, cls: 'ans',
+  expr: '*p[1]   →   p[1] 是 ' + rowAddr(1) + '，解引用取到 a[1][0]',
+  exprVal: '*p[1] = a[1][0] = 4',
+  note: '同理，p[1] 指向第 1 行行首，取出 4',
+  title: '<b>*p[1]</b>　→　p[1] = ' + rowAddr(1) + '，解引用得 <b>4</b>',
+  desc: '第 2 小步：<b>求值 <code>*p[1]</code></b>。<br>' +
+        '· <code>p[1]</code> 的值是 <code>' + rowAddr(1) + '</code>；<br>' +
+        '· <code>*p[1]</code> 取出该地址处的值，即 <code>a[1][0] = 4</code>；<br>' +
+        '· 又是一个 <code>int</code>，准备交给 printf。' +
+        '<span class="tip"><b>规律：<code>*p[i]</code> 就是第 i 行第 0 列的元素。</b><br>' +
+        '因为 <code>p[i]</code> 存的就是 <code>a[i]</code>（第 i 行首地址），' +
+        '所以 <code>*p[i] ≡ *a[i] ≡ a[i][0]</code>。</span>'
+});
+
+/* ---------- 步骤 13：第 5 行 printf 输出 ---------- */
+readCell = null;
+tmpCell = null;
+outText = '1-4\n';
+printfCount = 1;
+snap({
+  line: 5, cls: 'gold',
+  expr: 'printf("%d-%d\\n", 1, 4);',
+  exprVal: '屏幕输出 "1-4"＋换行',
+  note: '两个参数都求值完毕，printf 开始格式化输出',
+  title: '<b>printf("%d-%d\\n", *p[0], *p[1]);</b>　→　屏幕出现 <b>1-4</b> 并换行',
+  desc: '两个参数都求值完成，<code>printf</code> 开始格式化输出。<br>' +
+        '· 格式串 <code>"%d-%d\\n"</code>：两个 <code>%d</code> 之间有一个<b>连字符</b>，末尾有一个 <code>\\n</code> 换行；<br>' +
+        '· 第 1 个 <code>%d</code> 打印 1，第 2 个 <code>%d</code> 打印 4；<br>' +
+        '· 屏幕出现 <code>1-4</code>，然后换行。' +
+        '<span class="tip"><b>格式串里的分隔符：</b><br>' +
+        '· <code>"%d-%d\\n"</code> → 输出 <code>1-4</code> 然后换行（本行）；<br>' +
+        '· <code>"%d-%d"</code>　 → 输出 <code>2-6</code>，<b>不换行</b>（下一行）。<br>' +
+        '两次输出会连在一起，最终屏幕上是两行。</span>'
+});
+
+/* ---------- 步骤 14：第 6 行 求值 *(p[0]+1) ---------- */
+tmpCell = { r:0, c:1, label:'p[0]+1' };
+readCell = { r:0, c:1, label:'*(p[0]+1)' };
+snap({
+  line: 6, cls: 'ans',
+  expr: 'p[0] + 1 = ' + rowAddr(0) + ' + 1×2 = ' + cellAddr(0,1) + '，再解引用',
+  exprVal: '*(p[0]+1) = a[0][1] = 2',
+  note: 'p[0] 是地址，+1 前进 1 个 int 即 2 字节',
+  title: '<b>*(p[0]+1)</b>　→　' + rowAddr(0) + ' + 2 = ' + cellAddr(0,1) + '，取值 <b>2</b>',
+  desc: '开始执行 <code>printf("%d-%d", *(p[0]+1), *(p[1]+2));</code>。这是第 1 小步：<b>求值 <code>*(p[0]+1)</code></b>。<br>' +
+        '· <code>p[0]</code> 的值是 <code>' + rowAddr(0) + '</code>；<br>' +
+        '· 加 1 意味着前进 <b>sizeof(int) = 2</b> 字节 → <code>' + rowAddr(0) + ' + 2 = ' + cellAddr(0,1) + '</code>；<br>' +
+        '· 正好是 <code>a[0][1]</code> 的地址（第 0 行第 1 列）；<br>' +
+        '· 再解引用，取出 <code>a[0][1] = 2</code>。' +
+        '<span class="warn"><b>指针算术的步长是 <code>sizeof(指向类型)</code>：</b><br>' +
+        '<code>p[0]</code> 的类型是 <code>int *</code>，所以 <code>p[0]+1</code> 前进 <b>2</b> 字节（本 16 位模型），而不是 1 字节。<br>' +
+        '如果在 64 位平台上 <code>sizeof(int)=4</code>，就会前进 <b>4</b> 字节。</span>' +
+        '<span class="tip"><b>括号不能省：</b><br>' +
+        '· <code>*(p[0]+1)</code> → 先加偏移，再解引用 = <b>2</b>（本行写法）；<br>' +
+        '· <code>*p[0]+1</code>　 → 先解引用得 1，再加 1 = <b>2</b>——数值巧合相同，但语义完全不同！后者是「a[0][0]+1」。</span>'
+});
+
+/* ---------- 步骤 15：第 6 行 求值 *(p[1]+2) ---------- */
+tmpCell = { r:1, c:2, label:'p[1]+2' };
+readCell = { r:1, c:2, label:'*(p[1]+2)' };
+snap({
+  line: 6, cls: 'ans',
+  expr: 'p[1] + 2 = ' + rowAddr(1) + ' + 2×2 = ' + cellAddr(1,2) + '，再解引用',
+  exprVal: '*(p[1]+2) = a[1][2] = 6',
+  note: 'p[1] 是第 1 行首地址，+2 前进 2 个 int 到第 1 行第 2 列',
+  title: '<b>*(p[1]+2)</b>　→　' + rowAddr(1) + ' + 4 = ' + cellAddr(1,2) + '，取值 <b>6</b>',
+  desc: '第 2 小步：<b>求值 <code>*(p[1]+2)</code></b>。<br>' +
+        '· <code>p[1]</code> 的值是 <code>' + rowAddr(1) + '</code>（第 1 行首地址）；<br>' +
+        '· 加 2 意味着前进 <b>2 × 2 = 4</b> 字节 → <code>' + rowAddr(1) + ' + 4 = ' + cellAddr(1,2) + '</code>；<br>' +
+        '· 正好是 <code>a[1][2]</code> 的地址（第 1 行第 2 列）；<br>' +
+        '· 再解引用，取出 <code>a[1][2] = 6</code>。' +
+        '<span class="win"><b>★ 核心规律：</b><br>' +
+        '<code>*(p[i] + k) ≡ a[i][k]</code><br>' +
+        '· <code>p[i]</code> 是第 i 行的首地址；<br>' +
+        '· <code>+ k</code> 前进 k 个 int，即 k × 2 字节；<br>' +
+        '· 解引用后就是第 i 行第 k 列的元素。</span>'
+});
+
+/* ---------- 步骤 16：第 6 行 printf 输出（不换行） ---------- */
+tmpCell = null;
+readCell = null;
+outText = '1-4\n2-6';
+printfCount = 2;
+snap({
+  line: 6, cls: 'gold',
+  expr: 'printf("%d-%d", 2, 6);',
+  exprVal: '屏幕输出 "2-6"，无空格、无换行',
+  note: '格式串 "%d-%d" 末尾没有 \\n，光标停在 6 后面',
+  title: '<b>printf("%d-%d", *(p[0]+1), *(p[1]+2));</b>　→　屏幕出现 <b>2-6</b>（不换行）',
+  desc: '两个参数都求值完成，<code>printf</code> 输出。<br>' +
+        '· 格式串是 <code>"%d-%d"</code>，<b>末尾没有 <code>\\n</code></b>；<br>' +
+        '· 所以输出 <code>2-6</code> 之后，<b>光标停在 6 的后面，不换行</b>；<br>' +
+        '· 屏幕上现在一共有两行：<code>1-4</code> 和 <code>2-6</code>。' +
+        '<span class="warn"><b>别忽略格式串里的 <code>\\n</code>：</b><br>' +
+        '· 第 5 行 <code>"%d-%d\\n"</code> → 末尾<b>有</b>换行；<br>' +
+        '· 第 6 行 <code>"%d-%d"</code>　 → 末尾<b>没有</b>换行。<br>' +
+        '两次输出最终形成两行，但只有第一次产生了真正的换行符。</span>'
+});
+
+/* ---------- 步骤 17：第 7 行 return ---------- */
+snap({
+  line: 7, cls: 'ans',
+  expr: 'return 0;',
+  exprVal: '返回整数 0 给操作系统',
+  note: '返回 0 表示程序正常结束',
+  title: 'return 0;　结束 main 函数',
+  desc: '执行 <code>return 0;</code>：<br>' +
+        '· 把整数 <b>0</b> 作为 main 的返回值交给操作系统；<br>' +
+        '· 约定返回 <b>0</b> 表示程序<b>正常结束</b>（返回非 0 表示出错）；<br>' +
+        '· 这个 0 <b>不会</b>打印到屏幕上，它是给系统看的「退出码」；<br>' +
+        '· 屏幕上的 2 行输出已经产生，不会因为 return 而消失。' +
+        '<span class="tip"><b>注意区分：</b><br>' +
+        '· <code>printf("%d", 0);</code> → 会把 0 打印到屏幕；<br>' +
+        '· <code>return 0;</code> → 把 0 交给操作系统，屏幕上看不到。</span>'
+});
+
+/* ---------- 步骤 18：第 8 行 程序结束 ---------- */
+aAlloc = false; pAlloc = false;
+pVals = [null, null, null];
+hl = null; readCell = null; tmpCell = null;
+snap({
+  line: 8, func: '—', stack: [],
+  cls: 'gold',
+  expr: '}',
+  exprVal: 'main 栈帧销毁，程序退出（退出码 0）',
+  note: '数组 a 与指针数组 p 全部销毁，但屏幕上的 2 行输出保留',
+  title: 'main 函数体结束 }　→　程序结束',
+  desc: 'main 的栈帧被销毁，调用栈清空，程序结束。' +
+        '<span class="win"><b>★ 程序最终运行结果（屏幕输出）：</b><br>' +
+        '<code>1-4</code><br>' +
+        '<code>2-6</code>▊（光标，末尾无换行）<br>' +
+        '说明：第 1 行末尾有换行符（来自 <code>"%d-%d\\n"</code>），' +
+        '第 2 行末尾<b>没有</b>换行符（来自 <code>"%d-%d"</code>）。<br>' +
+        '退出码：<b>0</b>（正常结束）</span>' +
+        '<b>两次输出的来源对照：</b><br>' +
+        '① 第 5 行 <code>printf("%d-%d\\n", *p[0], *p[1]);</code>　' +
+        '→ <code>*p[0] = a[0][0] = 1</code>，<code>*p[1] = a[1][0] = 4</code> → 输出 <b>1-4</b>＋换行<br>' +
+        '② 第 6 行 <code>printf("%d-%d", *(p[0]+1), *(p[1]+2));</code> ' +
+        '→ <code>*(p[0]+1) = a[0][1] = 2</code>，<code>*(p[1]+2) = a[1][2] = 6</code> → 输出 <b>2-6</b>（不换行）<br>' +
+        '<b>本程序要点总结：</b><br>' +
+        '① <b>二维数组按行优先存储</b>：<code>a[3][3]</code> 的 9 个 int 在内存里连续排列，' +
+        '地址步长 = <code>sizeof(int) = 2</code> 字节；<br>' +
+        '② <b>数组名退化</b>：<code>a[r]</code> 在表达式中退化为 <code>&amp;a[r][0]</code>，类型是 <code>int *</code>；<br>' +
+        '③ <b>指针数组 <code>int *p[3]</code></b>：p 是「3 个 int * 组成的数组」，每个元素占 2 字节，共 6 字节；<br>' +
+        '④ <b><code>int *p[3]</code> 与 <code>int (*p)[3]</code> 完全不同</b>：前者是数组，后者是指向数组的指针；<br>' +
+        '⑤ <b><code>*p[i] ≡ a[i][0]</code></b>：p[i] 存的是第 i 行首地址，解引用后就是第 i 行第 0 列；<br>' +
+        '⑥ <b><code>*(p[i] + k) ≡ a[i][k]</code></b>：从第 i 行首前进 k 个 int，再解引用；<br>' +
+        '⑦ <b>指针步长 = sizeof(指向类型)</b>：<code>int *</code> 每 +1 前进 2 字节（本 16 位模型）；<br>' +
+        '⑧ <b>括号不能省</b>：<code>*(p[0]+1)</code> 和 <code>*p[0]+1</code> 语义完全不同；<br>' +
+        '⑨ <b>格式串末尾的 <code>\\n</code> 决定是否换行</b>：<code>"%d-%d\\n"</code> 换行，<code>"%d-%d"</code> 不换行；<br>' +
+        '⑩ <b><code>static</code> 数组</b>不在栈上，在静态存储区，程序运行期间一直存在。' +
+        '<b>常见错误：</b><br>' +
+        '① 以为 <code>a[3][3]</code> 是「3 个指针的数组」——它是 3×3 的 int 矩阵；<br>' +
+        '② 以为 <code>a[1]</code> = <code>a[0]+1</code> —— 前者是第 1 行首地址，后者是 a[0][1] 的地址，相差 4 字节；<br>' +
+        '③ 把 <code>*p[0]</code> 和 <code>p[0]</code> 搞混 —— 前者是 int（值 1），后者是 int *（地址 ' + rowAddr(0) + '）；<br>' +
+        '④ 以为 <code>*(p[0]+1)</code> 取的是 a[0][0]+1 —— 它是先前进 2 字节再解引用，取到 a[0][1]；<br>' +
+        '⑤ 把 <code>int *p[3]</code> 写成 <code>int (*p)[3]</code> —— 前者是数组，后者是指针；<br>' +
+        '⑥ 忽略第 6 行格式串末尾没有 <code>\\n</code>，多写了一行空行；<br>' +
+        '⑦ 在 64 位平台上照搬「2 字节」—— 那里 <code>sizeof(int)=4</code>，步长会翻倍。'
+});
+
+/* ============================================================
+   3. DOM 引用
+   ============================================================ */
+var codeArea    = document.getElementById('codeArea');
+var codeLines   = Array.prototype.slice.call(document.querySelectorAll('.code-line'));
+var arrBody     = document.getElementById('arrBody');
+var ptrBody     = document.getElementById('ptrBody');
+var outBody     = document.getElementById('outBody');
+var explainBody = document.getElementById('explainBody');
+var stackBody   = document.getElementById('stackBody');
+var vP0         = document.getElementById('vP0');
+var vP1         = document.getElementById('vP1');
+var vP2         = document.getElementById('vP2');
+var vFocus      = document.getElementById('vFocus');
+var vCnt        = document.getElementById('vCnt');
+var vOut        = document.getElementById('vOut');
+var mmBody      = document.getElementById('mmBody');
+var mmView      = document.getElementById('mmView');
+var btnPlay     = document.getElementById('btnPlay');
+var btnPrev     = document.getElementById('btnPrev');
+var btnNext     = document.getElementById('btnNext');
+var btnReset    = document.getElementById('btnReset');
+var speedInput  = document.getElementById('speed');
+var speedLabel  = document.getElementById('speedLabel');
+
+var current = -1, playing = false, timer = null;
+var speed = Number(speedInput.value);
+
+/* ============================================================
+   4. 渲染
+   ============================================================ */
+function renderCode(s){
+  var line = s ? s.line : null;
+  for(var i=0;i<codeLines.length;i++){
+    var el = codeLines[i], n = Number(el.dataset.line);
+    el.classList.toggle('active', line !== null && n === line);
+    el.classList.toggle('done', line !== null && n < line);
+  }
+  centerActive();
+}
+function centerActive(){
+  var el = codeArea.querySelector('.code-line.active');
+  if(!el) return;
+  var cr = codeArea.getBoundingClientRect();
+  var er = el.getBoundingClientRect();
+  var delta = (er.top + er.height/2) - (cr.top + cr.height/2);
+  if(Math.abs(delta) > 6) codeArea.scrollTop += delta;
+}
+
+function renderState(s){
+  var st = (s && s.stack) ? s.stack : [];
+  if(!st.length){
+    stackBody.innerHTML = '<span class="empty">（空）</span>';
+  }else{
+    var h='';
+    for(var i=0;i<st.length;i++){
+      if(i>0) h += '<span class="arrow">→</span>';
+      h += '<span class="frame'+(i===st.length-1?' on':'')+'">'+st[i]+'</span>';
+    }
+    stackBody.innerHTML = h;
+  }
+
+  if(!s){
+    vP0.textContent='—'; vP1.textContent='—'; vP2.textContent='—';
+    vFocus.textContent='—'; vCnt.textContent='0'; vOut.textContent='—';
+    return;
+  }
+
+  vP0.textContent = s.vars.p0;
+  vP0.className = 'v pink' + (s.vars.p0.indexOf('尚未')>=0||s.vars.p0.indexOf('未初始化')>=0 ? ' dim' : '');
+  vP1.textContent = s.vars.p1;
+  vP1.className = 'v purple' + (s.vars.p1.indexOf('尚未')>=0||s.vars.p1.indexOf('未初始化')>=0 ? ' dim' : '');
+  vP2.textContent = s.vars.p2;
+  vP2.className = 'v orange' + (s.vars.p2.indexOf('尚未')>=0||s.vars.p2.indexOf('未初始化')>=0 ? ' dim' : '');
+
+  vFocus.textContent = s.vars.focus;
+  vFocus.className = 'v teal' + (s.vars.focus === '（无）' ? ' dim' : '');
+
+  vCnt.textContent = String(s.printfCount);
+
+  vOut.textContent = s.vars.outBuf;
+  vOut.className = 'v gold' + (s.vars.outBuf === '（空）' ? ' dim' : '');
+}
+
+function renderArray(s){
+  if(!s || !s.aAlloc){
+    arrBody.innerHTML = '<div class="empty">（尚未分配数组 a）</div>';
+    return;
+  }
+  var h = '<div class="arr-head">二维数组 <b>a[3][3]</b>　int · 每元素 <b>2</b> 字节 · ' +
+          '行优先存储 · 地址步长 <b>+2</b>　│　共 <b>18</b> 字节　' +
+          '（16 位模型 sizeof(int)=2）</div>';
+  h += '<div class="arr2d">';
+  h += '<div class="arr2d-h"></div>';
+  for(var c=0;c<COLS;c++) h += '<div class="arr2d-h">['+c+']</div>';
+  for(var r=0;r<ROWS;r++){
+    h += '<div class="arr2d-h">['+r+']</div>';
+    for(var cc=0;cc<COLS;cc++){
+      var cls = 'arr-cell-2d';
+      if(s.hl){
+        for(var k=0;k<s.hl.length;k++) if(s.hl[k][0]===r && s.hl[k][1]===cc) cls += ' is-hl';
+      }
+      if(cc===0 && s.pAlloc){
+        if(s.pVals[0] !== null && r===0) cls += ' is-p0';
+        if(s.pVals[1] !== null && r===1) cls += ' is-p1';
+        if(s.pVals[2] !== null && r===2) cls += ' is-p2';
+      }
+      if(s.tmpCell && s.tmpCell.r===r && s.tmpCell.c===cc) cls += ' is-tmp';
+      if(s.readCell && s.readCell.r===r && s.readCell.c===cc) cls += ' is-read';
+
+      var v = (s.aVals[r*COLS+cc] !== null) ? String(s.aVals[r*COLS+cc]) : '?';
+      var vcls = (s.aVals[r*COLS+cc] !== null) ? 'arr-val-2d' : 'arr-val-2d unknown';
+
+      var marks = '';
+      if(cc===0 && s.pAlloc){
+        if(s.pVals[0] !== null && r===0) marks += '<span class="mk mk-p0">p0</span>';
+        if(s.pVals[1] !== null && r===1) marks += '<span class="mk mk-p1">p1</span>';
+        if(s.pVals[2] !== null && r===2) marks += '<span class="mk mk-p2">p2</span>';
+      }
+      if(s.tmpCell && s.tmpCell.r===r && s.tmpCell.c===cc) marks += '<span class="mk mk-tmp">tmp</span>';
+      if(s.readCell && s.readCell.r===r && s.readCell.c===cc) marks += '<span class="mk mk-read">读</span>';
+
+      h += '<div class="'+cls+'">' +
+             '<div class="'+vcls+'">'+v+'</div>' +
+             '<div class="arr-addr-2d">'+cellAddr(r,cc)+'</div>' +
+             '<div class="arr-marks-2d">'+marks+'</div>' +
+           '</div>';
+    }
+  }
+  h += '</div>';
+  arrBody.innerHTML = h;
+}
+
+function renderPtr(s){
+  if(!s || !s.aAlloc){
+    ptrBody.innerHTML = '<div class="empty">（数组尚未分配）</div>';
+    return;
+  }
+  if(!s.pAlloc){
+    ptrBody.innerHTML = '<div class="empty">（指针数组尚未分配）</div>';
+    return;
+  }
+  var h = '<div class="ptr-wrap">';
+  var clsArr = ['is-p0','is-p1','is-p2'];
+  var arrCls = ['c-pink','c-purple','c-orange'];
+  for(var i=0;i<3;i++){
+    h += '<div class="ptr-row">';
+    h += '<div class="pnode '+clsArr[i]+'"><div class="pl">p['+i+']</div>' +
+         '<div class="pa">@ '+pAddr(i)+' · int *</div>' +
+         '<div class="pv">'+(s.pVals[i]!==null?hex(s.pVals[i]):'未初始化')+'</div></div>';
+    if(s.pVals[i] !== null){
+      var v = (s.aVals[i*COLS+0] !== null) ? String(s.aVals[i*COLS+0]) : '?';
+      h += '<div class="parrow '+arrCls[i]+'">──►<div class="pa">'+hex(s.pVals[i])+'</div></div>' +
+           '<div class="pnode is-target"><div class="pl">a['+i+'][0]</div>' +
+           '<div class="pa">@ '+hex(s.pVals[i])+'</div>' +
+           '<div class="pv">'+v+'</div></div>';
+    }
+    h += '</div>';
+  }
+  if(s.tmpCell){
+    h += '<div class="ptr-row"><div class="pnode is-tmp"><div class="pl">'+s.tmpCell.label+'</div>' +
+         '<div class="pa">临时地址</div>' +
+         '<div class="pv">'+cellAddr(s.tmpCell.r,s.tmpCell.c)+'</div></div></div>';
+  }
+  if(s.readCell){
+    var rv = s.aVals[s.readCell.r*COLS + s.readCell.c];
+    h += '<div class="ptr-row"><div class="pnode is-gold"><div class="pl">读</div>' +
+         '<div class="pa">'+s.readCell.label+'</div>' +
+         '<div class="pv">a['+s.readCell.r+']['+s.readCell.c+'] = '+(rv===null?'?':rv)+'</div></div></div>';
+  }
+  h += '</div>';
+  ptrBody.innerHTML = h;
+}
+
+function makeCursor(){
+  var c = document.createElement('span');
+  c.className = 'cursor';
+  c.textContent = '▊';
+  return c;
+}
+
+function renderOut(s){
+  var text = s ? s.out : '';
+  outBody.innerHTML = '';
+  if(text === ''){
+    outBody.innerHTML =
+      '<div class="out-empty">（程序还没有产生任何输出）</div>' +
+      '<div class="out-note">本程序直到第 5 行才会第一次调用 printf。</div>';
+    return;
+  }
+  var lines = text.split('\n');
+  var endsWithNewline = (lines[lines.length-1] === '');
+  if(endsWithNewline) lines.pop();
+
+  for(var i=0;i<lines.length;i++){
+    var isLast = (i === lines.length-1) && !endsWithNewline;
+    var d = document.createElement('div');
+    d.className = 'out-line ' + (isLast ? 'out-final' : 'out-result');
+    d.textContent = lines[i];
+    if(isLast) d.appendChild(makeCursor());
+    outBody.appendChild(d);
+  }
+  if(endsWithNewline){
+    var nl = document.createElement('div');
+    nl.className = 'out-line out-result';
+    nl.appendChild(makeCursor());
+    outBody.appendChild(nl);
+  }
+  outBody.scrollTop = outBody.scrollHeight;
+}
+
+function renderExplain(s){
+  if(!s){
+    explainBody.innerHTML =
+      '<em>点击「▶ 播放」或「下一步」，开始逐条执行程序。</em><br><br>' +
+      '<b>本程序演示：二维数组 + 指针数组 · 指针加偏移解引用 · printf 逐字输出</b><br>' +
+      '· 第 3 行：<code>static int a[3][3] = {1,2,3,4,5,6,7,8,9};</code> ' +
+      '按行优先分配 18 字节；<br>' +
+      '· 第 4 行：<code>int *p[] = {a[0], a[1], a[2]};</code> ' +
+      'p 是「3 个 int * 组成的数组」，分别指向每行首元素；<br>' +
+      '· 第 5 行：<code>printf("%d-%d\\n", *p[0], *p[1]);</code> ' +
+      '→ <code>*p[0]=a[0][0]=1</code>，<code>*p[1]=a[1][0]=4</code> → 输出 <b>1-4</b>；<br>' +
+      '· 第 6 行：<code>printf("%d-%d", *(p[0]+1), *(p[1]+2));</code> ' +
+      '→ <code>*(p[0]+1)=a[0][1]=2</code>，<code>*(p[1]+2)=a[1][2]=6</code> ' +
+      '→ 输出 <b>2-6</b>（不换行）。<br><br>' +
+      '<b>运行结果：</b>屏幕共 2 行 —— <code>1-4</code>（换行）、' +
+      '<code>2-6</code>（末尾无换行）。<br>' +
+      '共 ' + STEPS.length + ' 个执行步骤，请用「自动播放」或方向键逐步查看。</em>';
+    return;
+  }
+  var cls = 'tag' + (s.cls ? ' ' + s.cls : '');
+  explainBody.innerHTML =
+    '<span class="'+cls+'">第 '+s.line+' 行</span>' +
+    '<strong>'+s.title+'</strong><br>'+s.desc;
+}
+
+/* ---------- 缩略图 ---------- */
+function buildMinimap(){
+  var h = '';
+  for(var i=0;i<codeLines.length;i++){
+    h += '<div class="mm-line" data-ml="'+(i+1)+'">' +
+         codeLines[i].querySelector('.src').innerHTML + '</div>';
+  }
+  mmBody.insertAdjacentHTML('afterbegin', h);
+}
+function syncMinimap(){
+  var mmLines = mmBody.querySelectorAll('.mm-line');
+  if(!mmLines.length) return;
+  var actLine = -1;
+  if(current >= 0 && STEPS[current]) actLine = STEPS[current].line;
+  for(var i=0;i<mmLines.length;i++){
+    mmLines[i].classList.toggle('cur', Number(mmLines[i].dataset.ml) === actLine);
+  }
+  var totalH = mmBody.scrollHeight;
+  var contentH = codeArea.scrollHeight;
+  var viewH = codeArea.clientHeight;
+  var scale = totalH / Math.max(1, contentH);
+  var top = codeArea.scrollTop * scale;
+  var hh = Math.max(10, viewH * scale);
+  mmView.style.top = top + 'px';
+  mmView.style.height = hh + 'px';
+}
+
+function render(){
+  var s = current >= 0 ? STEPS[current] : null;
+  renderCode(s);
+  renderState(s);
+  renderArray(s);
+  renderPtr(s);
+  renderOut(s);
+  renderExplain(s);
+  syncMinimap();
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+}
+
+/* ============================================================
+   5. 播放控制
+   ============================================================ */
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+function tick(){
+  if(current >= STEPS.length - 1){ pause(); return; }
+  current++; render();
+  if(current >= STEPS.length - 1) pause();
+}
+function play(){
+  if(playing) return;
+  if(current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true; updatePlayBtn();
+  clearInterval(timer);
+  timer = setInterval(tick, speed);
+  tick();
+}
+function pause(){
+  playing = false;
+  clearInterval(timer); timer = null;
+  updatePlayBtn();
+}
+function nextStep(){ pause(); if(current < STEPS.length - 1){ current++; render(); } }
+function prevStep(){ pause(); if(current > -1){ current--; render(); } }
+function resetAll(){ pause(); current = -1; codeArea.scrollTop = 0; render(); }
+
+btnPlay.addEventListener('click', function(){ playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed/1000).toFixed(2)+'s';
+  if(playing){ clearInterval(timer); timer = setInterval(tick, speed); }
+});
+
+/* ============================================================
+   6. 键盘
+   ============================================================ */
+function toggleFull(){
+  if(!document.fullscreenElement){
+    (document.documentElement.requestFullscreen || function(){}).call(document.documentElement);
+  }else{
+    (document.exitFullscreen || function(){}).call(document);
+  }
+}
+document.addEventListener('keydown', function(e){
+  var tag = e.target && e.target.tagName;
+  if(tag === 'INPUT' || tag === 'TEXTAREA') return;
+  switch(e.code){
+    case 'Space':      e.preventDefault(); playing ? pause() : play(); break;
+    case 'ArrowRight': e.preventDefault(); nextStep(); break;
+    case 'ArrowLeft':  e.preventDefault(); prevStep(); break;
+    case 'KeyR':       resetAll(); break;
+    case 'KeyF':       toggleFull(); break;
+    case 'KeyM':       document.body.classList.toggle('hide-map'); break;
+    case 'KeyH':       document.body.classList.toggle('hide-panels'); break;
+  }
+});
+
+/* ============================================================
+   7. 面板拖动 / 调整大小 / 置顶 / 关闭
+   ============================================================ */
+var zTop = 100;
+function bringToFront(el){
+  zTop++;
+  el.style.zIndex = zTop;
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('front'); });
+  if(el.classList.contains('panel')) el.classList.add('front');
+}
+function makeDraggable(el, handle){
+  var sx=0, sy=0, ox=0, oy=0, dragging=false;
+  handle.addEventListener('pointerdown', function(e){
+    if(e.target.closest('.p-close') || e.target.closest('.p-resize') || e.target.closest('.mm-close')) return;
+    dragging = true;
+    bringToFront(el);
+    var r = el.getBoundingClientRect();
+    ox = r.left; oy = r.top; sx = e.clientX; sy = e.clientY;
+    el.style.right = 'auto'; el.style.bottom = 'auto';
+    el.style.left = ox + 'px'; el.style.top = oy + 'px';
+    try{ handle.setPointerCapture(e.pointerId); }catch(err){}
+    e.preventDefault();
+  });
+  handle.addEventListener('pointermove', function(e){
+    if(!dragging) return;
+    el.style.left = (ox + e.clientX - sx) + 'px';
+    el.style.top  = (oy + e.clientY - sy) + 'px';
+  });
+  function stop(e){
+    if(!dragging) return;
+    dragging = false;
+    try{ handle.releasePointerCapture(e.pointerId); }catch(err){}
+  }
+  handle.addEventListener('pointerup', stop);
+  handle.addEventListener('pointercancel', stop);
+}
+function makeResizable(el, handle){
+  var sx=0, sy=0, ow=0, oh=0, resizing=false;
+  handle.addEventListener('pointerdown', function(e){
+    resizing = true;
+    bringToFront(el);
+    var r = el.getBoundingClientRect();
+    ow = r.width; oh = r.height; sx = e.clientX; sy = e.clientY;
+    el.style.right = 'auto'; el.style.bottom = 'auto';
+    el.style.left = r.left + 'px'; el.style.top = r.top + 'px';
+    try{ handle.setPointerCapture(e.pointerId); }catch(err){}
+    e.preventDefault(); e.stopPropagation();
+  });
+  handle.addEventListener('pointermove', function(e){
+    if(!resizing) return;
+    el.style.width  = Math.max(10, ow + e.clientX - sx) + 'px';
+    el.style.height = Math.max(10, oh + e.clientY - sy) + 'px';
+  });
+  function stop(e){
+    if(!resizing) return;
+    resizing = false;
+    try{ handle.releasePointerCapture(e.pointerId); }catch(err){}
+  }
+  handle.addEventListener('pointerup', stop);
+  handle.addEventListener('pointercancel', stop);
+}
+var panels = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+panels.forEach(function(p){
+  var head = p.querySelector('[data-drag]');
+  var rs   = p.querySelector('[data-resize]');
+  if(head) makeDraggable(p, head);
+  if(rs)   makeResizable(p, rs);
+  p.addEventListener('pointerdown', function(){ bringToFront(p); }, true);
+  var closeBtn = p.querySelector('.p-close');
+  if(closeBtn){
+    closeBtn.addEventListener('click', function(){
+      p.style.display = 'none';
+      document.body.classList.remove('hide-panels');
+    });
+  }
+});
+(function(){
+  var mm = document.getElementById('minimap');
+  var head = document.getElementById('mmHead');
+  makeDraggable(mm, head);
+  mm.addEventListener('pointerdown', function(){ bringToFront(mm); }, true);
+  document.getElementById('mmClose').addEventListener('click', function(){
+    document.body.classList.add('hide-map');
+  });
+})();
+
+document.getElementById('btnFull').addEventListener('click', toggleFull);
+document.getElementById('btnMap').addEventListener('click', function(){
+  document.body.classList.toggle('hide-map');
+});
+document.getElementById('btnPanels').addEventListener('click', function(){
+  var hidden = document.body.classList.toggle('hide-panels');
+  if(!hidden){ panels.forEach(function(p){ p.style.display = ''; }); }
+});
+document.getElementById('btnLayout').addEventListener('click', resetLayout);
+
+function resetLayout(){
+  document.body.classList.remove('hide-panels');
+  document.body.classList.remove('hide-map');
+  panels.forEach(function(p){ p.style.display = ''; });
+  document.getElementById('panelControl').setAttribute('style','left:16px;top:16px;');
+  document.getElementById('panelOut').setAttribute('style','right:16px;top:16px;');
+  document.getElementById('panelState').setAttribute('style','right:16px;top:280px;');
+  document.getElementById('panelExplain').setAttribute('style','left:16px;top:150px;');
+  document.getElementById('panelArray').setAttribute('style','left:16px;bottom:16px;');
+  document.getElementById('panelPtr').setAttribute('style','right:16px;bottom:16px;');
+  document.getElementById('minimap').setAttribute('style','right:16px;top:16px;');
+  zTop = 100;
+  panels.forEach(function(p){ p.style.zIndex = 100; p.classList.remove('front'); });
+  setTimeout(syncMinimap, 60);
+}
+
+/* ============================================================
+   8. 缩略图交互
+   ============================================================ */
+mmBody.addEventListener('click', function(e){
+  var r = mmBody.getBoundingClientRect();
+  var ratio = (e.clientY - r.top) / r.height;
+  var target = ratio * codeArea.scrollHeight - codeArea.clientHeight / 2;
+  codeArea.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+  setTimeout(syncMinimap, 320);
+});
+var syncTimer = null;
+function scheduleSync(){
+  if(syncTimer) cancelAnimationFrame(syncTimer);
+  syncTimer = requestAnimationFrame(syncMinimap);
+}
+codeArea.addEventListener('scroll', scheduleSync, { passive:true });
+window.addEventListener('resize', scheduleSync);
+window.addEventListener('load', scheduleSync);
+if(window.ResizeObserver){
+  var ro = new ResizeObserver(scheduleSync);
+  ro.observe(codeArea);
+  ro.observe(mmBody);
+}
+
+/* ============================================================
+   9. 初始化
+   ============================================================ */
+buildMinimap();
+speedLabel.textContent = (speed/1000).toFixed(2)+'s';
+render();
+setTimeout(syncMinimap, 120);
+setTimeout(syncMinimap, 600);
+
+})();
+</script>
+</body>
+</html>

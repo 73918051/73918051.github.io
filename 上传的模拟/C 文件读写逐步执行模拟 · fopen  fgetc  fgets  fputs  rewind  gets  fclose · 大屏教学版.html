@@ -1,0 +1,1892 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 文件读写逐步执行模拟 · 大屏教学版</title>
+<style>
+:root{
+  --bg:#0b1220; --text:#dce8f8; --muted:#7d93b3;
+  --accent:#38bdf8; --green:#4ade80; --amber:#fbbf24;
+  --pink:#f472b6; --purple:#c084fc; --teal:#2dd4bf;
+  --orange:#fb923c; --gold:#facc15; --red:#ef4444;
+
+  --code-font: clamp(80px, 5vw, 120px);
+  --out-font:  clamp(72px, 4.5vw, 110px);
+  --var-font:  clamp(40px, 2.4vw, 60px);
+  --explain-font: clamp(48px, 2.8vw, 72px);
+  --btn-font: clamp(40px, 2.2vw, 60px);
+  --panel-font: clamp(40px, 2.4vw, 60px);
+  --mini-font: 11px;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;overflow:hidden;}
+body{
+  background:#0b1220; color:var(--text);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+}
+
+/* ===== 全屏代码层 ===== */
+.code-layer{
+  position:fixed; inset:0; overflow:auto;
+  background:#0b1220; z-index:1;
+  scrollbar-width:thin; scrollbar-color:#334155 #0b1220;
+}
+.code-layer::-webkit-scrollbar{width:16px;height:16px;}
+.code-layer::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+.code-inner{ padding: 24px 0 70vh 0; min-width: max-content; }
+
+.code-line{
+  display:flex; align-items:flex-start; gap: 1.2rem;
+  padding: .08em 3rem .08em 0;
+  white-space: pre;
+  font-family: ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size: var(--code-font);
+  line-height: 1.5;
+  border-left: 16px solid transparent;
+  --tone:#38bdf8;
+  --tone-bg:rgba(56,189,248,.22);
+  transition: background .22s, border-color .22s;
+}
+.code-line .ln{
+  flex: 0 0 auto; width: 3.4ch; text-align: right;
+  color:#3f5a7d; font-size: .6em; user-select:none;
+  padding-top: .55em; font-variant-numeric: tabular-nums;
+}
+.code-line .src{ flex: 0 0 auto; }
+.code-line.active{
+  background: linear-gradient(90deg, var(--tone-bg), rgba(0,0,0,0));
+  border-left-color: var(--tone);
+  box-shadow: inset 0 0 0 3px var(--tone-bg);
+}
+.code-line.active .ln{ color: var(--tone); font-weight:700; }
+.code-line.active .src{ color:#ffffff; }
+
+.pre{color:#c084fc;font-weight:700;}
+.kw{color:#f472b6;font-weight:700;}
+.ty{color:#2dd4bf;font-weight:700;}
+.str{color:#4ade80;}
+.cmt{color:#64748b;font-style:italic;}
+.fn{color:#38bdf8;font-weight:600;}
+.num{color:#fbbf24;font-weight:700;}
+.op{color:#fb923c;font-weight:800;}
+.mac{color:#4ade80;font-weight:800;}
+
+/* ===== 悬浮面板 ===== */
+.panel{
+  position:fixed;
+  background: rgba(11,18,32,.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 2px solid rgba(56,189,248,.32);
+  border-radius: 18px;
+  display:flex; flex-direction:column;
+  overflow:hidden;
+  box-shadow: 0 24px 70px rgba(0,0,0,.65);
+  z-index:50;
+  transition: border-color .18s, box-shadow .18s;
+}
+.panel.active{
+  border-color:#38bdf8;
+  box-shadow: 0 0 0 4px rgba(56,189,248,.28), 0 28px 80px rgba(0,0,0,.75);
+}
+.p-head{
+  flex:0 0 auto;
+  display:flex; align-items:center; gap:14px;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, rgba(56,189,248,.18), rgba(56,189,248,.05));
+  border-bottom:1px solid rgba(56,189,248,.22);
+  cursor: move; user-select:none; touch-action:none;
+  font-size: var(--panel-font); font-weight:700;
+  color:#bae6fd; white-space:nowrap;
+}
+.p-title{ overflow:hidden; text-overflow:ellipsis; }
+.p-close{
+  margin-left:auto; flex: 0 0 auto;
+  width:56px;height:56px;
+  border-radius:12px;
+  border:2px solid rgba(239,68,68,.55);
+  background:rgba(239,68,68,.16);
+  color:#fca5a5; font-size:40px; line-height:1;
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition: background .15s;
+}
+.p-close:hover{ background:rgba(239,68,68,.4); color:#fff; }
+.p-body{
+  flex:1 1 auto; min-height:0; overflow:auto;
+  padding: 12px 16px;
+  scrollbar-width:thin; scrollbar-color:#334155 transparent;
+}
+.p-body::-webkit-scrollbar{width:12px;height:12px;}
+.p-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+.p-resize{
+  position:absolute; right:0; bottom:0;
+  width:52px; height:52px;
+  cursor: nwse-resize; touch-action:none;
+  background: linear-gradient(135deg, transparent 48%, rgba(56,189,248,.75) 48%);
+  border-bottom-right-radius:16px;
+}
+
+/* ===== 顶部控制栏 ===== */
+#p-top .p-body{
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  padding: 10px 16px;
+}
+button.ctl{
+  font:inherit; font-size: var(--btn-font);
+  min-height: 72px; padding: 0 22px;
+  border-radius: 14px;
+  border:2px solid rgba(56,189,248,.4);
+  background: rgba(24,39,65,.9);
+  color: var(--text); cursor:pointer;
+  white-space:nowrap;
+  transition: background .15s, transform .1s, border-color .15s;
+}
+button.ctl:hover:not(:disabled){ background: rgba(33,51,82,.95); border-color:#38bdf8; }
+button.ctl:active:not(:disabled){ transform: translateY(2px); }
+button.ctl:disabled{ opacity:.32; cursor:not-allowed; }
+button.ctl.primary{
+  background: linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#7dd3fc; color:#04121f; font-weight:800;
+}
+button.ctl.primary.playing{
+  background: linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24; color:#1a1200;
+}
+.speed-wrap{
+  display:flex; align-items:center; gap:14px;
+  font-size: var(--btn-font); color:#93b3d6;
+}
+.speed-wrap input[type=range]{
+  width: 260px; height: 44px;
+  accent-color: var(--accent); cursor:pointer;
+}
+.speed-wrap b{
+  color: var(--accent); font-variant-numeric: tabular-nums;
+  min-width: 4.5ch; display:inline-block;
+}
+
+/* ===== 当前语句说明 ===== */
+#p-explain .p-body{
+  font-size: var(--explain-font);
+  line-height: 1.6;
+  color:#c3d5ec;
+}
+#p-explain .ex-line{
+  display:inline-block; margin-right: 16px;
+  padding: 4px 18px; border-radius: 12px;
+  background: rgba(56,189,248,.2);
+  color: var(--accent); font-weight:800;
+  font-size:.72em; vertical-align: middle;
+}
+#p-explain strong{ color:#ffffff; }
+#p-explain code{
+  font-family: ui-monospace,Consolas,monospace;
+  background: rgba(148,163,184,.18);
+  border-radius: 8px; padding: 0 10px; color:#e2e8f0;
+}
+#p-explain .tip, #p-explain .warn, #p-explain .win, #p-explain .danger{
+  display:block; margin-top: 12px; padding: 12px 18px;
+  border-radius: 12px; font-size:.82em; line-height:1.55;
+}
+#p-explain .tip{ background:rgba(45,212,191,.12); border-left: 8px solid var(--teal); color:#bff5ec; }
+#p-explain .warn{ background:rgba(251,191,36,.13); border-left: 8px solid var(--amber); color:#ffe6b0; }
+#p-explain .win{ background:rgba(250,204,21,.15); border-left: 8px solid var(--gold); color:#fff3c4; font-weight:700; }
+#p-explain .danger{ background:rgba(239,68,68,.15); border-left: 8px solid var(--red); color:#fecaca; }
+
+/* ===== 文件内容可视化 ===== */
+.ll-sec-title{
+  font-size: .72em; color:#94a3b8;
+  font-family: ui-monospace,Consolas,monospace;
+  margin: 4px 0 10px;
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+}
+.dot{display:inline-block; width:.75em; height:.75em; border-radius:4px; flex:0 0 auto;}
+.dot-h{background:#38bdf8;}
+.dot-m{background:#f472b6;}
+
+.fc-track{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding-bottom:8px; }
+.fc-cell{
+  min-width:4.2em; padding: 8px 12px; border-radius: 12px;
+  background: rgba(13,23,40,.95);
+  border:3px solid #24405f; text-align:center;
+  font-family: ui-monospace,Consolas,monospace;
+  transition: box-shadow .3s, border-color .3s, transform .3s, background .3s;
+}
+.fc-cell .fc-ch{ font-size:1em; color:#7dd3fc; font-weight:800; line-height:1.3; }
+.fc-cell .fc-code{ font-size:.58em; color:#5f7796; line-height:1.3; margin-top:2px; }
+
+.fc-cell.read{ border-color:#2f5a44; background: rgba(11,26,20,.95); }
+.fc-cell.read .fc-ch{ color:#4ade80; }
+.fc-cell.read .fc-code{ color:#3f7a5a; }
+
+.fc-cell.cur{
+  border-color:#facc15;
+  box-shadow: 0 0 0 5px rgba(250,204,21,.45), 0 0 30px rgba(250,204,21,.4);
+  transform: translateY(-6px);
+  background: rgba(26,22,7,.95);
+}
+.fc-cell.cur .fc-ch{ color:#fde68a; }
+.fc-cell.cur .fc-code{ color:#a16207; }
+
+.fc-eof{ border-style:dashed; }
+.fc-eof .fc-ch{ color:#94a3b8; }
+.fc-eof.cur{
+  border-color:#fb923c;
+  box-shadow: 0 0 0 5px rgba(251,146,60,.5), 0 0 30px rgba(251,146,60,.45);
+  transform: translateY(-6px);
+  background: rgba(26,16,7,.95);
+}
+.fc-eof.cur .fc-ch{ color:#fdba74; }
+
+.fc-empty{
+  padding: 16px 12px;
+  font-family: ui-monospace,Consolas,monospace;
+  font-size: .85em;
+  color:#3d5474;
+  border:3px dashed #334155;
+  border-radius:12px;
+  text-align:center;
+}
+
+.fc-note{
+  font-size: .68em; color:#7d93b3;
+  font-family: ui-monospace,Consolas,monospace;
+  margin-top: 8px; line-height: 1.55;
+}
+.fc-note b{ color:#7dd3fc; }
+.fc-closed{ color:#f87171; font-weight:800; }
+
+/* ===== 变量表 ===== */
+.var-row{
+  display:flex; justify-content:space-between; align-items:center; gap:20px;
+  padding: 8px 16px; margin-bottom: 6px;
+  border-radius: 12px;
+  background: rgba(13,23,40,.8);
+  border:2px solid #1b293f;
+  border-left-width: 10px;
+  font-size: var(--var-font);
+  line-height:1.3;
+  transition: background .25s, border-color .25s;
+}
+.var-row.k-ctx{ border-left-color:#4ade80; }
+.var-row.k-fp{ border-left-color:#38bdf8; }
+.var-row.k-fpstate{ border-left-color:#2dd4bf; }
+.var-row.k-fppos{ border-left-color:#c084fc; }
+.var-row.k-fm{ border-left-color:#f472b6; }
+.var-row.k-fmstate{ border-left-color:#2dd4bf; }
+.var-row.k-fmpos{ border-left-color:#c084fc; }
+.var-row.k-ch1{ border-left-color:#facc15; }
+.var-row.k-str1{ border-left-color:#fbbf24; }
+.var-row.k-ch2{ border-left-color:#facc15; }
+.var-row.k-str2{ border-left-color:#fbbf24; }
+.var-row.k-cond{ border-left-color:#2dd4bf; }
+.var-row.k-ret{ border-left-color:#facc15; }
+.var-row.changed{ background: rgba(56,189,248,.16); border-color:#38bdf8; }
+.var-name{ color:#8fa8c8; font-size:.68em; white-space:nowrap; }
+.var-value{
+  font-family: ui-monospace,Consolas,monospace;
+  font-weight:900; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  text-align:right;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.var-value.dim{ color:#5f7796; font-weight:500; }
+.var-row.k-ctx .var-value{ color:#4ade80; }
+.var-row.k-fp .var-value{ color:#38bdf8; }
+.var-row.k-fpstate .var-value{ color:#2dd4bf; }
+.var-row.k-fppos .var-value{ color:#c084fc; }
+.var-row.k-fm .var-value{ color:#f472b6; }
+.var-row.k-fmstate .var-value{ color:#2dd4bf; }
+.var-row.k-fmpos .var-value{ color:#c084fc; }
+.var-row.k-ch1 .var-value{ color:#facc15; }
+.var-row.k-str1 .var-value{ color:#fbbf24; }
+.var-row.k-ch2 .var-value{ color:#facc15; }
+.var-row.k-str2 .var-value{ color:#fbbf24; }
+.var-row.k-cond .var-value{ color:#2dd4bf; }
+.var-row.k-ret .var-value{ color:#facc15; }
+@keyframes flashval{
+  0%{ transform: scale(1); }
+  35%{ transform: scale(1.22); color:#fff; text-shadow: 0 0 22px currentColor; }
+  100%{ transform: scale(1); }
+}
+.var-value.flash{ animation: flashval .55s ease-out; }
+
+/* ===== 控制台 ===== */
+#p-console .p-body{
+  background:#050c17;
+  border-radius: 12px;
+  margin: 12px 16px;
+  padding: 16px 20px;
+  font-family: ui-monospace,Consolas,"Courier New",monospace;
+  font-size: var(--out-font);
+  line-height:1.55;
+  color:#86efac;
+  white-space: pre;
+}
+.out-line{ margin:0; white-space:pre; }
+.out-norm{ color:#86efac; }
+.out-note{ color:#94a3b8; font-style:italic; }
+.out-input{ color:#7dd3fc; }
+.out-count{ color:#fbbf24; }
+.out-final{ color:#facc15; font-weight:900; }
+.out-wait{ color:#3d5474; }
+.out-danger{ color:#fca5a5; font-weight:800; }
+.cursor{ display:inline-block; color:#4ade80; animation: blink 1s step-end infinite; }
+@keyframes blink{ 0%,100%{opacity:1;} 50%{opacity:0;} }
+
+/* ===== 求值链 ===== */
+.chain-item{
+  font-family: ui-monospace,Consolas,monospace;
+  font-size: var(--var-font);
+  line-height:1.4;
+  padding: 8px 16px; margin-bottom: 6px;
+  border-radius: 10px;
+  background: rgba(13,23,40,.75);
+  border-left: 8px solid rgba(56,189,248,.55);
+  color:#9fd8f5;
+  white-space:nowrap;
+}
+.chain-item.last{
+  border-left-color: var(--gold);
+  background: rgba(250,204,21,.16);
+  color:#fff3c4; font-weight:900;
+  box-shadow: 0 0 0 3px rgba(250,204,21,.28);
+}
+.chain-empty{ color:#3d5474; font-size: var(--var-font); padding: 12px; }
+
+/* ===== 平台模型说明 ===== */
+.model-body{ font-size: var(--var-font); line-height:1.5; color:#b8cbe4; }
+.model-body b{ color:#facc15; }
+.model-body code{
+  font-family: ui-monospace,Consolas,monospace;
+  background: rgba(148,163,184,.15);
+  border-radius: 8px; padding: 0 8px; color:#ffe9a8;
+}
+.model-body .k{ color:#f472b6; font-weight:800; }
+.model-body .g{ color:#4ade80; font-weight:800; }
+.model-body .r{ color:#fca5a5; font-weight:800; }
+.model-body .y{ color:#facc15; font-weight:800; }
+
+/* ===== 缩略图 ===== */
+#p-mini .p-body{ padding: 6px 4px; }
+.mm-line{
+  display:flex; gap:4px;
+  white-space: pre; overflow: hidden;
+  font-family: ui-monospace,Consolas,monospace;
+  font-size: var(--mini-font);
+  line-height: 1.45; color:#7d93b3;
+  padding: 0 2px;
+  border-left: 3px solid transparent;
+}
+.mm-line .mmln{ color:#3f5a7d; width: 2.2ch; text-align:right; flex:0 0 auto; }
+.mm-line.active{ background: rgba(56,189,248,.28); border-left-color:#38bdf8; }
+.mm-line.active .mmln{ color:#38bdf8; font-weight:800; }
+.mm-line .src{ overflow:hidden; text-overflow: clip; }
+#mmViewport{
+  position:absolute; left:0; right:0;
+  background: rgba(56,189,248,.18);
+  border-top: 2px solid rgba(56,189,248,.85);
+  border-bottom: 2px solid rgba(56,189,248,.85);
+  pointer-events:none;
+}
+#mmBodyWrap{ position:relative; }
+
+/* ===== 提示词 ===== */
+#p-prompt .p-body{
+  font-family: ui-monospace,Consolas,monospace;
+  font-size: clamp(24px,1.4vw,34px);
+  line-height:1.6; color:#a9bdd8;
+  white-space: pre-wrap;
+}
+
+@media (max-width:1100px){
+  :root{
+    --code-font: clamp(34px,4.4vw,54px);
+    --out-font: clamp(30px,3.6vw,46px);
+    --var-font: clamp(22px,2.2vw,32px);
+    --explain-font: clamp(24px,2.4vw,34px);
+    --btn-font: clamp(20px,2vw,30px);
+    --panel-font: clamp(22px,2.2vw,32px);
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="code-layer" id="codeLayer">
+  <div class="code-inner" id="codeInner"></div>
+</div>
+
+<section class="panel" id="p-top">
+  <header class="p-head">
+    <span class="p-title">C 文件读写（双文件）· 逐步执行</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body">
+    <button class="ctl" id="btnReset">⟲ 重置</button>
+    <button class="ctl" id="btnPrev">◀ 上一步</button>
+    <button class="ctl primary" id="btnPlay">▶ 播放</button>
+    <button class="ctl" id="btnNext">下一步 ▶</button>
+    <span class="speed-wrap">
+      速度
+      <input type="range" id="speed" min="40" max="1600" step="20" value="500">
+      <b id="speedLabel">0.50s</b>
+    </span>
+    <button class="ctl" id="btnFull">⛶ 全屏</button>
+    <button class="ctl" id="btnPanels">👁 面板</button>
+    <button class="ctl" id="btnMini">🗺 缩略图</button>
+    <button class="ctl" id="btnLayout">↺ 重置布局</button>
+    <button class="ctl" id="btnPrompt">📝 提示词</button>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-explain">
+  <header class="p-head">
+    <span class="p-title">当前语句说明</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="explainBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-file">
+  <header class="p-head">
+    <span class="p-title">双文件内容与读写位置可视化</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="fileBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-var">
+  <header class="p-head">
+    <span class="p-title">变量表</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="varBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-console">
+  <header class="p-head">
+    <span class="p-title">程序运行输出（模拟器旁注）</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="consoleBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-eval">
+  <header class="p-head">
+    <span class="p-title">表达式求值链</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="evalBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-model">
+  <header class="p-head">
+    <span class="p-title">平台模型与关键考点</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body model-body">
+    <b>平台：</b>64 位，小端序；<code>char=1</code>、<code>int=4</code>、指针<code>=8</code>。<br>
+    <b>FILE 类型：</b>系统库内部结构体；<code>fp</code> / <code>fm</code> 是 8 字节句柄地址，示意值 <b>0x5A2C</b> / <b>0x7B3E</b>。<br>
+    <span class="k">★ 两次 fopen、两次判空</span>：第 6 行（fp），第 15/16 行（fm）——一个都不能少。<br>
+    <span class="k">★ "r" vs "wt+"</span>：<br>
+    　<code>r</code> = 只读（文件必须已存在）；<br>
+    　<code>w</code> = 写（不存在则创建，已存在则清空为 0 字节）；<br>
+    　<code>t</code> = 文本模式；<code>+</code> = 可读可写（没有它读不回来）。<br>
+    <span class="k">★ 路径转义</span>：源码 <code>"f:\\study.txt"</code> 运行时是 <code>f:\study.txt</code>；<code>"d:\\test.c"</code> 运行时是 <code>d:\test.c</code>。<br>
+    <span class="k">★ fgetc 第一次在循环外</span>：第 10、21 行。<br>
+    <span class="k">★ putchar 必须在 fgetc 之前</span>：第 11、22 行。<br>
+    <span class="k">★ 两次 rewind</span>：第 12 行（读完要重读）、第 20 行（写完要读）——都是必踩的坑。<br>
+    <span class="k">★ fgets(str1, 12, fp)</span>：最多读 <b>11</b> 个字符 + <code>\0</code>；换行符会被读进来；文件 12 字节，<code>!</code> 留在文件里。<br>
+    <span class="r">⚠ gets 是危险函数</span>：完全不检查边界，C11 已删除；应改用 <code>fgets(str2, 12, stdin);</code>。<br>
+    <span class="k">★ fputs 不补换行</span>：对比 <code>puts</code>（自动补换行）。<br>
+    <span class="k">★ EOF 是 -1</span>：文件末尾信号，不是文件里的真实字节。<br>
+    <span class="r">原程序缺陷</span>：<code>char ch1/ch2;</code> 应为 <code>int ch1/ch2;</code>——若 <code>char</code> 无符号，-1 变 255，死循环。<br>
+    <span class="k">★ fclose 必须配对</span>：两个 <code>fopen</code> 两个 <code>fclose</code>；不关会丢数据、耗尽句柄。<br>
+    <span class="k">★ return 0 vs exit(1)</span>：从函数返回 vs 立刻终止程序并关闭所有文件。<br>
+    <span class="r">其他缺陷</span>：<code>fclose</code> / <code>printf</code> / <code>putchar</code> / <code>fputs</code> 返回值未检查；<code>exit</code> 需要 <code>&lt;stdlib.h&gt;</code>。<br>
+    <span class="g">复杂度</span>：时间 <b>O(n)</b>，空间 <b>O(1)</b>（缓冲区大小固定）。
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-mini">
+  <header class="p-head">
+    <span class="p-title">缩略图</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body">
+    <div id="mmBodyWrap">
+      <div id="mmBody"></div>
+      <div id="mmViewport"></div>
+    </div>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-prompt" style="display:none;">
+  <header class="p-head">
+    <span class="p-title">提示词</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="promptBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   一、源代码（25 行）
+   ============================================================ */
+var SRC = [
+[1 ,'<span class="pre">#include</span> <span class="str">&lt;stdio.h&gt;</span>                 <span class="cmt">// 包含标准输入输出头文件</span>'],
+[2 ,'<span class="ty">int</span> <span class="fn">main</span>() {                         <span class="cmt">// 主函数</span>'],
+[3 ,'    <span class="ty">FILE</span> <span class="op">*</span>fp, <span class="op">*</span>fm;                  <span class="cmt">// 定义两个文件指针</span>'],
+[4 ,'    <span class="ty">char</span> ch1, str1[<span class="num">12</span>];             <span class="cmt">// 变量和数组</span>'],
+[5 ,'    <span class="ty">char</span> ch2, str2[<span class="num">12</span>];'],
+[6 ,'    <span class="kw">if</span>((fp <span class="op">=</span> <span class="fn">fopen</span>(<span class="str">"f:\\\\study.txt"</span>, <span class="str">"r"</span>)) <span class="op">==</span> <span class="mac">NULL</span>) { <span class="cmt">// 打开原文件</span>'],
+[7 ,'        <span class="fn">printf</span>(<span class="str">"Open file fail!"</span>);'],
+[8 ,'        <span class="fn">exit</span>(<span class="num">1</span>);'],
+[9 ,'    }'],
+[10,'    ch1 <span class="op">=</span> <span class="fn">fgetc</span>(fp);                  <span class="cmt">// 读取原文件内容并输出</span>'],
+[11,'    <span class="kw">while</span>(ch1 <span class="op">!=</span> <span class="mac">EOF</span>) { <span class="fn">putchar</span>(ch1); ch1 <span class="op">=</span> <span class="fn">fgetc</span>(fp); }'],
+[12,'    <span class="fn">rewind</span>(fp);                       <span class="cmt">// 返回文件头</span>'],
+[13,'    <span class="fn">fgets</span>(str1, <span class="num">12</span>, fp);              <span class="cmt">// 读取前11个字符</span>'],
+[14,'    <span class="fn">printf</span>(<span class="str">"%s"</span>, str1);'],
+[15,'    fm <span class="op">=</span> <span class="fn">fopen</span>(<span class="str">"d:\\\\test.c"</span>, <span class="str">"wt+"</span>); <span class="cmt">// 创建新文件</span>'],
+[16,'    <span class="kw">if</span>(fm <span class="op">==</span> <span class="mac">NULL</span>) { <span class="fn">printf</span>(<span class="str">"Open file fail!"</span>); <span class="fn">exit</span>(<span class="num">1</span>); }'],
+[17,'    <span class="fn">printf</span>(<span class="str">"Input string:\\n"</span>);'],
+[18,'    <span class="fn">gets</span>(str2);                      <span class="cmt">// 输入字符串</span>'],
+[19,'    <span class="fn">fputs</span>(str2, fm);                 <span class="cmt">// 写入新文件</span>'],
+[20,'    <span class="fn">rewind</span>(fm);'],
+[21,'    ch2 <span class="op">=</span> <span class="fn">fgetc</span>(fm);                  <span class="cmt">// 读取新文件内容并输出</span>'],
+[22,'    <span class="kw">while</span>(ch2 <span class="op">!=</span> <span class="mac">EOF</span>) { <span class="fn">putchar</span>(ch2); ch2 <span class="op">=</span> <span class="fn">fgetc</span>(fm); }'],
+[23,'    <span class="fn">fclose</span>(fp); <span class="fn">fclose</span>(fm);'],
+[24,'    <span class="kw">return</span> <span class="num">0</span>;'],
+[25,'}']
+];
+
+var codeInner = document.getElementById('codeInner');
+var html = '';
+for (var i = 0; i < SRC.length; i++) {
+  html += '<div class="code-line" data-line="' + SRC[i][0] + '">' +
+            '<span class="ln">' + SRC[i][0] + '</span>' +
+            '<span class="src">' + SRC[i][1] + '</span>' +
+          '</div>';
+}
+codeInner.innerHTML = html;
+
+var mmBody = document.getElementById('mmBody');
+var mmHtml = '';
+for (var m = 0; m < SRC.length; m++) {
+  mmHtml += '<div class="mm-line" data-line="' + SRC[m][0] + '">' +
+              '<span class="mmln">' + SRC[m][0] + '</span>' +
+              '<span class="src">' + SRC[m][1] + '</span>' +
+            '</div>';
+}
+mmBody.innerHTML = mmHtml;
+
+/* ============================================================
+   二、模拟数据
+   ============================================================ */
+var FP_ADDR = '0x5A2C';
+var FM_ADDR = '0x7B3E';
+
+var FP_CHARS = [
+  { label: 'H', code: 72 },  { label: 'e', code: 101 },
+  { label: 'l', code: 108 }, { label: 'l', code: 108 },
+  { label: 'o', code: 111 }, { label: '␣', code: 32  },
+  { label: 'W', code: 87 },  { label: 'o', code: 111 },
+  { label: 'r', code: 114 }, { label: 'l', code: 108 },
+  { label: 'd', code: 100 }, { label: '!', code: 33  }
+];
+var FP_LEN = FP_CHARS.length;
+
+var GETS_INPUT = 'Test';
+var FM_CHARS_FINAL = [];
+for (var g = 0; g < GETS_INPUT.length; g++) {
+  FM_CHARS_FINAL.push({ label: GETS_INPUT.charAt(g), code: GETS_INPUT.charCodeAt(g) });
+}
+
+var TONES = {
+  blue:   ['#38bdf8', 'rgba(56,189,248,.22)'],
+  gold:   ['#facc15', 'rgba(250,204,21,.22)'],
+  pink:   ['#f472b6', 'rgba(244,114,182,.24)'],
+  purple: ['#c084fc', 'rgba(192,132,252,.22)'],
+  green:  ['#4ade80', 'rgba(74,222,128,.22)'],
+  orange: ['#fb923c', 'rgba(251,146,60,.22)'],
+  red:    ['#ef4444', 'rgba(239,68,68,.28)'],
+  cyan:   ['#2dd4bf', 'rgba(45,212,191,.22)']
+};
+
+/* ============================================================
+   三、步骤构建
+   ============================================================ */
+function buildSteps() {
+  var steps = [];
+  var CHAIN = [];
+
+  var S = {
+    func: 'main',
+    fp: '—', fpState: '—', fpClosed: false,
+    fm: '—', fmState: '—', fmClosed: false,
+    fpOpen: false, fmOpen: false,
+    fpChars: [], fmChars: [],
+    fpPos: 0, fmPos: 0,
+    ch1: '—', str1: '—',
+    ch2: '—', str2: '—',
+    cond: '—',
+    ret: '—',
+    out: [], done: false
+  };
+
+  function clone(o){ return JSON.parse(JSON.stringify(o)); }
+  function pushOut(t,c){ S.out.push({ t:t, c:c||'out-norm' }); }
+  function chainPush(t){ CHAIN.push({ t:t }); }
+  function snap(o){
+    S.chain = CHAIN.slice();
+    steps.push({
+      line: o.line, tone: o.tone || 'blue',
+      title: o.title || '', desc: o.desc || '',
+      s: clone(S)
+    });
+  }
+  function chTxt(c){
+    if (c.label === '␣') return "'␣' (空格, 32)";
+    return "'" + c.label + "' (" + c.code + ")";
+  }
+  function chShort(c){
+    return (c.label === '␣') ? '空格' : c.label;
+  }
+
+  /* ═══════════ 1. main 入口 ═══════════ */
+  S.func = 'main';
+  snap({
+    line: 2, tone:'gold',
+    title: '进入 <b>main</b> 函数',
+    desc: '程序从 <code>main</code> 开始执行。这个程序做两件事：<br>' +
+          '· <b>读原文件</b>：用 <code>fopen</code> 打开 <code>f:\\study.txt</code>，' +
+          '先用 <code>fgetc</code> 逐字符把它整个显示到屏幕；再用 <code>rewind</code> 回卷，' +
+          '用 <code>fgets</code> 读前 11 个字符存进 <code>str1</code> 并打印；<br>' +
+          '· <b>写新文件</b>：用 <code>fopen("d:\\\\test.c","wt+")</code> 创建一个新文件，' +
+          '用 <code>gets</code> 读入一行键盘输入，用 <code>fputs</code> 写进文件；' +
+          '再 <code>rewind</code> 回卷，用 <code>fgetc</code> 逐字符读出并打印，验证写入成功。<br>' +
+          '· 最后两个文件都 <code>fclose</code>，<code>return 0</code> 结束。' +
+          '<span class="tip"><b>本例数据：</b><br>' +
+          '· <code>f:\\study.txt</code> 的内容是 12 个字符：<code>Hello World!</code><br>' +
+          '· 键盘输入假设为 <code>Test</code>（4 个字符）<br>' +
+          '右侧「文件内容」区上下并列显示这两个文件，并实时标出各自的读写位置。</span>'
+  });
+
+  /* ═══════════ 2. 声明两个文件指针 ═══════════ */
+  snap({
+    line: 3, tone:'cyan',
+    title: '声明 <b>FILE *fp, *fm;</b>',
+    desc: '一次定义<b>两个文件指针</b>：<br>' +
+          '· <code>fp</code> 用来操作<b>原文件</b> <code>f:\\study.txt</code>（只读）；<br>' +
+          '· <code>fm</code> 用来操作<b>新文件</b> <code>d:\\test.c</code>（可写可读）。<br>' +
+          '· <code>FILE</code> 是 <code>&lt;stdio.h&gt;</code> 里定义的结构体类型，' +
+          '内部记录着文件的缓冲区地址、读写位置、文件结束标志、错误标志等信息；' +
+          '我们只拿它的<b>指针</b>当「文件句柄」用；<br>' +
+          '· 此刻两个指针都<b>没有指向任何文件</b>，值是<b>不确定的</b>（野指针）。' +
+          '<span class="warn"><b>注意：</b>声明之后、<code>fopen</code> 之前，绝不能拿它们去读写文件，那是未定义行为。</span>'
+  });
+
+  /* ═══════════ 3. 声明 ch1, str1[12] ═══════════ */
+  snap({
+    line: 4, tone:'cyan',
+    title: '声明 <b>char ch1, str1[12];</b>',
+    desc: '定义两个变量，用来处理<b>原文件</b>的数据：<br>' +
+          '· <code>ch1</code>：1 个字节的字符变量，暂存 <code>fgetc</code> 读到的字符；<br>' +
+          '· <code>str1[12]</code>：长度为 12 的字符数组，最多能存 <b>11 个字符 + 1 个结束符 <code>\\0</code></b>，' +
+          '用来接收 <code>fgets(str1, 12, fp)</code> 读出的内容。' +
+          '<span class="warn"><b>⚠ 经典陷阱：规范写法应该是 <code>int ch1;</code></b><br>' +
+          '因为 <code>fgetc</code> 的返回值类型是 <b>int</b>：' +
+          '读到字符时返回 0~255，读到文件末尾时返回 <b>EOF</b>（值为 <b>-1</b>）。<br>' +
+          '如果把 <code>-1</code> 存进<b>无符号</b>的 <code>char</code>，它会变成 <code>255</code>，' +
+          '<code>ch1 != EOF</code> 就<b>永远为真</b>，程序陷入死循环。</span>'
+  });
+
+  /* ═══════════ 4. 声明 ch2, str2[12] ═══════════ */
+  snap({
+    line: 5, tone:'cyan',
+    title: '声明 <b>char ch2, str2[12];</b>',
+    desc: '再定义两个变量，用来处理<b>新文件</b>的数据：<br>' +
+          '· <code>ch2</code>：暂存从新文件 <code>fgetc</code> 读到的字符；<br>' +
+          '· <code>str2[12]</code>：长度为 12 的字符数组，用来接收 <code>gets(str2)</code> 读入的键盘字符串。' +
+          '<span class="danger"><b>⚠ <code>gets</code> 是非常危险的函数！</b><br>' +
+          '<code>gets(str2)</code> 会一直往 <code>str2</code> 里塞字符，' +
+          '直到遇到回车为止，<b>完全不检查数组边界</b>。<br>' +
+          '如果用户输入超过 11 个字符，就会<b>越界写坏相邻的内存</b>——' +
+          '轻则程序行为异常，重则被利用来执行恶意代码。<br>' +
+          '<b>正确写法</b>应该是：<code>fgets(str2, 12, stdin);</code>——' +
+          '它最多只写 11 个字符，多出来的留在缓冲区里，安全可控。<br>' +
+          'C11 标准已经正式删除了 <code>gets</code>。</span>'
+  });
+
+  /* ═══════════ 5. fopen 原文件调用 ═══════════ */
+  chainPush('fopen("f:\\\\study.txt", "r") → 0x5A2C');
+  snap({
+    line: 6, tone:'red',
+    title: '执行 <b>fopen("f:\\\\study.txt", "r")</b>',
+    desc: '进入 <code>if</code>，先计算括号里的表达式，这里面藏着<b>两个动作</b>：' +
+          '① 调用 <code>fopen(...)</code> 打开文件；② 把返回值赋给 <code>fp</code>，再与 <code>NULL</code> 比较。<br>' +
+          '先看 ①：<br>' +
+          '· <b>第一个参数</b>是路径。源码里写的是 <code>"f:\\\\study.txt"</code>，' +
+          '因为反斜杠 <code>\\</code> 在字符串里是<b>转义符</b>，' +
+          '要表示一个真正的反斜杠必须连写两个 <code>\\\\</code>；' +
+          '所以运行时真正的路径是 <code>f:\\study.txt</code>；<br>' +
+          '· <b>第二个参数</b> <code>"r"</code> 是打开方式：<b>只读</b>，' +
+          '文件必须已存在，否则返回 NULL。（<code>r</code> 不带 <code>t</code> 也默认是文本模式。）<br>' +
+          '· 打开成功返回一个 <b>FILE*</b> 指针，失败返回 <b>NULL</b>。' +
+          '<span class="tip"><b>本例假设打开成功</b>，返回文件句柄地址 <b>0x5A2C</b>（示意值）。</span>'
+  });
+
+  /* ═══════════ 6. fp 赋值 ═══════════ */
+  S.fp = FP_ADDR;
+  S.fpState = '已打开 (r)';
+  S.fpOpen = true;
+  S.fpChars = FP_CHARS;
+  S.fpPos = 0;
+  pushOut('[打开] fopen("f:\\study.txt", "r") 成功 → fp = ' + FP_ADDR + '　文件 12 字节', 'out-note');
+  chainPush('fp = 0x5A2C');
+  snap({
+    line: 6, tone:'purple',
+    title: '<b>fp = 0x5A2C</b>　→　原文件句柄拿到手了',
+    desc: '<code>fopen</code> 返回的文件指针被赋给 <code>fp</code>。<br>' +
+          '· <code>fp = 0x5A2C</code>（FILE 结构体的地址，示意值）；<br>' +
+          '· 从此刻起，<code>fp</code> 就代表「<b>那个已经打开的 f:\\study.txt</b>」；<br>' +
+          '· 文件内部的<b>读写位置</b>被初始化为 <b>0</b>，也就是指向第一个字符 <code>H</code>。' +
+          '<span class="tip"><b>读写位置（文件位置指示器）</b>是 FILE 结构体里的一个成员，' +
+          '记录「下一次读/写从第几个字节开始」。<br>' +
+          '无论是 <code>fgetc</code> 读、<code>fgets</code> 读、' +
+          '还是 <code>rewind</code> / <code>fseek</code> 定位，最终都作用在它上面。<br>' +
+          '右侧文件条上<b>发光的那个格子</b>就是它现在的位置。</span>'
+  });
+
+  /* ═══════════ 7. 判空 ═══════════ */
+  chainPush('(fp == NULL) → 假');
+  snap({
+    line: 6, tone:'red',
+    title: '<b>(fp == NULL)</b>　→　<b>假</b>　→　文件打开成功',
+    desc: '把 <code>fp</code>（0x5A2C）与 <code>NULL</code> 比较：<br>' +
+          '· 两者<b>不相等</b> → 整个条件表达式为<b>假</b>；<br>' +
+          '· <b>不执行</b>第 7~8 行那两条语句（<code>printf</code> / <code>exit</code>）；<br>' +
+          '· 控制流直接跳到第 9 行的 <code>}</code> 之后，继续往下走。' +
+          '<span class="tip"><b>为什么必须判断 NULL？</b><br>' +
+          '路径写错、文件不存在、没有读权限、U 盘没插……都会让 <code>fopen</code> 返回 <code>NULL</code>。<br>' +
+          '如果不检查就拿着 NULL 去读写，程序会立刻崩溃。<br>' +
+          '「<b>打开文件必判空</b>」是 C 语言文件操作的第一条纪律。</span>' +
+          '<span class="win"><b>★ 本例假设：</b>文件存在且打开成功，条件为假，整个错误处理分支一行都不执行。</span>'
+  });
+
+  /* ═══════════ 8. 读第一个字符 ═══════════ */
+  S.ch1 = chTxt(FP_CHARS[0]);
+  S.fpPos = 1;
+  pushOut("[读取] fgetc(fp) → 'H' (ASCII 72)　位置 0 → 1", 'out-input');
+  chainPush("fgetc(fp) → 'H' (72)");
+  snap({
+    line: 10, tone:'gold',
+    title: "<b>ch1 = fgetc(fp)</b>　→　ch1 = <b>'H'</b>",
+    desc: '从原文件里读出<b>第一个字符</b>。<br>' +
+          '· <code>fgetc</code> 从当前读写位置读一个字符，读完后读写位置自动<b>后移一格</b>；<br>' +
+          '· 文件内容是 <code>Hello World!</code>，所以第一次读到 <b>\'H\'</b>（ASCII 码 <b>72</b>）；<br>' +
+          '· 返回值赋给 <code>ch1</code>，文件位置从 <b>0</b> 变成 <b>1</b>。' +
+          '<span class="tip"><b>关键：这一句在循环<b>外面</b>！</b><br>' +
+          '它负责「<b>先读入第一个字符</b>」，循环体里再负责「读入后续字符」。<br>' +
+          '这种「<b>先读一次 → 判断 → 循环里再读</b>」的结构，' +
+          '保证既不漏读、也不多读，是遍历文件的经典写法。</span>'
+  });
+
+  /* ═══════════ 9. 原文件紧凑 while 循环 12 轮 ═══════════ */
+  for (var i = 0; i < FP_CHARS.length; i++) {
+    var cur = FP_CHARS[i];
+    var nxt = (i + 1 < FP_CHARS.length) ? FP_CHARS[i + 1] : null;
+    var isLast = (nxt === null);
+
+    pushOut("[输出] putchar('" + cur.label + "') → 屏幕显示：" + chShort(cur), 'out-final');
+    if (!isLast) {
+      pushOut("[读取] fgetc(fp) → '" + nxt.label + "' (" + nxt.code + ")　位置 " +
+              (i + 1) + " → " + (i + 2), 'out-input');
+      chainPush("putchar('" + cur.label + "'); fgetc → '" + nxt.label + "'");
+    } else {
+      pushOut("[读取] fgetc(fp) → EOF (-1)　已到文件末尾", 'out-count');
+      chainPush("putchar('" + cur.label + "'); fgetc → EOF");
+    }
+
+    var desc =
+      '循环第 <b>' + (i + 1) + '</b> 轮：<code>ch1</code> = ' + chTxt(cur) + ' ≠ EOF → <b>真</b>，进入循环体：<br>' +
+      '· <code>putchar(ch1)</code> → 屏幕输出 <b>' + chShort(cur) + '</b>；<br>' +
+      (isLast
+        ? '· <code>ch1 = fgetc(fp)</code> → 文件已读完，返回 <b>EOF (-1)</b>，' +
+          '文件读写位置<b>保持在 12</b>（末尾）；'
+        : '· <code>ch1 = fgetc(fp)</code> → 读到下一个字符 <b>' + chShort(nxt) + '</b>（' + nxt.code + '），' +
+          '文件位置 ' + (i + 1) + ' → ' + (i + 2) + '；') +
+      '<br>· <code>ch1</code> 原来的值被<b>覆盖</b>。';
+
+    if (i === 0) {
+      desc += '<span class="tip"><b>本行是「一行写三条语句」的紧凑写法：</b><br>' +
+              '<code>while(ch1 != EOF) { putchar(ch1); ch1 = fgetc(fp); }</code><br>' +
+              '等价于：判断 → 输出 → 再读，三步循环往复。<br>' +
+              '<b>顺序绝不能颠倒！</b>必须<b>先 putchar 输出</b>，<b>再 fgetc 读下一个</b>；' +
+              '如果先读下一个，<code>ch1</code> 里原来那个字符就被冲掉了，屏幕上会少输出一个字符。</span>';
+    }
+    if (i === 5) {
+      desc += '<span class="tip"><b>注意这个空格字符！</b><br>' +
+              '文件里 <code>Hello</code> 和 <code>World</code> 之间有一个真实的空格字节（ASCII 32）。<br>' +
+              '它<b>不是空白、不是格式</b>，就是一个普通的字符，' +
+              '同样会被 <code>fgetc</code> 读到、被 <code>putchar</code> 输出。<br>' +
+              '文件里除了 EOF，<b>没有「特殊到读不到」的字节</b>。</span>';
+    }
+    if (isLast) {
+      desc += '<span class="win"><b>★ 这个 -1 就是循环的「刹车信号」。</b><br>' +
+              '下一次判断 <code>ch1 != EOF</code> 就会为假，循环结束。</span>' +
+              '<span class="tip"><b>注意：</b><code>fgetc</code> 返回 <code>EOF</code> 有两种可能：' +
+              '① 文件真的读完了；② 读取出错。<br>' +
+              '要区分它们，得用 <code>feof(fp)</code> 和 <code>ferror(fp)</code>。</span>';
+    }
+
+    snap({
+      line: 11, tone: i === 0 ? 'green' : (isLast ? 'red' : 'orange'),
+      title: '第 ' + (i + 1) + ' 轮：<b>putchar(\'' + cur.label + '\')</b>' +
+             (isLast ? '　→　读到 <b>EOF</b>' : '　→　读到 <b>\'' + nxt.label + '\'</b>'),
+      desc: desc
+    });
+
+    if (!isLast) {
+      S.ch1 = chTxt(nxt);
+      S.fpPos = i + 2;
+    } else {
+      S.ch1 = 'EOF (-1)';
+      S.fpPos = FP_LEN;
+    }
+    S.cond = 'ch1 != EOF → 真';
+  }
+
+  /* ═══════════ 10. while 假 ═══════════ */
+  S.cond = 'ch1 != EOF → 假（退出循环）';
+  pushOut('[判断] ch1 == EOF → 退出第一个 while 循环', 'out-count');
+  chainPush('ch1 == EOF → 退出第一个 while 循环');
+  snap({
+    line: 11, tone:'green',
+    title: '<b>while(ch1 != EOF)</b>　→　<b>假</b>　→　退出循环',
+    desc: '· <code>ch1 = -1</code>，<code>EOF = -1</code>；<br>' +
+          '· <code>-1 != -1</code> → <b>假</b>；<br>' +
+          '· 退出 <code>while</code> 循环，控制流跳到第 11 行之后；<br>' +
+          '· 循环体一共执行了 <b>12</b> 轮，把整个文件 <code>Hello World!</code> 原样输出到了屏幕。' +
+          '<span class="tip"><b>循环节奏小结：</b><br>' +
+          '「<b>判断 → 输出 → 再读 → 再判断</b>」，每次循环只处理一个字符。<br>' +
+          '这种「读一个、处理一个」的模式叫<b>流式处理</b>，' +
+          '不管文件多大，程序占用的内存都是固定的（只有一个字符的空间）。</span>' +
+          '<span class="win"><b>屏幕目前内容：</b><code>Hello World!</code></span>'
+  });
+
+  /* ═══════════ 11. rewind(fp) ═══════════ */
+  S.fpPos = 0;
+  pushOut('[定位] rewind(fp) → 位置指针回到文件头　位置 12 → 0', 'out-note');
+  chainPush('rewind(fp) → 12 → 0');
+  snap({
+    line: 12, tone:'red',
+    title: '<b>rewind(fp)</b>　→　读写位置拨回文件开头',
+    desc: '把 <code>fp</code> 的文件读写位置指示器重新定位到<b>文件开头</b>。<br>' +
+          '· 位置从 <b>12</b>（末尾）回到 <b>0</b>（开头）；<br>' +
+          '· <code>rewind(fp)</code> 等价于 <code>fseek(fp, 0, SEEK_SET)</code>，' +
+          '同时还会<b>清掉文件结束标志和错误标志</b>，并把输出缓冲区里的数据刷出去；<br>' +
+          '· 函数没有返回值（返回 void）。' +
+          '<span class="danger"><b>⚠ 这一步绝不能省！</b><br>' +
+          '刚才的循环已经把文件<b>读到末尾</b>了，位置指示器停在 12。' +
+          '如果不 rewind 就直接 <code>fgets</code>，会一个字符都读不到。' +
+          '「<b>想重新读，先 rewind</b>」——这是文件操作里最常踩的坑。</span>'
+  });
+
+  /* ═══════════ 12. fgets ═══════════ */
+  S.str1 = '"Hello World"';
+  S.fpPos = 11;
+  pushOut('[读取] fgets(str1, 12, fp) → 读入 11 个字符 "Hello World"　位置 0 → 11', 'out-input');
+  chainPush('fgets(str1, 12, fp) → "Hello World"');
+  snap({
+    line: 13, tone:'orange',
+    title: '<b>fgets(str1, 12, fp)</b>　→　str1 = <b>"Hello World"</b>',
+    desc: '从文件开头读取<b>一整行</b>存进 <code>str1</code>。<br>' +
+          '· <code>fgets(buf, n, fp)</code> 最多读 <b>n-1 = 11</b> 个字符，' +
+          '并在末尾自动补一个 <code>\\0</code>；<br>' +
+          '· 它会在两种情况下停下：① 已经读满 11 个字符；② 读到了换行符 <code>\\n</code>' +
+          '（换行符<b>会被读进来</b>，这点和 <code>gets</code> 不同）；<br>' +
+          '· 文件内容是 <code>Hello World!</code>（12 字节，没有换行），' +
+          '所以它读了前 11 个字符 <code>Hello World</code>，加上 <code>\\0</code>，' +
+          '第 12 个字符 <code>!</code> <b>留在文件里没被读走</b>；<br>' +
+          '· 文件位置从 <b>0</b> 变成 <b>11</b>；<br>' +
+          '· 成功返回 <code>str1</code> 的地址，读到文件末尾或出错时返回 <code>NULL</code>（本例没用到返回值）。' +
+          '<span class="tip"><b>为什么是 12 而不是 11？</b><br>' +
+          '第二个参数 <code>n</code> 指的是<b>缓冲区总容量</b>，' +
+          '<code>fgets</code> 会保留最后一个字节给 <code>\\0</code>，' +
+          '所以实际最多读 <code>n-1</code> 个字符。<br>' +
+          '写 <code>fgets(str1, 12, fp)</code> 就是「最多读 11 个字符」。</span>'
+  });
+
+  /* ═══════════ 13. printf str1 ═══════════ */
+  pushOut('[输出] printf("%s", str1) → 屏幕显示：Hello World', 'out-final');
+  chainPush('printf("%s", str1)');
+  snap({
+    line: 14, tone:'gold',
+    title: '<b>printf("%s", str1)</b>　→　屏幕输出 <b>Hello World</b>',
+    desc: '把刚读到的字符串打印到屏幕。<br>' +
+          '· 屏幕上紧接着刚才的 <code>Hello World!</code>，又多了 <code>Hello World</code>；<br>' +
+          '· <code>%s</code> 会一直打印到遇到 <code>\\0</code> 为止，' +
+          '而 <code>fgets</code> 恰好已经补好了 <code>\\0</code>；<br>' +
+          '· 注意 <b>没有末尾的感叹号</b>——因为 <code>fgets</code> 只读了 11 个字符，' +
+          '<code>!</code> 还留在文件里。' +
+          '<span class="win"><b>屏幕目前内容：</b><code>Hello World!Hello World</code></span>'
+  });
+
+  /* ═══════════ 14. 创建新文件 ═══════════ */
+  S.fm = FM_ADDR;
+  S.fmState = '已打开 (wt+)';
+  S.fmOpen = true;
+  S.fmChars = [];
+  S.fmPos = 0;
+  pushOut('[创建] fopen("d:\\test.c", "wt+") 成功 → fm = ' + FM_ADDR + '　新文件 0 字节', 'out-note');
+  chainPush('fopen("d:\\\\test.c", "wt+") → 0x7B3E');
+  snap({
+    line: 15, tone:'pink',
+    title: '<b>fm = fopen("d:\\\\test.c", "wt+")</b>　→　fm = 0x7B3E',
+    desc: '创建/打开<b>新文件</b> <code>d:\\test.c</code>。<br>' +
+          '· <b>第一个参数</b> <code>"d:\\\\test.c"</code>，运行时真正的路径是 <code>d:\\test.c</code>；<br>' +
+          '· <b>第二个参数</b> <code>"wt+"</code> 是打开方式，三个字符各有含义：<br>' +
+          '　　<code>w</code> = <b>写模式</b>：文件不存在就<b>新建</b>；已存在则<b>清空为 0 字节</b>；<br>' +
+          '　　<code>t</code> = <b>文本模式</b>（Windows 下写入 <code>\\n</code> 会存成 <code>\\r\\n</code>，读取时再自动还原）；<br>' +
+          '　　<code>+</code> = <b>可读可写</b>——没有它就只能写，后面的读回操作会失败。<br>' +
+          '· 成功返回文件句柄地址 <b>0x7B3E</b>（示意值），并赋给 <code>fm</code>；<br>' +
+          '· 新文件目前是 <b>0 字节</b>，读写位置是 <b>0</b>。' +
+          '<span class="warn"><b>⚠ 注意这里没有判空！</b><br>' +
+          '第 15 行直接赋值，判空放在了第 16 行。<br>' +
+          '写法上没问题，但更紧凑的写法是像第 6 行那样把 <code>fopen</code> 嵌进 <code>if</code> 条件里。</span>'
+  });
+
+  /* ═══════════ 15. 新文件判空 ═══════════ */
+  chainPush('(fm == NULL) → 假');
+  snap({
+    line: 16, tone:'red',
+    title: '<b>(fm == NULL)</b>　→　<b>假</b>　→　新文件创建成功',
+    desc: '把 <code>fm</code>（0x7B3E）与 <code>NULL</code> 比较：<br>' +
+          '· 两者<b>不相等</b> → 条件为<b>假</b>；<br>' +
+          '· <b>不执行</b>花括号里的 <code>printf</code> 和 <code>exit(1)</code>；<br>' +
+          '· 继续往下执行。' +
+          '<span class="tip"><b>两次判空，一个都不能少。</b><br>' +
+          '第 6 行判 <code>fp</code>，第 16 行判 <code>fm</code>——' +
+          '每个 <code>fopen</code> 都必须紧跟一次 <code>NULL</code> 检查。<br>' +
+          '有人只检查第一个就以为万事大吉，结果第二个文件创建失败时程序直接崩溃。' +
+          '<b>这不是多余的代码，是保命的代码。</b></span>' +
+          '<span class="win"><b>★ 本例假设：</b>两个文件都成功打开/创建。</span>'
+  });
+
+  /* ═══════════ 16. printf 提示 ═══════════ */
+  pushOut('[输出] printf("Input string:\\n") → 屏幕显示：Input string:', 'out-norm');
+  chainPush('printf("Input string:\\n")');
+  snap({
+    line: 17, tone:'gold',
+    title: '<b>printf("Input string:\\n")</b>　→　屏幕打印提示语',
+    desc: '在屏幕上打印提示语 <code>Input string:</code>，末尾的 <code>\\n</code> 让光标换到下一行。<br>' +
+          '· 这是给用户看的「<b>请输入一个字符串</b>」信号；<br>' +
+          '· 此时新文件 <code>d:\\test.c</code> 还是空的（0 字节），读写位置在 0。' +
+          '<span class="tip"><b>提示语后面那个 <code>\\n</code> 很重要。</b><br>' +
+          '没有它，用户输入的字符会紧接着 <code>Input string:</code> 显示在同一行，看起来乱糟糟的。<br>' +
+          '有了它，光标换到下一行，输入区干净清爽。</span>'
+  });
+
+  /* ═══════════ 17. gets ═══════════ */
+  S.str2 = '"Test"';
+  pushOut('[输入] gets(str2) ← 键盘输入 "Test"', 'out-input');
+  chainPush('gets(str2) ← "Test"');
+  snap({
+    line: 18, tone:'red',
+    title: '<b>gets(str2)</b>　→　str2 = <b>"Test"</b>',
+    desc: '从键盘读入<b>一整行</b>，存进 <code>str2</code>。<br>' +
+          '· 用户敲的是 <code>Test</code> 再按回车；<br>' +
+          '· <code>gets</code> 把回车之前的所有字符都读进来，' +
+          '并且在末尾自动补一个 <code>\\0</code>；' +
+          '· <b>回车符本身会被丢掉</b>，不会存进 <code>str2</code>（这点和 <code>fgets</code> 不同）；<br>' +
+          '· 所以 <code>str2</code> = <code>"Test"</code>（4 个字符 + <code>\\0</code> = 5 字节）。' +
+          '<span class="danger"><b>⚠ 再强调一次 <code>gets</code> 的危险性！</b><br>' +
+          '<code>str2</code> 只有 12 个字节，最多存 11 个字符 + <code>\\0</code>。<br>' +
+          '如果用户输入 12 个以上的字符，<code>gets</code> 会<b>毫不停顿地继续写</b>，' +
+          '把 <code>str2</code> 后面相邻的内存全部覆盖掉。<br>' +
+          '这类「缓冲区溢出」是 C 程序最经典的安全漏洞。<br>' +
+          '<b>正确写法：<code>fgets(str2, 12, stdin);</code></b>——' +
+          '它最多只读 11 个字符，多出来的留在缓冲区里，安全可控。<br>' +
+          'C11 标准已经正式删除了 <code>gets</code>，' +
+          '现代编译器会给出警告甚至直接报错。</span>'
+  });
+
+  /* ═══════════ 18. fputs ═══════════ */
+  S.fmChars = FM_CHARS_FINAL.slice();
+  S.fmPos = GETS_INPUT.length;
+  pushOut('[写入] fputs(str2, fm) → 文件内容 "Test"　位置 0 → 4', 'out-count');
+  chainPush('fputs(str2, fm) → "Test"，位置 0 → 4');
+  snap({
+    line: 19, tone:'pink',
+    title: '<b>fputs(str2, fm)</b>　→　把 "Test" 写进新文件',
+    desc: '把字符串 <code>str2</code> 写进新文件。<br>' +
+          '· <code>fputs(s, fp)</code> 把字符串 <code>s</code> 中的字符<b>逐个</b>写到文件当前位置，' +
+          '直到遇到 <code>\\0</code> 为止——<b><code>\\0</code> 本身不会被写进去</b>；<br>' +
+          '· 所以文件里得到 4 个字节：<code>T</code>、<code>e</code>、<code>s</code>、<code>t</code>；<br>' +
+          '· 文件读写位置从 <b>0</b> 走到 <b>4</b>（末尾）；<br>' +
+          '· 成功返回一个非负数，失败返回 <code>EOF</code>（本例忽略了返回值）。' +
+          '<span class="tip"><b><code>fputs</code> 与 <code>puts</code> 的区别：</b><br>' +
+          '<code>puts(s)</code> 写到标准输出，并且会<b>自动补一个换行</b>；<br>' +
+          '<code>fputs(s, fp)</code> 写到指定文件，<b>不补换行</b>。<br>' +
+          '本例用 <code>fputs</code>，所以文件里没有多余的换行符。</span>'
+  });
+
+  /* ═══════════ 19. rewind(fm) ═══════════ */
+  S.fmPos = 0;
+  pushOut('[定位] rewind(fm) → 位置指针回到文件头　位置 4 → 0', 'out-note');
+  chainPush('rewind(fm) → 4 → 0');
+  snap({
+    line: 20, tone:'red',
+    title: '<b>rewind(fm)</b>　→　读写位置拨回文件开头',
+    desc: '把 <code>fm</code> 的文件读写位置指示器重新定位到<b>文件开头</b>。<br>' +
+          '· 位置从 <b>4</b>（末尾）回到 <b>0</b>（开头）；<br>' +
+          '· 和之前对 <code>fp</code> 做的一样，' +
+          '<code>rewind</code> 同时会<b>清掉文件结束标志和错误标志</b>，' +
+          '并把输出缓冲区里的数据刷出去（本例刚写完，正好借这个机会让数据落盘）；<br>' +
+          '· 现在可以重新从头读这个文件，验证刚才写进去的内容是否正确。' +
+          '<span class="danger"><b>⚠ 又一个必踩的坑！</b><br>' +
+          '刚写完文件时，位置指示器停在<b>末尾</b>。' +
+          '如果直接调用 <code>fgetc</code>，会立刻读到 <code>EOF</code>，什么也读不出来。<br>' +
+          '「<b>写完要读，先 rewind</b>」——这是文件读写切换时最容易犯的错误。</span>'
+  });
+
+  /* ═══════════ 20. 读第一个字符 ═══════════ */
+  S.ch2 = "'T' (84)";
+  S.fmPos = 1;
+  pushOut("[读取] fgetc(fm) → 'T' (ASCII 84)　位置 0 → 1", 'out-input');
+  chainPush("fgetc(fm) → 'T' (84)");
+  snap({
+    line: 21, tone:'gold',
+    title: "<b>ch2 = fgetc(fm)</b>　→　ch2 = <b>'T'</b>",
+    desc: '从新文件里读出<b>第一个字符</b>。<br>' +
+          '· 文件内容是 <code>Test</code>，所以第一次读到 <b>\'T\'</b>（ASCII 码 <b>84</b>）；<br>' +
+          '· 文件位置从 <b>0</b> 变成 <b>1</b>；<br>' +
+          '· 和 <code>fp</code> 那次一样，这一句也放在循环<b>外面</b>，' +
+          '负责「先读入第一个字符」。' +
+          '<span class="tip"><b>两个文件，两套完全对称的读流程：</b><br>' +
+          '· 原文件：<code>ch1 = fgetc(fp)</code> → <code>while(ch1 != EOF) { putchar; fgetc; }</code><br>' +
+          '· 新文件：<code>ch2 = fgetc(fm)</code> → <code>while(ch2 != EOF) { putchar; fgetc; }</code><br>' +
+          '把 <code>fp</code> 换成 <code>fm</code>、把 <code>ch1</code> 换成 <code>ch2</code>，' +
+          '结构一模一样——这就是「<b>文件句柄</b>」的好处：' +
+          '同一套代码可以操作不同的文件，改的只是一个指针变量。</span>'
+  });
+
+  /* ═══════════ 21. 新文件紧凑 while 循环 4 轮 ═══════════ */
+  for (var j = 0; j < FM_CHARS_FINAL.length; j++) {
+    var cur2 = FM_CHARS_FINAL[j];
+    var nxt2 = (j + 1 < FM_CHARS_FINAL.length) ? FM_CHARS_FINAL[j + 1] : null;
+    var isLast2 = (nxt2 === null);
+
+    pushOut("[输出] putchar('" + cur2.label + "') → 屏幕显示：" + cur2.label, 'out-final');
+    if (!isLast2) {
+      pushOut("[读取] fgetc(fm) → '" + nxt2.label + "' (" + nxt2.code + ")　位置 " +
+              (j + 1) + " → " + (j + 2), 'out-input');
+      chainPush("putchar('" + cur2.label + "'); fgetc → '" + nxt2.label + "'");
+    } else {
+      pushOut("[读取] fgetc(fm) → EOF (-1)　已到文件末尾", 'out-count');
+      chainPush("putchar('" + cur2.label + "'); fgetc → EOF");
+    }
+
+    var desc2 =
+      '循环第 <b>' + (j + 1) + '</b> 轮：<code>ch2</code> = ' + chTxt(cur2) + ' ≠ EOF → <b>真</b>，进入循环体：<br>' +
+      '· <code>putchar(ch2)</code> → 屏幕输出 <b>' + cur2.label + '</b>；<br>' +
+      (isLast2
+        ? '· <code>ch2 = fgetc(fm)</code> → 新文件已读完，返回 <b>EOF (-1)</b>，' +
+          '文件读写位置<b>保持在 4</b>（末尾）；'
+        : '· <code>ch2 = fgetc(fm)</code> → 读到下一个字符 <b>' + nxt2.label + '</b>（' + nxt2.code + '），' +
+          '文件位置 ' + (j + 1) + ' → ' + (j + 2) + '；') +
+      '<br>· <code>ch2</code> 原来的值被<b>覆盖</b>。';
+
+    if (isLast2) {
+      desc2 += '<span class="win"><b>★ 读回的内容和写进去的完全一致 → 文件读写验证成功！</b><br>' +
+               '屏幕上打印的 <code>Test</code> 正是刚才 <code>gets</code> 读入、' +
+               '<code>fputs</code> 写进文件的内容。<br>' +
+               '这证明整条「<b>键盘 → 内存 → 磁盘 → 内存 → 屏幕</b>」的通路是通的。</span>' +
+               '<span class="tip"><b>顺带一提：</b>如果 <code>rewind(fm)</code> 那一步漏掉，' +
+               '这里会立刻读到 <code>EOF</code>，屏幕上<b>什么都不会出现</b>。<br>' +
+               '文件操作出错时，最该检查的就是「位置指示器对不对」。</span>';
+    }
+    if (j === 0) {
+      desc2 += '<span class="tip"><b>又一个 <code>char</code> 陷阱：</b><br>' +
+               '<code>ch2</code> 同样声明为 <code>char</code>，' +
+               '如果编译器把 <code>char</code> 当作<b>无符号</b>类型（比如 ARM 上的某些编译器），' +
+               '这里的 <code>EOF</code>（-1）会变成 <code>255</code>，' +
+               '<code>ch2 != EOF</code> 就<b>永远成立</b>，程序陷入死循环。<br>' +
+               '规范写法：<code>int ch2;</code>。</span>';
+    }
+
+    snap({
+      line: 22, tone: j === 0 ? 'green' : (isLast2 ? 'red' : 'orange'),
+      title: '第 ' + (j + 1) + ' 轮：<b>putchar(\'' + cur2.label + '\')</b>' +
+             (isLast2 ? '　→　读到 <b>EOF</b>' : '　→　读到 <b>\'' + nxt2.label + '\'</b>'),
+      desc: desc2
+    });
+
+    if (!isLast2) {
+      S.ch2 = chTxt(nxt2);
+      S.fmPos = j + 2;
+    } else {
+      S.ch2 = 'EOF (-1)';
+      S.fmPos = FM_CHARS_FINAL.length;
+    }
+    S.cond = 'ch2 != EOF → 真';
+  }
+
+  /* ═══════════ 22. while 假 ═══════════ */
+  S.cond = 'ch2 != EOF → 假（退出循环）';
+  pushOut('[判断] ch2 == EOF → 退出第二个 while 循环', 'out-count');
+  chainPush('ch2 == EOF → 退出第二个 while 循环');
+  snap({
+    line: 22, tone:'green',
+    title: '<b>while(ch2 != EOF)</b>　→　<b>假</b>　→　退出循环',
+    desc: '· <code>ch2 = -1</code>，<code>EOF = -1</code>；<br>' +
+          '· <code>-1 != -1</code> → <b>假</b>；<br>' +
+          '· 退出第二个 <code>while</code> 循环；<br>' +
+          '· 循环体一共执行了 <b>4</b> 轮，把新文件里的 <code>Test</code> 全部读出来并打印。' +
+          '<span class="win"><b>屏幕目前内容：</b><br>' +
+          '<code>Hello World!Hello WorldInput string:</code><br>' +
+          '<code>Test</code></span>'
+  });
+
+  /* ═══════════ 23. fclose ═══════════ */
+  S.fpState = '已关闭';
+  S.fmState = '已关闭';
+  S.fpOpen = false;
+  S.fmOpen = false;
+  S.fpClosed = true;
+  S.fmClosed = true;
+  pushOut('[关闭] fclose(fp); fclose(fm) → 两个文件都已关闭，缓冲区已刷新', 'out-note');
+  chainPush('fclose(fp); fclose(fm)');
+  snap({
+    line: 23, tone:'red',
+    title: '<b>fclose(fp); fclose(fm);</b>　→　关闭两个文件',
+    desc: '把两个文件都关掉，通知操作系统「我用完了」。<br>' +
+          '· <b>先刷新缓冲区</b>：把还留在内存缓冲区里的数据真正写回磁盘' +
+          '（新文件 <code>d:\\test.c</code> 里写入的 <code>Test</code> 此刻才保证落盘）；<br>' +
+          '· 然后<b>释放 FILE 结构体</b>和相关系统资源，<code>fp</code> 和 <code>fm</code> 就此失效；<br>' +
+          '· 每个 <code>fclose</code> 成功返回 <b>0</b>，失败返回 <b>EOF</b>（本例忽略返回值）。' +
+          '<span class="danger"><b>⚠ 忘了 fclose 会怎样？</b><br>' +
+          '· 数据可能还卡在缓冲区里没写进磁盘，程序一旦崩溃就丢了；<br>' +
+          '· 文件句柄是有限的系统资源（一般同时只能开几百个），长期不关会耗尽；<br>' +
+          '· 在某些系统上，别的程序可能无法修改这个文件。<br>' +
+          '所以「<b>打开就要配对关闭</b>」——本程序有两个 <code>fopen</code>，' +
+          '就有两个 <code>fclose</code>，一配一。</span>' +
+          '<span class="tip"><b>顺序有讲究吗？</b><br>' +
+          '一般没有严格要求，先关谁都行。<br>' +
+          '但好的习惯是「<b>后开的先关</b>」，像栈一样。</span>'
+  });
+
+  /* ═══════════ 24. return 0 ═══════════ */
+  S.ret = 0;
+  pushOut('[返回] main 返回 0，程序正常结束', 'out-note');
+  chainPush('return 0');
+  snap({
+    line: 24, tone:'gold',
+    title: '<b>return 0</b>　→　返回 <b>0</b>',
+    desc: '把 0 返回给操作系统，表示程序<b>正常结束</b>。<br>' +
+          '· 如果返回非 0 值，通常表示程序出错——' +
+          '就像前面第 8 行和 16 行可能执行的 <code>exit(1)</code>，那是异常退出；<br>' +
+          '· 很多脚本 / 批处理会检查这个返回值来决定下一步怎么做。' +
+          '<span class="tip"><b><code>return 0</code> 与 <code>exit(1)</code> 的区别：</b><br>' +
+          '<code>return</code> 从<b>当前函数</b>返回（在 main 里效果等同于结束程序）；<br>' +
+          '<code>exit()</code> 则不管在哪一层函数里被调用，都会<b>立刻终止整个程序</b>，' +
+          '并且会刷新并关闭所有已打开的文件。</span>'
+  });
+
+  /* ═══════════ 25. main 结束 ═══════════ */
+  S.done = true;
+  chainPush('main 结束');
+  snap({
+    line: 25, tone:'gold',
+    title: 'main 函数结束　→　<b>程序运行完毕</b>',
+    desc: '执行到最后一行 <code>}</code>，程序结束。<br>' +
+          '· 局部变量 <code>fp</code>、<code>fm</code>、<code>ch1</code>、<code>ch2</code>、' +
+          '<code>str1</code>、<code>str2</code> 随栈帧一起销毁；<br>' +
+          '· 两个文件已经在第 23 行关好了，<b>没有资源泄漏</b>；<br>' +
+          '· 磁盘上：<code>f:\\study.txt</code> 原封不动（只读），' +
+          '<code>d:\\test.c</code> 被创建并写入了 <code>Test</code>（4 字节）。' +
+          '<span class="win"><b>★ 运行结果（终端屏幕）</b><br>' +
+          '<code>Hello World!Hello WorldInput string:</code><br>' +
+          '<code>Test</code><br><br>' +
+          '· 第 1 段 <code>Hello World!</code> —— 第一个 while 循环逐字符输出的原文件内容；<br>' +
+          '· 第 2 段 <code>Hello World</code> —— <code>fgets</code> 读前 11 个字符后 <code>printf</code> 的输出；<br>' +
+          '· 第 3 段 <code>Test</code> —— 新文件写回后读出的内容。<br><br>' +
+          '<b>统计：</b><br>' +
+          '· <code>fgetc(fp)</code> 共调用 <b>13</b> 次（循环外 1 次 + 循环内 12 次）；<br>' +
+          '· 原文件 <code>putchar</code> 调用 <b>12</b> 次；<br>' +
+          '· 第一个 while 判断 <b>13</b> 次（12 真 + 1 假）；<br>' +
+          '· <code>fgets</code> 读入 11 个字符；<br>' +
+          '· <code>fputs</code> 写入 4 个字符；<br>' +
+          '· <code>fgetc(fm)</code> 共调用 <b>5</b> 次（循环外 1 次 + 循环内 4 次）；<br>' +
+          '· 新文件 <code>putchar</code> 调用 <b>4</b> 次；<br>' +
+          '· 第二个 while 判断 <b>5</b> 次（4 真 + 1 假）；<br>' +
+          '· <code>fclose</code> 调用 <b>2</b> 次。<br>' +
+          '时间复杂度 <b>O(n)</b>，空间复杂度 <b>O(1)</b>（缓冲区大小固定，与文件大小无关）。</span>'
+  });
+
+  return steps;
+}
+
+var STEPS = buildSteps();
+
+/* ============================================================
+   四、提示词
+   ============================================================ */
+var PROMPT_TEXT =
+'【任务】把 C 双文件读写程序做成「逐步执行模拟」单文件 HTML。\n\n' +
+'【C 程序】25 行：\n' +
+'  原文件 f:\\study.txt 12 字节 "Hello World!"；\n' +
+'  fp 只读打开 → fgetc 逐字符读 → rewind → fgets 读 11 个字符；\n' +
+'  fm 创建 d:\\test.c → gets 读键盘 "Test" → fputs 写 → rewind → fgetc 读回；\n' +
+'  两个文件都 fclose。\n\n' +
+'【关键考点】\n' +
+'  1) 两次 fopen、两次判空：一个都不能少；\n' +
+'  2) "r" vs "wt+"：只读 vs 写+文本+可读可写；\n' +
+'  3) 路径转义：双反斜杠；\n' +
+'  4) fgetc 第一次在循环外；\n' +
+'  5) putchar 必须在 fgetc 之前；\n' +
+'  6) 两次 rewind：读完要重读、写完要读；\n' +
+'  7) fgets(str1, 12, fp)：最多 11 个字符 + \\0，! 留在文件里；\n' +
+'  8) gets 危险：C11 已删除，应改用 fgets；\n' +
+'  9) fputs 不补换行；\n' +
+'  10) EOF 是 -1；\n' +
+'  11) char ch1/ch2 应为 int ch1/ch2（原程序缺陷）；\n' +
+'  12) fclose 必须配对；\n' +
+'  13) return 0 vs exit(1)；\n' +
+'  14) 时间 O(n)，空间 O(1)。\n';
+
+document.getElementById('promptBody').textContent = PROMPT_TEXT;
+
+/* ============================================================
+   五、面板系统
+   ============================================================ */
+var panels = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+var zTop = 50;
+
+function activate(panel){
+  zTop += 1;
+  panel.style.zIndex = zTop;
+  panels.forEach(function(p){ p.classList.remove('active'); });
+  panel.classList.add('active');
+}
+
+panels.forEach(function(panel){
+  var head = panel.querySelector('.p-head');
+  var handle = panel.querySelector('.p-resize');
+
+  function begin(e, mode){
+    if (e.target.closest('.p-close')) return;
+    activate(panel);
+    var r = panel.getBoundingClientRect();
+    panel._drag = {
+      mode: mode,
+      sx: e.clientX, sy: e.clientY,
+      ox: r.left, oy: r.top,
+      w: r.width, h: r.height
+    };
+    e.preventDefault();
+    try { head.setPointerCapture(e.pointerId); } catch(err){}
+  }
+
+  head.addEventListener('pointerdown', function(e){ begin(e, 'move'); });
+  handle.addEventListener('pointerdown', function(e){ begin(e, 'size'); });
+
+  panel.addEventListener('pointerdown', function(){
+    activate(panel);
+  }, true);
+});
+
+document.addEventListener('pointermove', function(e){
+  panels.forEach(function(panel){
+    if (panel._drag) {
+      var d = panel._drag;
+      var dx = e.clientX - d.sx;
+      var dy = e.clientY - d.sy;
+      if (d.mode === 'move'){
+        panel.style.left = (d.ox + dx) + 'px';
+        panel.style.top  = (d.oy + dy) + 'px';
+      } else {
+        panel.style.width  = Math.max(60, d.w + dx) + 'px';
+        panel.style.height = Math.max(60, d.h + dy) + 'px';
+      }
+    }
+  });
+});
+document.addEventListener('pointerup', function(){
+  panels.forEach(function(panel){ panel._drag = null; });
+});
+
+document.querySelectorAll('.p-close').forEach(function(btn){
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var p = btn.closest('.panel');
+    if (p) p.style.display = 'none';
+  });
+});
+
+/* 默认布局 */
+var DEFAULTS = {
+  'p-top':     function(W,H){ return {l:16, t:12, w:Math.min(1620, W-32), h:104}; },
+  'p-explain': function(W,H){ return {l:16, t:128, w:Math.min(1280, W-340), h:220}; },
+  'p-file':    function(W,H){ return {l:16, t:360, w:Math.min(1280, W-340), h:300}; },
+  'p-var':     function(W,H){ return {l:16, t:672, w:Math.min(620, W-32), h:Math.max(200, H-684)}; },
+  'p-console': function(W,H){ return {l:Math.min(652, W-660), t:672, w:Math.min(660, W-32-Math.min(652, W-660)), h:Math.max(200, H-684)}; },
+  'p-eval':    function(W,H){ return {l:Math.max(400, W-740), t:128, w:460, h:420}; },
+  'p-model':   function(W,H){ return {l:Math.max(400, W-740), t:560, w:460, h:Math.max(200, H-572)}; },
+  'p-mini':    function(W,H){ return {l:Math.max(240, W-175), t:128, w:155, h:Math.min(720, Math.max(200, H-160))}; },
+  'p-prompt':  function(W,H){ return {l:120, t:160, w:Math.min(1200, W-240), h:Math.min(700, H-320)}; }
+};
+
+function resetLayout(){
+  var W = window.innerWidth, H = window.innerHeight;
+  panels.forEach(function(panel){
+    var id = panel.id;
+    var fn = DEFAULTS[id];
+    if (!fn) return;
+    var d = fn(W, H);
+    panel.style.left = d.l + 'px';
+    panel.style.top = d.t + 'px';
+    panel.style.width = d.w + 'px';
+    panel.style.height = d.h + 'px';
+    panel._drag = null;
+  });
+  zTop = 50;
+  panels.forEach(function(panel, idx){
+    panel.style.zIndex = 50 + idx;
+  });
+  document.getElementById('p-prompt').style.display = 'none';
+}
+
+/* ============================================================
+   六、渲染逻辑
+   ============================================================ */
+var codeLayer = document.getElementById('codeLayer');
+var codeLines = Array.prototype.slice.call(codeInner.querySelectorAll('.code-line'));
+var mmLines   = Array.prototype.slice.call(mmBody.querySelectorAll('.mm-line'));
+var mmViewport = document.getElementById('mmViewport');
+var varBody   = document.getElementById('varBody');
+var fileBody  = document.getElementById('fileBody');
+var consoleBody = document.getElementById('consoleBody');
+var explainBody = document.getElementById('explainBody');
+var evalBody  = document.getElementById('evalBody');
+
+/* 变量表 */
+var VAR_ROWS = [
+  { key:'func',    name:'当前函数',                    kind:'k-ctx'    },
+  { key:'fp',      name:'fp（原文件句柄）',             kind:'k-fp'     },
+  { key:'fpState', name:'f:\\study.txt 状态',           kind:'k-fpstate'},
+  { key:'fpPos',   name:'fp 读写位置',                  kind:'k-fppos'  },
+  { key:'fm',      name:'fm（新文件句柄）',             kind:'k-fm'     },
+  { key:'fmState', name:'d:\\test.c 状态',              kind:'k-fmstate'},
+  { key:'fmPos',   name:'fm 读写位置',                  kind:'k-fmpos'  },
+  { key:'ch1',     name:'ch1（原文件当前字符）',        kind:'k-ch1'    },
+  { key:'str1',    name:'str1[12]（fgets 读入）',       kind:'k-str1'   },
+  { key:'ch2',     name:'ch2（新文件当前字符）',        kind:'k-ch2'    },
+  { key:'str2',    name:'str2[12]（gets 读入）',        kind:'k-str2'   },
+  { key:'cond',    name:'当前循环条件',                 kind:'k-cond'   },
+  { key:'ret',     name:'返回值',                       kind:'k-ret'    }
+];
+
+function varText(key, s){
+  if (!s) return '—';
+  switch (key){
+    case 'func':    return 'main()';
+    case 'fp':      return s.fp;
+    case 'fpState': return s.fpState;
+    case 'fpPos':
+      if (!s.fpOpen && !s.fpClosed) return '—';
+      return s.fpPos + ' / ' + s.fpChars.length;
+    case 'fm':      return s.fm;
+    case 'fmState': return s.fmState;
+    case 'fmPos':
+      if (!s.fmOpen && !s.fmClosed) return '—';
+      return s.fmPos + ' / ' + s.fmChars.length;
+    case 'ch1':     return s.ch1;
+    case 'str1':    return s.str1;
+    case 'ch2':     return s.ch2;
+    case 'str2':    return s.str2;
+    case 'cond':    return s.cond;
+    case 'ret':     return (s.ret === '—' ? '—' : String(s.ret));
+  }
+  return '—';
+}
+
+function buildVarTable(){
+  var h = '';
+  for (var w = 0; w < VAR_ROWS.length; w++){
+    var r = VAR_ROWS[w];
+    h += '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+           '<span class="var-name">' + r.name + '</span>' +
+           '<span class="var-value dim">—</span>' +
+         '</div>';
+  }
+  varBody.innerHTML = h;
+}
+
+function updateVars(step, prev){
+  var s = step ? step.s : null;
+  for (var w = 0; w < VAR_ROWS.length; w++){
+    var r = VAR_ROWS[w];
+    var row = varBody.querySelector('.var-row[data-key="' + r.key + '"]');
+    if (!row) continue;
+    var valEl = row.querySelector('.var-value');
+    var val = varText(r.key, s);
+    var old = prev ? varText(r.key, prev.s) : '—';
+
+    if (valEl.textContent !== val) {
+      valEl.textContent = val;
+      valEl.title = val;
+      if (val === '—') valEl.classList.add('dim');
+      else valEl.classList.remove('dim');
+      valEl.classList.remove('flash');
+      void valEl.offsetWidth;
+      valEl.classList.add('flash');
+      if (prev && old !== val){
+        row.classList.add('changed');
+        (function(rr){
+          window.setTimeout(function(){ rr.classList.remove('changed'); }, 750);
+        })(row);
+      }
+    }
+  }
+}
+
+/* 文件可视化 */
+function esc(str){
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderTrack(chars, pos, isOpen){
+  if (!chars.length){
+    return '<div class="fc-empty">当前文件 0 字节，等待写入…</div>';
+  }
+  var h = '<div class="fc-track">';
+  for (var i = 0; i < chars.length; i++){
+    var c = chars[i];
+    var cls = 'fc-cell';
+    if (i < pos) cls += ' read';
+    if (i === pos && isOpen) cls += ' cur';
+    h += '<div class="' + cls + '">' +
+           '<div class="fc-ch">' + esc(c.label) + '</div>' +
+           '<div class="fc-code">' + c.code + '</div>' +
+         '</div>';
+  }
+  var eofCls = 'fc-cell fc-eof';
+  if (pos >= chars.length && isOpen) eofCls += ' cur';
+  h += '<div class="' + eofCls + '">' +
+         '<div class="fc-ch">EOF</div>' +
+         '<div class="fc-code">-1</div>' +
+       '</div>';
+  h += '</div>';
+  return h;
+}
+
+function renderFile(s){
+  var h = '';
+
+  /* 文件 1：原文件 */
+  h += '<div class="ll-sec-title"><span class="dot dot-h"></span>' +
+       '原文件　<span style="color:#7dd3fc">f:\\study.txt</span>' +
+       '　<span style="color:#5f7796">（' + FP_CHARS.length + ' 字节，只读）</span></div>';
+  if (!s || (!s.fpOpen && !s.fpClosed)){
+    h += '<div class="fc-note">文件尚未打开…</div>';
+  } else {
+    h += renderTrack(s.fpChars, s.fpPos, s.fpOpen);
+    var n1;
+    if (s.fpClosed){
+      n1 = '<span class="fc-closed">已关闭（fclose 已执行），fp 已失效</span>　' +
+           '只读文件，内容未被修改';
+    } else {
+      n1 = '绿色 = 已读出的字符　│　金色 = 当前读写位置　│　' +
+           '位置：<b>' + s.fpPos + '</b> / ' + s.fpChars.length;
+    }
+    h += '<div class="fc-note">' + n1 + '</div>';
+  }
+
+  /* 文件 2：新文件 */
+  h += '<div class="ll-sec-title" style="margin-top:.6rem">' +
+       '<span class="dot dot-m"></span>' +
+       '新文件　<span style="color:#f9a8d4">d:\\test.c</span>' +
+       '　<span style="color:#5f7796">（' + (s ? s.fmChars.length : 0) + ' 字节）</span></div>';
+  if (!s || (!s.fmOpen && !s.fmClosed)){
+    h += '<div class="fc-note">文件尚未创建…</div>';
+  } else {
+    h += renderTrack(s.fmChars, s.fmPos, s.fmOpen);
+    var n2;
+    if (s.fmClosed){
+      var content = s.fmChars.map(function (c){ return c.label; }).join('');
+      n2 = '文件共 <b>' + s.fmChars.length + '</b> 字节，最终内容：<b>"' +
+           esc(content) + '"</b>　' +
+           '<span class="fc-closed">已关闭（fclose 已执行），fm 已失效</span>';
+    } else if (s.fmChars.length === 0){
+      n2 = '绿色 = 已写入的字符　│　金色 = 当前读写位置　│　' +
+           '新文件，当前 <b>0</b> 字节';
+    } else {
+      n2 = '绿色 = 已写入/已读出的字符　│　金色 = 当前读写位置　│　' +
+           '位置：<b>' + s.fmPos + '</b> / ' + s.fmChars.length;
+    }
+    h += '<div class="fc-note">' + n2 + '</div>';
+  }
+
+  return h;
+}
+
+/* 控制台 */
+function renderConsole(s){
+  consoleBody.innerHTML = '';
+  if (!s){
+    var d0 = document.createElement('div');
+    d0.className = 'out-line out-wait';
+    d0.textContent = '（等待程序开始运行）';
+    consoleBody.appendChild(d0);
+    return;
+  }
+  for (var i = 0; i < s.out.length; i++){
+    var d = document.createElement('div');
+    d.className = 'out-line ' + s.out[i].c;
+    d.textContent = s.out[i].t;
+    consoleBody.appendChild(d);
+  }
+  if (!s.done){
+    var dw = document.createElement('div');
+    dw.className = 'out-line out-wait';
+    dw.innerHTML = '&nbsp;<span class="cursor">▊</span>';
+    consoleBody.appendChild(dw);
+  } else {
+    var sep = document.createElement('div');
+    sep.className = 'out-line out-note';
+    sep.textContent = '────────  程序运行结果（终端屏幕）  ────────';
+    consoleBody.appendChild(sep);
+
+    var l1 = document.createElement('div');
+    l1.className = 'out-line out-norm';
+    l1.textContent = 'Hello World!Hello WorldInput string:';
+    consoleBody.appendChild(l1);
+
+    var l2 = document.createElement('div');
+    l2.className = 'out-line out-final';
+    l2.textContent = 'Test';
+    consoleBody.appendChild(l2);
+
+    var sep2 = document.createElement('div');
+    sep2.className = 'out-line out-note';
+    sep2.textContent = '──────────────────────────────────────────';
+    consoleBody.appendChild(sep2);
+  }
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+/* 求值链 */
+function renderEval(s){
+  if (!s || !s.chain || !s.chain.length){
+    evalBody.innerHTML = '<div class="chain-empty">（本步没有可展示的求值动作）</div>';
+    return;
+  }
+  var h = '';
+  for (var i = 0; i < s.chain.length; i++){
+    var isLast = (i === s.chain.length - 1);
+    h += '<div class="chain-item' + (isLast ? ' last' : '') + '">' +
+         esc(s.chain[i].t) + '</div>';
+  }
+  evalBody.innerHTML = h;
+  evalBody.scrollTop = evalBody.scrollHeight;
+}
+
+/* 代码高亮 */
+function updateCode(step){
+  var activeLine = step ? step.line : null;
+  var tone = step ? (step.tone || 'blue') : 'blue';
+  var t = TONES[tone] || TONES.blue;
+
+  for (var w = 0; w < codeLines.length; w++){
+    var el = codeLines[w];
+    var n = Number(el.getAttribute('data-line'));
+    if (activeLine !== null && n === activeLine){
+      el.classList.add('active');
+      el.style.setProperty('--tone', t[0]);
+      el.style.setProperty('--tone-bg', t[1]);
+    } else {
+      el.classList.remove('active');
+    }
+  }
+  for (var q = 0; q < mmLines.length; q++){
+    var me = mmLines[q];
+    if (activeLine !== null && Number(me.getAttribute('data-line')) === activeLine){
+      me.classList.add('active');
+    } else {
+      me.classList.remove('active');
+    }
+  }
+  centerActiveLine();
+}
+
+function centerActiveLine(){
+  var el = codeInner.querySelector('.code-line.active');
+  if (!el) return;
+  var target = el.offsetTop - codeLayer.clientHeight / 2 + el.offsetHeight / 2;
+  if (target < 0) target = 0;
+  var max = codeInner.scrollHeight - codeLayer.clientHeight;
+  if (target > max) target = max;
+  codeLayer.scrollTo({ top: target, behavior: 'smooth' });
+}
+
+/* 缩略图视口 */
+function updateMiniViewport(){
+  var totalH = codeInner.scrollHeight;
+  if (!totalH) return;
+  var viewH = codeLayer.clientHeight;
+  var ratio = mmBody.scrollHeight / totalH;
+  mmViewport.style.top = (codeLayer.scrollTop * ratio) + 'px';
+  mmViewport.style.height = Math.max(12, viewH * ratio) + 'px';
+}
+
+codeLayer.addEventListener('scroll', updateMiniViewport);
+window.addEventListener('resize', updateMiniViewport);
+
+mmBody.addEventListener('click', function(e){
+  var rect = mmBody.getBoundingClientRect();
+  var y = e.clientY - rect.top + mmBody.scrollTop;
+  var ratio = codeInner.scrollHeight / mmBody.scrollHeight;
+  codeLayer.scrollTo({
+    top: y * ratio - codeLayer.clientHeight / 2,
+    behavior: 'smooth'
+  });
+});
+
+/* ============================================================
+   七、总渲染
+   ============================================================ */
+var current = -1;
+var playing = false;
+var timer = null;
+var speed = 500;
+
+function render(){
+  var step = (current >= 0) ? STEPS[current] : null;
+  var prev = (current > 0) ? STEPS[current - 1] : null;
+
+  updateCode(step);
+  updateVars(step, prev);
+  fileBody.innerHTML = renderFile(step ? step.s : null);
+  renderConsole(step ? step.s : null);
+  renderEval(step ? step.s : null);
+
+  if (step){
+    explainBody.innerHTML =
+      '<span class="ex-line">第 ' + step.line + ' 行</span>' +
+      '<strong>' + step.title + '</strong> —— ' + step.desc;
+  } else {
+    explainBody.innerHTML =
+      '<em>点击「播放」或「下一步」，开始逐句执行这个双文件读写程序。<br><br>' +
+      '<b>本程序做两件事：先读原文件，再写新文件并读回验证。</b><br>' +
+      '· <code>fopen("f:\\\\study.txt","r")</code> 打开原文件并<b>判空</b>；<br>' +
+      '· <code>fgetc</code> 逐字符读出并 <code>putchar</code>，读到 <code>EOF</code> 停止；<br>' +
+      '· <code>rewind</code> 回卷，<code>fgets(str1,12,fp)</code> 读前 11 个字符并打印；<br>' +
+      '· <code>fopen("d:\\\\test.c","wt+")</code> 创建新文件并<b>判空</b>；<br>' +
+      '· <code>gets</code> 读入键盘字符串 → <code>fputs</code> 写进新文件；<br>' +
+      '· <code>rewind</code> 回卷，<code>fgetc</code> 逐字符读出并打印，验证写入成功；<br>' +
+      '· <code>fclose</code> 关闭两个文件，<code>return 0</code> 结束。<br><br>' +
+      '本例数据：<br>' +
+      '· <code>f:\\study.txt</code> 内容 = <b>Hello World!</b>（12 字节）<br>' +
+      '· 键盘输入 = <b>Test</b>（4 字符）<br>' +
+      '共 ' + STEPS.length + ' 个执行步骤。<br>' +
+      '<b>左侧代码会自动滚动到当前行；右侧两条文件卡片会实时标出各自的读写位置。</b></em>';
+  }
+
+  var topTitle = document.querySelector('#p-top .p-title');
+  if (topTitle){
+    topTitle.textContent = 'C 文件读写（双文件）· 步骤 ' +
+      (current >= 0 ? (current + 1) : '—') + ' / ' + STEPS.length;
+  }
+
+  document.getElementById('btnPrev').disabled = (current < 0);
+  document.getElementById('btnNext').disabled = (current >= STEPS.length - 1);
+
+  window.requestAnimationFrame(updateMiniViewport);
+}
+
+/* ============================================================
+   八、播放控制
+   ============================================================ */
+var btnPlay = document.getElementById('btnPlay');
+var btnPrev = document.getElementById('btnPrev');
+var btnNext = document.getElementById('btnNext');
+var btnReset = document.getElementById('btnReset');
+var btnFull = document.getElementById('btnFull');
+var btnPanels = document.getElementById('btnPanels');
+var btnMini = document.getElementById('btnMini');
+var btnLayout = document.getElementById('btnLayout');
+var btnPrompt = document.getElementById('btnPrompt');
+var speedInput = document.getElementById('speed');
+var speedLabel = document.getElementById('speedLabel');
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+  if (playing) btnPlay.classList.add('playing');
+  else btnPlay.classList.remove('playing');
+}
+
+function tick(){
+  if (current >= STEPS.length - 1){ pause(); return; }
+  current += 1;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){
+  pause();
+  if (current < STEPS.length - 1){ current += 1; render(); }
+}
+
+function prevStep(){
+  pause();
+  if (current > -1){ current -= 1; render(); }
+}
+
+function resetAll(){
+  pause();
+  current = -1;
+  codeLayer.scrollTop = 0;
+  render();
+}
+
+btnPlay.addEventListener('click', function(){ if (playing) pause(); else play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+btnFull.addEventListener('click', function(){
+  if (!document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(function(){});
+  } else {
+    document.exitFullscreen().catch(function(){});
+  }
+});
+
+btnLayout.addEventListener('click', function(){
+  resetLayout();
+  render();
+});
+
+var panelsHidden = false;
+btnPanels.addEventListener('click', function(){
+  panelsHidden = !panelsHidden;
+  panels.forEach(function(p){
+    if (p.id === 'p-prompt') return;
+    p.style.display = panelsHidden ? 'none' : 'flex';
+  });
+});
+
+var miniVisible = true;
+btnMini.addEventListener('click', function(){
+  var p = document.getElementById('p-mini');
+  miniVisible = !miniVisible;
+  p.style.display = miniVisible ? 'flex' : 'none';
+});
+
+btnPrompt.addEventListener('click', function(){
+  var p = document.getElementById('p-prompt');
+  if (p.style.display === 'none' || !p.style.display){
+    p.style.display = 'flex';
+    activate(p);
+  } else {
+    p.style.display = 'none';
+  }
+});
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if (playing){
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+/* ============================================================
+   九、全局快捷键
+   ============================================================ */
+document.addEventListener('keydown', function(e){
+  var tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+  if (e.code === 'Space'){
+    e.preventDefault();
+    if (playing) pause(); else play();
+  } else if (e.code === 'ArrowRight'){
+    e.preventDefault(); nextStep();
+  } else if (e.code === 'ArrowLeft'){
+    e.preventDefault(); prevStep();
+  } else if (e.code === 'KeyR'){
+    e.preventDefault(); resetAll();
+  } else if (e.code === 'KeyF'){
+    e.preventDefault();
+    if (!document.fullscreenElement){
+      document.documentElement.requestFullscreen().catch(function(){});
+    } else {
+      document.exitFullscreen().catch(function(){});
+    }
+  } else if (e.code === 'KeyM'){
+    e.preventDefault();
+    var p = document.getElementById('p-mini');
+    miniVisible = !miniVisible;
+    p.style.display = miniVisible ? 'flex' : 'none';
+  } else if (e.code === 'KeyH'){
+    e.preventDefault();
+    panelsHidden = !panelsHidden;
+    panels.forEach(function(p){
+      if (p.id === 'p-prompt') return;
+      p.style.display = panelsHidden ? 'none' : 'flex';
+    });
+  }
+});
+
+/* ============================================================
+   十、启动
+   ============================================================ */
+resetLayout();
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+render();
+window.addEventListener('load', function(){
+  window.requestAnimationFrame(updateMiniViewport);
+});
+window.setTimeout(updateMiniViewport, 200);
+
+})();
+</script>
+</body>
+</html>

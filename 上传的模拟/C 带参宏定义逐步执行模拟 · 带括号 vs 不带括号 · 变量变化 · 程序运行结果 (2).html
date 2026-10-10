@@ -1,0 +1,1748 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 带参宏定义逐步执行模拟 · 带括号 vs 不带括号 · 变量变化 · 程序运行结果</title>
+<style>
+/* =========================================================
+   全局变量与基础
+   ========================================================= */
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;overflow:hidden;}
+:root{
+  --code-font: clamp(80px, 4.6vw, 112px);
+  --out-font:  clamp(56px, 3.0vw, 84px);
+  --var-font:  clamp(28px, 1.5vw, 42px);
+  --cell-font: clamp(22px, 1.15vw, 32px);
+  --explain-font: clamp(30px, 1.55vw, 44px);
+  --btn-font:  clamp(26px, 1.35vw, 38px);
+  --title-font:clamp(26px, 1.3vw, 36px);
+  --ui-font:   clamp(24px, 1.2vw, 34px);
+
+  --bg:#0d1117; --accent:#38bdf8; --green:#4ade80; --amber:#fbbf24;
+  --pink:#f472b6; --purple:#c084fc; --teal:#2dd4bf; --orange:#fb923c;
+  --gold:#facc15; --red:#f87171; --rose:#fb7185; --slate:#64748b;
+  --border:rgba(56,189,248,.35);
+}
+body{
+  background:var(--bg);color:#e6edf3;
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* =========================================================
+   全屏代码区
+   ========================================================= */
+#codeStage{
+  position:fixed;inset:0;overflow:auto;z-index:1;
+  background:radial-gradient(1400px 800px at 8% -12%,#152743 0%,#0d1117 62%);
+  scrollbar-width:thin;scrollbar-color:#30363d transparent;
+}
+#codeStage::-webkit-scrollbar{width:26px;height:26px;}
+#codeStage::-webkit-scrollbar-track{background:#0d1117;}
+#codeStage::-webkit-scrollbar-thumb{background:#30363d;border-radius:13px;border:4px solid #0d1117;}
+#codeStage::-webkit-scrollbar-thumb:hover{background:#4a5568;}
+#codeInner{padding:24px 60px 24px 8px;min-width:max-content;}
+
+.code-line{
+  display:flex;align-items:flex-start;gap:.85em;
+  padding:.10em 1em .10em .4em;
+  border-left:.20em solid transparent;
+  white-space:pre;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  line-height:1.42;
+  transition:background .25s,border-color .25s,opacity .25s;
+}
+.code-line .ln{
+  flex:0 0 auto;width:3.2ch;text-align:right;color:#4a5568;
+  user-select:none;font-variant-numeric:tabular-nums;
+}
+.code-line.done{opacity:.62;}
+.code-line.active{
+  opacity:1;
+  background:linear-gradient(90deg,rgba(56,189,248,.30),rgba(56,189,248,0) 82%);
+  border-left-color:var(--accent);
+}
+.code-line.active .ln{color:var(--accent);font-weight:700;}
+.code-line.active .src{color:#ffffff;text-shadow:0 0 18px rgba(56,189,248,.35);}
+.code-line.pp-hi.active{
+  background:linear-gradient(90deg,rgba(192,132,252,.36),rgba(192,132,252,0) 82%);
+  border-left-color:var(--purple);
+}
+.code-line.pp-hi.active .ln{color:var(--purple);}
+.code-line.green-hi.active{
+  background:linear-gradient(90deg,rgba(74,222,128,.34),rgba(74,222,128,0) 82%);
+  border-left-color:var(--green);
+}
+.code-line.green-hi.active .ln{color:var(--green);}
+.code-line.out-hi.active{
+  background:linear-gradient(90deg,rgba(45,212,191,.34),rgba(45,212,191,0) 82%);
+  border-left-color:var(--teal);
+}
+.code-line.out-hi.active .ln{color:var(--teal);}
+.code-line.mv-hi.active{
+  background:linear-gradient(90deg,rgba(244,114,182,.32),rgba(244,114,182,0) 82%);
+  border-left-color:var(--pink);
+}
+.code-line.mv-hi.active .ln{color:var(--pink);}
+.code-line.gold-hi.active{
+  background:linear-gradient(90deg,rgba(250,204,21,.34),rgba(250,204,21,0) 82%);
+  border-left-color:var(--gold);
+}
+.code-line.gold-hi.active .ln{color:var(--gold);}
+
+/* 语法着色 */
+.t-cmt{color:#5b6f8c;font-style:italic;}
+.t-pp{color:#c084fc;font-weight:800;}
+.t-str{color:#4ade80;}
+.t-kw{color:#f472b6;font-weight:700;}
+.t-ty{color:#2dd4bf;font-weight:700;}
+.t-num{color:#fbbf24;font-weight:700;}
+.t-fn{color:#38bdf8;font-weight:700;}
+.t-op{color:#fb923c;font-weight:700;}
+.t-chr{color:#86efac;}
+.t-mac{color:#fb7185;font-weight:800;}
+
+/* =========================================================
+   悬浮面板
+   ========================================================= */
+.panel{
+  position:fixed;display:flex;flex-direction:column;
+  background:rgba(13,17,23,.88);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  border:2px solid var(--border);border-radius:20px;
+  box-shadow:0 22px 60px rgba(0,0,0,.65);
+  overflow:hidden;z-index:100;
+  transition:border-color .18s,box-shadow .18s;
+}
+.panel.active{
+  border-color:#38bdf8;
+  box-shadow:0 0 0 3px rgba(56,189,248,.30),0 26px 70px rgba(0,0,0,.75);
+}
+.panel.hidden{display:none;}
+.panel.folded .p-body{display:none;}
+
+.p-bar{
+  flex:0 0 auto;display:flex;align-items:center;gap:12px;
+  padding:8px 12px;cursor:move;user-select:none;touch-action:none;
+  background:rgba(22,32,48,.92);
+  border-bottom:2px solid rgba(56,189,248,.22);
+}
+.p-title{
+  font-size:var(--title-font);font-weight:800;color:#7dd3fc;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.p-fold{
+  margin-left:auto;flex:0 0 auto;
+  width:44px;height:44px;border-radius:10px;cursor:pointer;
+  border:2px solid rgba(148,163,184,.45);background:rgba(148,163,184,.14);
+  color:#cbd5e1;font-size:26px;line-height:1;font-weight:700;
+}
+.p-fold:hover{background:rgba(148,163,184,.28);}
+.p-close{
+  flex:0 0 auto;width:48px;height:48px;border-radius:10px;cursor:pointer;
+  border:2px solid rgba(248,113,113,.55);background:rgba(248,113,113,.18);
+  color:#fca5a5;font-size:30px;line-height:1;font-weight:700;
+}
+.p-close:hover{background:rgba(248,113,113,.36);color:#fff;}
+
+.p-body{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 14px;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;}
+.p-body::-webkit-scrollbar{width:14px;height:14px;}
+.p-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:7px;}
+
+.p-resize{
+  position:absolute;right:0;bottom:0;width:48px;height:48px;
+  cursor:nwse-resize;touch-action:none;
+  background:linear-gradient(135deg,transparent 46%,rgba(56,189,248,.75) 46%,rgba(56,189,248,.75) 62%,transparent 62%);
+  opacity:.75;
+}
+.p-resize:hover{opacity:1;}
+
+/* 控制栏 */
+.ctl-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:10px;}
+.ctl-row:last-child{margin-bottom:0;}
+.btn{
+  font:inherit;font-size:var(--btn-font);font-weight:700;
+  padding:.42em .85em;border-radius:14px;cursor:pointer;
+  border:2px solid rgba(56,189,248,.45);background:rgba(24,39,65,.92);
+  color:#dbeafe;white-space:nowrap;min-height:64px;
+  transition:background .15s,border-color .15s,transform .08s;
+}
+.btn:hover{background:rgba(33,51,82,.98);border-color:#38bdf8;}
+.btn:active{transform:translateY(2px);}
+.btn:disabled{opacity:.35;cursor:not-allowed;}
+.btn.primary{background:linear-gradient(180deg,#0ea5e9,#0284c7);border-color:#7dd3fc;color:#04121f;}
+.btn.primary.playing{background:linear-gradient(180deg,#f59e0b,#d97706);border-color:#fbbf24;color:#1a1200;}
+.speed{display:flex;align-items:center;gap:10px;font-size:var(--btn-font);color:#94a3b8;white-space:nowrap;}
+.speed input[type=range]{width:220px;accent-color:var(--accent);height:44px;cursor:pointer;}
+.speed b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:3.6em;display:inline-block;}
+
+/* 信息条 */
+.info-grid{display:flex;flex-wrap:wrap;gap:10px 26px;margin-bottom:12px;}
+.info-item{display:flex;align-items:baseline;gap:8px;font-size:var(--ui-font);}
+.info-k{color:#64748b;font-weight:700;}
+.info-v{color:#7dd3fc;font-weight:800;font-family:ui-monospace,Consolas,monospace;}
+.info-v.gold{color:var(--gold);}
+.info-v.rose{color:var(--rose);}
+.info-v.green{color:var(--green);}
+
+.model-line{
+  font-size:var(--ui-font);line-height:1.75;color:#b8c9e0;
+  font-family:ui-monospace,Consolas,monospace;
+  padding:8px 12px;margin-bottom:8px;border-radius:12px;
+  background:rgba(56,189,248,.08);border-left:6px solid var(--accent);
+}
+.model-line b{color:#eaf3ff;}
+.model-line .hl-gold{color:var(--gold);font-weight:800;}
+.model-line .hl-rose{color:var(--rose);font-weight:800;}
+.model-line.warn{background:rgba(251,191,36,.12);border-left-color:var(--amber);color:#ffe6b0;}
+.model-line.rose{background:rgba(251,113,133,.14);border-left-color:var(--rose);color:#fecdd3;}
+.model-line.green{background:rgba(74,222,128,.12);border-left-color:var(--green);color:#bbf7d0;}
+
+/* 宏定义条 */
+.macro-strip{
+  display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:10px;
+}
+.macro-chip{
+  background:rgba(10,19,34,.95);border:2px solid rgba(30,47,73,.95);border-radius:14px;
+  padding:12px 8px;text-align:center;
+  font-family:ui-monospace,Consolas,monospace;transition:all .3s;
+}
+.macro-chip .mn{display:block;font-size:calc(var(--var-font)*1.15);font-weight:900;line-height:1.15;}
+.macro-chip .md{display:block;font-size:calc(var(--cell-font)*.82);color:#94a3b8;margin-top:6px;word-break:break-all;line-height:1.35;}
+.macro-chip .mt{display:block;font-size:calc(var(--cell-font)*.72);color:#64748b;margin-top:4px;}
+.macro-chip.cPI{border-color:rgba(56,189,248,.6);} .macro-chip.cPI .mn{color:#7dd3fc;}
+.macro-chip.cS{border-color:rgba(74,222,128,.6);}  .macro-chip.cS .mn{color:#86efac;}
+.macro-chip.cL{border-color:rgba(192,132,252,.6);} .macro-chip.cL .mn{color:#d8b4fe;}
+.macro-chip.cM{border-color:rgba(251,191,36,.6);}  .macro-chip.cM .mn{color:#fcd34d;}
+.macro-chip.cX{border-color:rgba(251,113,133,.6);} .macro-chip.cX .mn{color:#fda4af;}
+.macro-chip.is-active{
+  box-shadow:0 0 0 4px #fff,0 0 26px rgba(255,255,255,.8);
+  transform:scale(1.06);
+}
+.macro-chip.is-dead{opacity:.32;}
+.macro-chip.is-dead .mn{text-decoration:line-through;}
+
+/* 变量卡片 */
+.var-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;}
+.var-card{
+  background:rgba(13,23,40,.95);border:2px solid rgba(30,47,73,.95);border-radius:14px;
+  padding:10px 12px;font-family:ui-monospace,Consolas,monospace;transition:all .3s;
+  text-align:center;
+}
+.var-card .vn{font-size:var(--var-font);font-weight:900;color:#7d93b3;display:block;}
+.var-card .vt{font-size:calc(var(--cell-font)*.72);color:#4a6488;display:block;margin-top:2px;}
+.var-card .vv{
+  font-size:calc(var(--var-font)*1.2);font-weight:900;color:#3d5474;
+  display:block;margin-top:8px;word-break:break-all;line-height:1.15;
+}
+.var-card.has{border-color:rgba(56,189,248,.6);}
+.var-card.has .vn{color:#7dd3fc;}
+.var-card.has .vv{color:#7dd3fc;text-shadow:0 0 14px rgba(56,189,248,.55);}
+.var-card.is-active{
+  box-shadow:0 0 0 4px #fff,0 0 26px rgba(56,189,248,.85);
+  transform:scale(1.08);
+}
+.var-card.changed .vv{animation:flashVar .7s ease-out;}
+@keyframes flashVar{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.35);color:#fff;text-shadow:0 0 20px #fff;}
+  100%{transform:scale(1);}
+}
+
+/* 宏展开链 */
+.expand-box{
+  background:rgba(5,12,23,.95);border:1px solid rgba(22,35,58,.95);border-radius:14px;
+  padding:14px 18px;font-family:ui-monospace,Consolas,monospace;
+  font-size:calc(var(--cell-font)*1.15);line-height:1.9;
+  overflow:auto;min-height:100px;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+  white-space:pre;
+}
+.expand-box::-webkit-scrollbar{width:12px;}
+.expand-box::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:6px;}
+.exp-line{color:#9fd8ff;white-space:pre;transition:color .3s;}
+.exp-line.exp-final{
+  color:var(--gold);font-weight:900;
+  text-shadow:0 0 14px rgba(250,204,21,.6);
+}
+.exp-empty{color:#3d5474;font-size:calc(var(--cell-font)*1.1);}
+
+/* 控制台 */
+.console{
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);line-height:1.45;color:#86efac;
+  white-space:pre;word-break:normal;tab-size:4;
+}
+.out-line{margin:0;min-height:1.3em;line-height:1.45;white-space:pre;}
+.c-empty{color:#3d5474;}
+.c-note{color:#7dd3fc;}
+.c-ok{color:#86efac;}
+.c-final{color:#facc15;font-weight:800;}
+.c-info{color:#c084fc;}
+.c-out{color:#f472b6;font-weight:800;}
+.c-warn{color:#fbbf24;font-weight:800;}
+.c-rose{color:#fb7185;font-weight:800;}
+.cursor{display:inline-block;color:#4ade80;animation:blink 1s step-end infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+/* 说明条 */
+.explain{
+  font-size:var(--explain-font);line-height:1.65;color:#c3d4ea;
+}
+.explain .tag{
+  display:inline-block;padding:.06em .5em;margin-right:.5em;border-radius:.35em;
+  background:rgba(56,189,248,.20);color:#7dd3fc;font-weight:800;font-size:.82em;
+  vertical-align:middle;
+}
+.explain .tag.gold{background:rgba(250,204,21,.26);color:var(--gold);}
+.explain .tag.rose{background:rgba(251,113,133,.28);color:var(--rose);}
+.explain .tag.green{background:rgba(74,222,128,.28);color:var(--green);}
+.explain .tag.out{background:rgba(45,212,191,.28);color:var(--teal);}
+.explain .tag.pp{background:rgba(192,132,252,.28);color:var(--purple);}
+.explain .tag.mv{background:rgba(244,114,182,.28);color:var(--pink);}
+.explain strong{color:#eaf3ff;}
+.explain code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(148,163,184,.16);border-radius:.28em;
+  padding:0 .3em;color:#e2e8f0;
+}
+.explain .box{
+  display:block;margin-top:.5em;padding:.5em .8em;border-radius:.5em;
+  font-size:.88em;line-height:1.6;
+}
+.explain .box.tip{background:rgba(45,212,191,.12);border-left:6px solid var(--teal);color:#bff5ec;}
+.explain .box.warn{background:rgba(251,191,36,.14);border-left:6px solid var(--amber);color:#ffe6b0;}
+.explain .box.win{background:rgba(250,204,21,.16);border-left:6px solid var(--gold);color:#fff3c4;font-weight:700;}
+.explain .box.rose{background:rgba(251,113,133,.18);border-left:6px solid var(--rose);color:#fecdd3;}
+
+/* 缩略图 */
+#mmBody{position:relative;overflow:hidden;padding:0;background:rgba(8,13,22,.75);}
+#mmContent{position:absolute;left:0;top:0;width:100%;}
+.mm-line{
+  white-space:pre;overflow:hidden;
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:9px;line-height:12px;height:12px;
+  color:#8b949e;padding-left:6px;
+  transition:background .2s;
+}
+.mm-line.active{background:rgba(56,189,248,.42);color:#fff;}
+.mm-line.pp-hi{background:rgba(192,132,252,.50);color:#fff;}
+.mm-line.green-hi{background:rgba(74,222,128,.50);color:#fff;}
+.mm-line.out-hi{background:rgba(45,212,191,.50);color:#fff;}
+.mm-line.mv-hi{background:rgba(244,114,182,.50);color:#fff;}
+.mm-line.gold-hi{background:rgba(250,204,21,.55);color:#fff;}
+.mm-line .t-cmt{color:#4a5568;}
+#mmViewport{
+  position:absolute;left:0;right:0;top:0;height:60px;
+  background:rgba(56,189,248,.16);
+  border-top:2px solid #38bdf8;border-bottom:2px solid #38bdf8;
+  box-shadow:0 0 14px rgba(56,189,248,.5) inset;
+  pointer-events:none;
+}
+
+#toast{
+  position:fixed;left:50%;bottom:5%;transform:translateX(-50%);
+  padding:.5em 1.2em;border-radius:14px;z-index:9000;
+  background:rgba(14,165,233,.92);color:#04121f;font-weight:800;
+  font-size:clamp(24px,1.3vw,34px);opacity:0;pointer-events:none;
+  transition:opacity .25s;white-space:nowrap;
+}
+#toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<!-- =========================================================
+     全屏代码区（19 行）
+     ========================================================= -->
+<div id="codeStage">
+  <div id="codeInner">
+
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="t-pp">#include</span> <span class="t-str">&lt;stdio.h&gt;</span>                 <span class="t-cmt">// 包含标准输入输出头文件</span></span></div>
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="t-pp">#define</span> <span class="t-mac">PI</span> <span class="t-num">3.14</span>                     <span class="t-cmt">// 定义PI</span></span></div>
+    <div class="code-line" data-line="3"><span class="ln">3</span><span class="src"><span class="t-pp">#define</span> <span class="t-mac">S</span><span class="t-op">(</span>r<span class="t-op">)</span> <span class="t-op">(</span><span class="t-mac">PI</span><span class="t-op">*</span>r<span class="t-op">*</span>r<span class="t-op">)</span>               <span class="t-cmt">// 求圆面积，带括号</span></span></div>
+    <div class="code-line" data-line="4"><span class="ln">4</span><span class="src"><span class="t-pp">#define</span> <span class="t-mac">L</span><span class="t-op">(</span>x<span class="t-op">,</span>y<span class="t-op">,</span>z<span class="t-op">)</span> <span class="t-op">(</span>x<span class="t-op">)</span><span class="t-op">*</span><span class="t-op">(</span>y<span class="t-op">)</span><span class="t-op">+</span><span class="t-op">(</span>z<span class="t-op">)</span>        <span class="t-cmt">// L带括号</span></span></div>
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src"><span class="t-pp">#define</span> <span class="t-mac">M</span><span class="t-op">(</span>x<span class="t-op">,</span>y<span class="t-op">,</span>z<span class="t-op">)</span> x<span class="t-op">*</span>y<span class="t-op">+</span>z              <span class="t-cmt">// M不带括号</span></span></div>
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src"><span class="t-pp">#define</span> <span class="t-mac">MAX</span><span class="t-op">(</span>m<span class="t-op">,</span>n<span class="t-op">)</span> <span class="t-op">(</span>m<span class="t-op">&gt;</span>n<span class="t-op">)</span><span class="t-op">?</span>m<span class="t-op">:</span>n          <span class="t-cmt">// 比较大小</span></span></div>
+    <div class="code-line" data-line="7"><span class="ln">7</span><span class="src"><span class="t-ty">int</span> <span class="t-fn">main</span><span class="t-op">()</span> <span class="t-op">{</span>                        <span class="t-cmt">// 主函数</span></span></div>
+    <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">    <span class="t-ty">float</span> r<span class="t-op">;</span>                        <span class="t-cmt">// 定义半径</span></span></div>
+    <div class="code-line" data-line="9"><span class="ln">9</span><span class="src">    <span class="t-ty">int</span> a<span class="t-op">=</span><span class="t-num">2</span><span class="t-op">,</span> b<span class="t-op">=</span><span class="t-num">3</span><span class="t-op">,</span> c<span class="t-op">=</span><span class="t-num">4</span><span class="t-op">;</span>              <span class="t-cmt">// 定义变量</span></span></div>
+    <div class="code-line" data-line="10"><span class="ln">10</span><span class="src">    <span class="t-fn">printf</span><span class="t-op">(</span><span class="t-str">"Input r:"</span><span class="t-op">);</span>             <span class="t-cmt">// 提示输入</span></span></div>
+    <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">    <span class="t-fn">scanf</span><span class="t-op">(</span><span class="t-str">"%f"</span><span class="t-op">,</span> <span class="t-op">&amp;</span>r<span class="t-op">);</span>                <span class="t-cmt">// 输入半径，假设3</span></span></div>
+    <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">    <span class="t-fn">printf</span><span class="t-op">(</span><span class="t-str">"The area=%.2f \n"</span><span class="t-op">,</span> <span class="t-mac">S</span><span class="t-op">(</span>r<span class="t-op">));</span> <span class="t-cmt">// 计算面积</span></span></div>
+    <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">    <span class="t-fn">printf</span><span class="t-op">(</span><span class="t-str">"(x)*(y)+(z)=%d \n"</span><span class="t-op">,</span> <span class="t-mac">L</span><span class="t-op">((</span>a<span class="t-op">+</span>b<span class="t-op">),(</span>b<span class="t-op">+</span>c<span class="t-op">),(</span>a<span class="t-op">+</span>c<span class="t-op">)));</span> <span class="t-cmt">// 带括号实参</span></span></div>
+    <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">    <span class="t-fn">printf</span><span class="t-op">(</span><span class="t-str">"(x)*(y)+(z)=%d \n"</span><span class="t-op">,</span> <span class="t-mac">L</span><span class="t-op">(</span>a<span class="t-op">+</span>b<span class="t-op">,</span>b<span class="t-op">+</span>c<span class="t-op">,</span>a<span class="t-op">+</span>c<span class="t-op">));</span>      <span class="t-cmt">// 不带括号实参</span></span></div>
+    <div class="code-line" data-line="15"><span class="ln">15</span><span class="src">    <span class="t-fn">printf</span><span class="t-op">(</span><span class="t-str">"x*y+z=%d \n"</span><span class="t-op">,</span> <span class="t-mac">M</span><span class="t-op">((</span>a<span class="t-op">+</span>b<span class="t-op">),(</span>b<span class="t-op">+</span>c<span class="t-op">),(</span>a<span class="t-op">+</span>c<span class="t-op">)));</span>     <span class="t-cmt">// 带括号实参</span></span></div>
+    <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">    <span class="t-fn">printf</span><span class="t-op">(</span><span class="t-str">"x*y+z=%d \n"</span><span class="t-op">,</span> <span class="t-mac">M</span><span class="t-op">(</span>a<span class="t-op">+</span>b<span class="t-op">,</span>b<span class="t-op">+</span>c<span class="t-op">,</span>a<span class="t-op">+</span>c<span class="t-op">));</span>           <span class="t-cmt">// 不带括号实参</span></span></div>
+    <div class="code-line" data-line="17"><span class="ln">17</span><span class="src">    <span class="t-fn">printf</span><span class="t-op">(</span><span class="t-str">"The Max is:%d \n"</span><span class="t-op">,</span> <span class="t-mac">MAX</span><span class="t-op">((</span><span class="t-ty">int</span><span class="t-op">)</span><span class="t-mac">S</span><span class="t-op">(</span>r<span class="t-op">),</span> <span class="t-mac">M</span><span class="t-op">(</span>a<span class="t-op">+</span>b<span class="t-op">,</span>b<span class="t-op">+</span>c<span class="t-op">,</span>a<span class="t-op">+</span>c<span class="t-op">)));</span> <span class="t-cmt">// 嵌套调用</span></span></div>
+    <div class="code-line" data-line="18"><span class="ln">18</span><span class="src">    <span class="t-kw">return</span> <span class="t-num">0</span><span class="t-op">;</span></span></div>
+    <div class="code-line" data-line="19"><span class="ln">19</span><span class="src"><span class="t-op">}</span></span></div>
+
+  </div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：控制栏
+     ========================================================= -->
+<div class="panel" id="pControl">
+  <div class="p-bar" data-drag>
+    <span class="p-title">播放控制</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div class="ctl-row">
+      <button id="btnReset" class="btn">⟲ 重置</button>
+      <button id="btnPrev" class="btn">◀ 上一步</button>
+      <button id="btnPlay" class="btn primary">▶ 自动播放</button>
+      <button id="btnNext" class="btn">下一步 ▶</button>
+      <span class="speed" style="margin-left:auto">速度
+        <input type="range" id="speed" min="80" max="2000" step="40" value="560">
+        <b id="speedLabel">0.56s</b>
+      </span>
+    </div>
+    <div class="ctl-row">
+      <button id="btnFull" class="btn">⛶ 全屏</button>
+      <button id="btnMini" class="btn">▤ 缩略图</button>
+      <button id="btnPanels" class="btn">▦ 面板 H</button>
+      <button id="btnLayout" class="btn">⟳ 重置布局</button>
+      <span class="info-item" style="margin-left:auto">
+        <span class="info-k">步骤</span><span class="info-v" id="stepCounter">— / —</span>
+      </span>
+    </div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：平台模型
+     ========================================================= -->
+<div class="panel" id="pInfo">
+  <div class="p-bar" data-drag>
+    <span class="p-title">平台模型 · 宏与变量</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div class="info-grid">
+      <span class="info-item"><span class="info-k">当前行</span><span class="info-v" id="lineVal">—</span></span>
+      <span class="info-item"><span class="info-k">阶段</span><span class="info-v" id="phaseVal">—</span></span>
+      <span class="info-item"><span class="info-k">宏环境</span><span class="info-v gold" id="macroVal">0 / 5</span></span>
+      <span class="info-item"><span class="info-k">已初始化变量</span><span class="info-v rose" id="initVal">0 / 4</span></span>
+      <span class="info-item"><span class="info-k">字节序</span><span class="info-v green">小端序</span></span>
+    </div>
+    <div class="model-line"><b>int</b> = 4 字节 / 对齐 4　│　<b>float</b> = 4 字节 / 对齐 4　│　1 个 float + 3 个 int 共 <b>16 字节</b>栈空间</div>
+    <div class="model-line green"><b>★★★ 宏的本质：</b><span class="hl-gold">预处理阶段的纯文本替换</span>，不是函数，不做类型检查，不占运行时内存。编译后的程序里只剩替换后的表达式。</div>
+    <div class="model-line"><b>★ 对象宏 vs 函数宏：</b>对象宏 <code>PI</code> 后面不跟参数列表；函数宏 <code>S(r)</code>、<code>L(x,y,z)</code>、<code>M(x,y,z)</code>、<code>MAX(m,n)</code> 宏名后紧跟圆括号。</div>
+    <div class="model-line rose"><b>★★★ 替换体加括号 vs 不加括号：</b><br>· <code>L(x,y,z) = (x)*(y)+(z)</code> → <span class="hl-gold">每个形参都带括号</span>，实参写不写括号结果都一样；<br>· <code>M(x,y,z) = x*y+z</code> → <span class="hl-rose">一个括号都没有</span>，结果取决于调用者。</div>
+    <div class="model-line warn"><b>★★★ 关键对比：</b><br>· <code>L((a+b),(b+c),(a+c))</code> = <code>(a+b)*(b+c)+(a+c)</code> = <b>41</b><br>· <code>L(a+b,b+c,a+c)</code>　　 = <code>(a+b)*(b+c)+(a+c)</code> = <b>41</b>（相同）<br>· <code>M((a+b),(b+c),(a+c))</code> = <code>(a+b)*(b+c)+(a+c)</code> = <b>41</b><br>· <code>M(a+b,b+c,a+c)</code>　　 = <code>a+b*b+c+a+c</code>　　　　 = <b>21</b>（<span class="hl-rose">差 20！</span>）</div>
+    <div class="model-line"><b>★★ 嵌套宏展开：</b><code>MAX((int)S(r), M(a+b,b+c,a+c))</code> 会一层层展开到底。</div>
+    <div class="model-line rose"><b>★★ 三元宏 MAX 缺外层括号：</b>若出现在更大的表达式里（如 <code>2*MAX(a,b)</code>），会展开成 <code>2*(a&gt;b)?a:b</code>，语义全变。正确写法：<code>((m)&gt;(n)?(m):(n))</code>。</div>
+    <div class="model-line green"><b>★★ (int) 截断：</b><code>(int)28.26 = 28</code>，是<b>向零截断</b>，不是四舍五入。</div>
+    <div class="model-line"><b>★★ 字符串字面量不被替换：</b>格式串 <code>"The area=%.2f \n"</code> 里的内容原样进入程序，不受宏影响。</div>
+    <div class="model-line"><b>★ printf vs scanf：</b><code>printf</code> 只读取值（传值）；<code>scanf</code> 要修改变量（传地址 <code>&amp;r</code>）。</div>
+    <div class="model-line warn"><b>★ 局部变量未初始化：</b><code>float r;</code> 是栈上垃圾值（显示为 ?）；<code>a=2, b=3, c=4</code> 有初始化式。</div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：宏定义条
+     ========================================================= -->
+<div class="panel" id="pMacros">
+  <div class="p-bar" data-drag>
+    <span class="p-title">#define 宏环境</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div class="macro-strip" id="macroStrip"></div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：变量卡片
+     ========================================================= -->
+<div class="panel" id="pVars">
+  <div class="p-bar" data-drag>
+    <span class="p-title">局部变量值变化表</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div class="var-grid" id="varCards"></div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：宏展开链
+     ========================================================= -->
+<div class="panel" id="pExpand">
+  <div class="p-bar" data-drag>
+    <span class="p-title">★★★ 宏展开 / 求值链</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div class="expand-box" id="expandBox"></div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：控制台
+     ========================================================= -->
+<div class="panel" id="pConsole">
+  <div class="p-bar" data-drag>
+    <span class="p-title">程序运行输出 · 控制台</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div class="console" id="consoleBody"></div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：说明条
+     ========================================================= -->
+<div class="panel" id="pExplain">
+  <div class="p-bar" data-drag>
+    <span class="p-title">当前语句说明</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div class="explain" id="explain"></div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：缩略图
+     ========================================================= -->
+<div class="panel" id="pMinimap">
+  <div class="p-bar" data-drag>
+    <span class="p-title">缩略图</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body" id="mmBody">
+    <div id="mmContent"></div>
+    <div id="mmViewport"></div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   0. 工具
+   ========================================================= */
+var $  = function(s){ return document.querySelector(s); };
+var $$ = function(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); };
+function escHtml(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+var VAR_NAMES = ['r','a','b','c'];
+
+var MACRO_INFO = {
+  PI:  { cls:'cPI', def:'3.14',        tag:'对象宏' },
+  S:   { cls:'cS',  def:'(PI*r*r)',    tag:'函数宏·整体带括号' },
+  L:   { cls:'cL',  def:'(x)*(y)+(z)', tag:'函数宏·形参都带括号' },
+  M:   { cls:'cM',  def:'x*y+z',       tag:'函数宏·无括号 ✘' },
+  MAX: { cls:'cX',  def:'(m>n)?m:n',   tag:'函数宏·缺外层括号 ⚠' }
+};
+var MACRO_ORDER = ['PI','S','L','M','MAX'];
+
+/* =========================================================
+   1. 逐步执行数据模型（22 步 + 1 总结）
+   ========================================================= */
+var STEPS = (function(){
+  var steps = [];
+  var S;
+
+  function resetState(){
+    var vars = {}, inited = {}, macros = {};
+    for (var i=0;i<VAR_NAMES.length;i++){
+      vars[VAR_NAMES[i]] = null;
+      inited[VAR_NAMES[i]] = false;
+    }
+    for (var k=0;k<MACRO_ORDER.length;k++) macros[MACRO_ORDER[k]] = 'no';
+    S = {
+      phase:'—',
+      vars:vars, inited:inited, macros:macros,
+      hlVar:null, hlMacro:null,
+      expand:[], console:[]
+    };
+  }
+  function log(cls, text){ S.console.push({cls:cls, text:text}); }
+  function logAppend(text){
+    if(!S.console.length) S.console.push({cls:'c-out', text:''});
+    S.console[S.console.length-1].text += text;
+  }
+  function hl(o){
+    o = o || {};
+    S.hlVar   = o.var   !== undefined ? o.var   : null;
+    S.hlMacro = o.macro !== undefined ? o.macro : null;
+    if(o.expand !== undefined) S.expand = o.expand.slice();
+  }
+  function snap(o){
+    steps.push({
+      line:o.line,
+      cls:o.cls || '',
+      title:o.title || '',
+      desc:o.desc || '',
+      state:JSON.parse(JSON.stringify(S))
+    });
+  }
+
+  resetState();
+
+  /* ---------------- 第 1 行 ---------------- */
+  S.phase = '预处理期';
+  log('c-note', '[预处理] 第 1 行：#include <stdio.h>');
+  log('c-info', '          → 展开标准输入输出头文件，声明 printf 与 scanf');
+  hl({});
+  snap({
+    line:1, cls:'pp',
+    title:'<b>#include &lt;stdio.h&gt;</b>',
+    desc:'预处理器把标准输入输出头文件的内容展开到本文件中。<br>' +
+         '· 声明了 <code>printf</code> —— 第 10、12~17 行要用它输出；<br>' +
+         '· 声明了 <code>scanf</code> —— 第 11 行要用它读入浮点数；<br>' +
+         '· 头文件只参与<b>编译</b>，<b>不占用程序运行时的内存</b>。' +
+         '<span class="box tip"><b>★ 本程序的核心看点：</b><br>' +
+         '① <code>#define</code> 是<b>纯文本替换</b>，在预处理阶段就做完了；<br>' +
+         '② 函数宏 <code>L</code> 的替换体给<b>每个形参都加了括号</b>，' +
+         '所以实参加不加括号结果都是 41；<br>' +
+         '③ 函数宏 <code>M</code> 的替换体<b>一个括号都没有</b>，' +
+         '带括号实参得 41、不带括号实参只得 21（差 20）；<br>' +
+         '④ 嵌套调用 <code>MAX((int)S(r), M(...))</code> 会层层展开；<br>' +
+         '⑤ 三元宏 <code>MAX</code> 缺少外层括号，是潜在的坑。</span>'
+  });
+
+  /* ---------------- 第 2 行：PI ---------------- */
+  S.macros.PI = 'def';
+  log('c-ok',   '[预处理] 第 2 行：#define PI 3.14');
+  log('c-info', '          → 定义对象宏 PI，替换体为浮点常量 3.14');
+  hl({ macro:'PI', expand:['PI  →  3.14'] });
+  snap({
+    line:2, cls:'pp',
+    title:'<b>#define PI 3.14</b>　→　定义对象宏 PI',
+    desc:'定义<b>对象宏</b> <code>PI</code>：预处理阶段，代码里凡是出现独立单词 ' +
+         '<code>PI</code> 的地方，都会被<b>原样替换</b>成 <code>3.14</code>。<br>' +
+         '· 对象宏后面不跟参数列表，是最简单的一类宏；<br>' +
+         '· 第 3 行定义 <code>S(r)</code> 时，替换体里就写着 <code>PI</code>，' +
+         '展开时它还会被继续替换成 3.14。' +
+         '<span class="box tip"><b>★ 宏不是变量：</b><br>' +
+         '<code>PI</code> 不占内存、没有类型、不能取地址。<br>' +
+         '它只是编译器在预处理阶段用来“查找—替换”的一个名字。<br>' +
+         'C 语言里更安全的写法是 <code>const double PI = 3.14;</code>，' +
+         '但本程序为了演示宏，故意用了 <code>#define</code>。</span>'
+  });
+
+  /* ---------------- 第 3 行：S ---------------- */
+  S.macros.S = 'def';
+  log('c-ok',   '[预处理] 第 3 行：#define S(r) (PI*r*r)');
+  log('c-info', '          → 定义函数宏 S，替换体整体带括号 ✔ 安全');
+  hl({ macro:'S', expand:['S(r)  →  (PI*r*r)'] });
+  snap({
+    line:3, cls:'pp',
+    title:'<b>#define S(r) (PI*r*r)</b>　→　定义函数宏 S（求圆面积）',
+    desc:'定义<b>函数宏</b> <code>S(r)</code>，替换体是 <code>(PI*r*r)</code>。<br>' +
+         '· 宏名后面紧跟一对圆括号 <code>(r)</code>，括号里是形参，这叫函数宏；<br>' +
+         '· 替换体整体<b>带一对圆括号</b>，这叫“加括号保护”；<br>' +
+         '· 第 12 行写 <code>S(r)</code> 时：先把实参 <code>r</code> 替换到形参位置，' +
+         '再把里面的 <code>PI</code> 展开成 3.14，最终得到 <code>(3.14*r*r)</code>。' +
+         '<span class="box tip"><b>★ 函数宏与函数的区别：</b><br>' +
+         '· 宏：预处理阶段文本替换，<b>没有函数调用开销</b>，但代码会膨胀；<br>' +
+         '· 函数：运行期真正调用，有栈帧开销，但只存一份代码；<br>' +
+         '· 宏<b>不做类型检查</b>，传进去什么就替换成什么。</span>'
+  });
+
+  /* ---------------- 第 4 行：L ---------------- */
+  S.macros.L = 'def';
+  log('c-ok',   '[预处理] 第 4 行：#define L(x,y,z) (x)*(y)+(z)');
+  log('c-info', '          → 定义函数宏 L，每个参数都加了括号 ✔ 安全');
+  hl({ macro:'L', expand:['L(x,y,z)  →  (x)*(y)+(z)'] });
+  snap({
+    line:4, cls:'pp',
+    title:'<b>#define L(x,y,z) (x)*(y)+(z)</b>　→　定义函数宏 L（参数都带括号）',
+    desc:'定义函数宏 <code>L</code>，替换体是 <code>(x)*(y)+(z)</code>。<br>' +
+         '· 注意：三个形参 <code>x</code>、<code>y</code>、<code>z</code> ' +
+         '<b>各自都被一对圆括号包住</b>，这是宏定义里非常稳妥的写法；<br>' +
+         '· 有了这些括号，不管实参写成 <code>(a+b)</code> 还是 <code>a+b</code>，' +
+         '替换进去后都会被括号“锁”成一个整体；<br>' +
+         '· 所以第 13 行和第 14 行的结果<b>完全相同</b>，都是 41。' +
+         '<span class="box tip"><b>★ 宏定义的两条铁律：</b><br>' +
+         '① 替换体整体加括号；<br>' +
+         '② 替换体里每一次出现的形参，也都要加括号。<br>' +
+         '<code>L</code> 遵守了第 ② 条（顺便也把整体保护住了），' +
+         '所以它是本程序里<b>写得最好的宏</b>。</span>'
+  });
+
+  /* ---------------- 第 5 行：M ---------------- */
+  S.macros.M = 'def';
+  log('c-ok',   '[预处理] 第 5 行：#define M(x,y,z) x*y+z');
+  log('c-warn', '          ⚠ 定义函数宏 M，形参和整体【都没有】括号');
+  hl({ macro:'M', expand:['M(x,y,z)  →  x*y+z'] });
+  snap({
+    line:5, cls:'pp',
+    title:'<b>#define M(x,y,z) x*y+z</b>　→　定义函数宏 M（没有括号）',
+    desc:'定义函数宏 <code>M</code>，替换体是 <code>x*y+z</code>。<br>' +
+         '· 形参 <code>x</code>、<code>y</code>、<code>z</code> ' +
+         '<b>没有括号</b>，整个替换体<b>也没有外层括号</b>，这是典型的坑；<br>' +
+         '· 实参如果是 <code>a+b</code> 这种带运算符的表达式，' +
+         '替换进去后会直接和 <code>*</code>、<code>+</code> 按优先级重新结合；<br>' +
+         '· 第 15 行传<b>带括号</b>的实参 <code>(a+b),(b+c),(a+c)</code>，得 41；<br>' +
+         '· 第 16 行传<b>不带括号</b>的实参 <code>a+b,b+c,a+c</code>，只得 21。' +
+         '<span class="box warn"><b>★ 陷阱是这样形成的：</b><br>' +
+         '<code>M(a+b,b+c,a+c)</code> 展开成 <code>a+b*b+c+a+c</code>。<br>' +
+         '因为 <code>*</code> 的优先级高于 <code>+</code>，' +
+         '它实际等价于 <code>a + (b*b) + c + a + c</code>，' +
+         '而不是 <code>(a+b)*(b+c)+(a+c)</code>。<br>' +
+         '正确写法应该是 <code>#define M(x,y,z) ((x)*(y)+(z))</code>。</span>'
+  });
+
+  /* ---------------- 第 6 行：MAX ---------------- */
+  S.macros.MAX = 'def';
+  log('c-ok',   '[预处理] 第 6 行：#define MAX(m,n) (m>n)?m:n');
+  log('c-warn', '          ⚠ 条件 (m>n) 有括号，但整个三元表达式没有外层括号');
+  hl({ macro:'MAX', expand:['MAX(m,n)  →  (m>n)?m:n'] });
+  snap({
+    line:6, cls:'pp',
+    title:'<b>#define MAX(m,n) (m&gt;n)?m:n</b>　→　定义函数宏 MAX（比较大小）',
+    desc:'定义函数宏 <code>MAX</code>，替换体是 <code>(m&gt;n)?m:n</code>，' +
+         '用来取两个值中较大的那一个。<br>' +
+         '· 条件部分 <code>m&gt;n</code> <b>加了括号</b>，这是对的；<br>' +
+         '· 但<b>整个三元表达式没有外层括号</b> —— ' +
+         '三元运算符 <code>?:</code> 的优先级非常低（只比赋值和逗号高），' +
+         '如果 <code>MAX</code> 出现在更大的表达式里（例如 <code>2 * MAX(a,b)</code>），' +
+         '就会展开成 <code>2*(a&gt;b)?a:b</code>，含义完全变了；<br>' +
+         '· 本程序里 <code>MAX</code> 直接作为 <code>printf</code> 的一个实参使用，' +
+         '外面没有别的运算符，所以侥幸没出问题。' +
+         '<span class="box warn"><b>★ 正确的写法：</b><br>' +
+         '<code>#define MAX(m,n) ((m)&gt;(n)?(m):(n))</code><br>' +
+         '替换体整体加括号 + 每个形参加括号，才是万无一失的。</span>'
+  });
+
+  /* ---------------- 第 7 行 ---------------- */
+  S.phase = '运行期';
+  log('c-note', '[编译] 第 7 行：int main() {   → 主函数入口');
+  hl({});
+  snap({
+    line:7, cls:'gold',
+    title:'<b>int main() {</b>　→　主函数开始',
+    desc:'程序从 <code>main</code> 开始执行。<br>' +
+         '· 返回类型 <code>int</code>，无参数；<br>' +
+         '· 前面 6 行的宏定义都已在<b>预处理阶段</b>完成，' +
+         '此刻程序里只剩替换后的表达式；<br>' +
+         '· 函数体内的局部变量会分配在<b>栈</b>上，函数返回时自动回收。'
+  });
+
+  /* ---------------- 第 8 行：float r ---------------- */
+  log('c-note', '[编译] 第 8 行：float r;');
+  log('c-warn', '          ⚠ r 未初始化，里面是栈上的垃圾数据');
+  hl({});
+  snap({
+    line:8, cls:'gold',
+    title:'<b>float r;</b>　→　声明一个单精度浮点变量 r',
+    desc:'声明一个 <code>float</code> 变量 <code>r</code>（通常占 4 字节），' +
+         '用来存放圆的半径。<br>' +
+         '· <b>没有初始化</b>，里面是栈上的垃圾数据，本模拟显示为 <b>?</b>；<br>' +
+         '· 它将在第 11 行由 <code>scanf</code> 写入真正的值。' +
+         '<span class="box tip"><b>★ 局部变量不会自动清零：</b><br>' +
+         'C 语言中，函数内的局部变量如果没写初始化式，' +
+         '它的值是<b>不确定</b>的（取决于栈上残留的数据）。<br>' +
+         '如果在这里就读 <code>r</code>，属于<b>未定义行为</b>。<br>' +
+         '本程序在第 11 行立刻给 <code>r</code> 赋值，所以没有问题。</span>'
+  });
+
+  /* ---------------- 第 9 行：声明 ---------------- */
+  log('c-note', '[编译] 第 9 行：int a=2, b=3, c=4;');
+  log('c-info', '          → 在栈上分配 3 个 int，共 3 × 4 = 12 字节');
+  hl({});
+  snap({
+    line:9, cls:'gold',
+    title:'<b>int a=2, b=3, c=4;</b>　→　声明 3 个整型变量',
+    desc:'声明 3 个 <code>int</code> 变量 <code>a</code>、<code>b</code>、' +
+         '<code>c</code>，在栈上共分配 <b>3 × 4 = 12</b> 字节。<br>' +
+         '· 三个变量都带有<b>初始化式</b>，会被赋初值；<br>' +
+         '· 接下来三步会依次执行 <code>a = 2</code>、<code>b = 3</code>、' +
+         '<code>c = 4</code>。' +
+         '<span class="box tip"><b>★ 变量值的“快照”思维：</b><br>' +
+         '每一步只看“此刻各个变量里装的是什么”。<br>' +
+         '后面所有宏展开时用到的 <code>a</code>、<code>b</code>、<code>c</code>，' +
+         '取的都是<b>执行到那一行时的值</b>。<br>' +
+         '本程序里这三个值从头到尾没变过，' +
+         '所以最终 <code>M(a+b,b+c,a+c)</code> 恒为 21。</span>'
+  });
+
+  /* ---------------- 第 9 行：a = 2 ---------------- */
+  S.vars.a = 2; S.inited.a = true;
+  log('c-ok', '[运行] 第 9 行初始化式：a = 2');
+  hl({ var:'a' });
+  snap({
+    line:9, cls:'mv',
+    title:'<b>a = 2</b>　→　a 取得初值 2',
+    desc:'执行声明中的初始化式 <code>a = 2</code>，变量 <code>a</code> 变成 <b>2</b>。<br>' +
+         '· 初始化式是在变量定义时执行的赋值语句；<br>' +
+         '· 右侧变量卡片中 <code>a</code> 由 <b>?</b> 变为 <b>2</b> 并闪烁。'
+  });
+
+  /* ---------------- 第 9 行：b = 3 ---------------- */
+  S.vars.b = 3; S.inited.b = true;
+  log('c-ok', '[运行] 第 9 行初始化式：b = 3');
+  hl({ var:'b' });
+  snap({
+    line:9, cls:'mv',
+    title:'<b>b = 3</b>　→　b 取得初值 3',
+    desc:'执行初始化式 <code>b = 3</code>，变量 <code>b</code> 变成 <b>3</b>。<br>' +
+         '· 后面第 16 行的 <code>b*b</code> 就用的是这个 3。'
+  });
+
+  /* ---------------- 第 9 行：c = 4 ---------------- */
+  S.vars.c = 4; S.inited.c = true;
+  log('c-ok', '[运行] 第 9 行初始化式：c = 4');
+  hl({ var:'c' });
+  snap({
+    line:9, cls:'mv',
+    title:'<b>c = 4</b>　→　c 取得初值 4',
+    desc:'执行初始化式 <code>c = 4</code>，变量 <code>c</code> 变成 <b>4</b>。<br>' +
+         '· 到这里 <code>a = 2</code>、<code>b = 3</code>、<code>c = 4</code> 全部就绪；<br>' +
+         '· 只有 <code>r</code> 还是未初始化的 <b>?</b>，等第 11 行的 <code>scanf</code>。'
+  });
+
+  /* ---------------- 第 10 行 ---------------- */
+  log('c-note', '[运行] 第 10 行：printf("Input r:")');
+  log('c-out',  'Input r:');
+  hl({});
+  snap({
+    line:10, cls:'out',
+    title:'<b>printf("Input r:");</b>　→　输出提示，等待输入',
+    desc:'<code>printf</code> 把字符串 <code>Input r:</code> 原样写到屏幕上。<br>' +
+         '· 注意这个字符串<b>结尾没有 <code>\\n</code></b>，' +
+         '所以光标会停在冒号后面，等待用户输入；<br>' +
+         '· 屏幕上的输出就是 <code>Input r:</code>，后面紧跟用户敲入的内容。'
+  });
+
+  /* ---------------- 第 11 行 ---------------- */
+  S.vars.r = 3.0; S.inited.r = true;
+  logAppend('3');
+  log('c-note', '[运行] 第 11 行：scanf("%f", &r)  → 从键盘读入一个浮点数');
+  log('c-info', '          假设用户输入：3，于是 r = 3.0');
+  hl({ var:'r' });
+  snap({
+    line:11, cls:'out',
+    title:'<b>scanf("%f", &amp;r);</b>　→　r = <b>3.0</b>（假设输入 3）',
+    desc:'<code>scanf</code> 从键盘读入一个浮点数，按地址写入 <code>r</code>。<br>' +
+         '· <code>%f</code> 表示读取一个 <code>float</code>；<br>' +
+         '· <code>&amp;r</code> 是取地址运算符，把 <code>r</code> 在内存中的地址' +
+         '交给 <code>scanf</code>，这样它才能把读到的数写回去；<br>' +
+         '· 本模拟假设用户输入的是 <b>3</b>，于是 <code>r = 3.0</code>。' +
+         '<span class="box tip"><b>★ 为什么 scanf 需要 &amp; 而 printf 不需要？</b><br>' +
+         '<code>scanf</code> 要<b>修改</b>变量的值，所以必须知道变量在哪，要传<b>地址</b>；<br>' +
+         '<code>printf</code> 只是<b>读取</b>变量的值，传<b>值</b>就够了。<br>' +
+         '（特例：数组名本身就是地址，用 <code>%s</code> 读字符串时不加 <code>&amp;</code>。）</span>'
+  });
+
+  /* ---------------- 第 12 行：S(r) ---------------- */
+  S.hlMacro = 'S'; S.hlVar = null;
+  S.expand = [
+    'S(r)',
+    '   → (PI*r*r)            【函数宏：实参 r 替换形参 r】',
+    '   → (3.14*r*r)          【PI 再展开为 3.14】',
+    '   → (3.14*3.0*3.0)      【r 代入 3.0】',
+    '   → 28.26',
+    'printf("The area=%.2f \\n", 28.26)',
+    '   → 输出：The area=28.26 '
+  ];
+  log('c-note', '[运行] 第 12 行：printf("The area=%.2f \\n", S(r))');
+  log('c-info', '          S(r) → (PI*r*r) → (3.14*3.0*3.0) = 28.26');
+  log('c-out',  'The area=28.26 ');
+  snap({
+    line:12, cls:'green',
+    title:'<b>printf("The area=%.2f \\n", S(r));</b>　→　面积 = <b>28.26</b>',
+    desc:'函数宏 <code>S</code> 的展开与求值，这是<b>带括号保护的正面示范</b>。<br>' +
+         '· <b>第一层</b>：<code>S(r) → (PI*r*r)</code>，实参 <code>r</code> ' +
+         '替换到形参位置；<br>' +
+         '· <b>第二层</b>：替换体里的 <code>PI</code> 再展开成 <code>3.14</code>，' +
+         '得到 <code>(3.14*r*r)</code>；<br>' +
+         '· <b>代入</b> <code>r = 3.0</code>：' +
+         '<code>3.14 × 3.0 × 3.0 = 28.26</code>；<br>' +
+         '· 格式串里的 <code>%.2f</code> 表示保留<b>两位小数</b>；<br>' +
+         '· 输出：<code>The area=28.26 </code>（等号后无空格，末尾有一个空格再换行）。' +
+         '<span class="box tip"><b>★ 为什么替换体外面的括号很重要？</b><br>' +
+         '如果 <code>S</code> 被用在更大的表达式里，' +
+         '比如 <code>2 * S(r)</code>，有括号时展开成 ' +
+         '<code>2 * (3.14*r*r)</code>，语义正确；<br>' +
+         '要是替换体没括号，就会变成 <code>2 * 3.14*r*r</code>，' +
+         '虽然这里凑巧也对，但只要替换体里出现 <code>+</code>、<code>-</code> ' +
+         '就会出错。<b>加括号永远是零成本的保险。</b></span>'
+  });
+
+  /* ---------------- 第 13 行：L 带括号实参 ---------------- */
+  S.hlMacro = 'L'; S.hlVar = null;
+  S.expand = [
+    'L((a+b),(b+c),(a+c))',
+    '   → ((a+b))*((b+c))+((a+c))   【x→(a+b)  y→(b+c)  z→(a+c)】',
+    '   → (a+b)*(b+c)+(a+c)         【合并多余括号】',
+    '   → (2+3)*(3+4)+(2+4)         【a=2  b=3  c=4】',
+    '   → 5*7+6',
+    '   → 41'
+  ];
+  log('c-note', '[运行] 第 13 行：L((a+b),(b+c),(a+c))   实参带括号');
+  log('c-info', '          展开：((a+b))*((b+c))+((a+c)) → (a+b)*(b+c)+(a+c)');
+  log('c-info', '          计算：5*7+6 = 35+6 = 41');
+  log('c-out',  '(x)*(y)+(z)=41 ');
+  snap({
+    line:13, cls:'green',
+    title:'<b>L((a+b),(b+c),(a+c))</b>　→　带括号实参 = <b>41</b>',
+    desc:'函数宏 <code>L</code> 的展开与求值（实参带括号）。<br>' +
+         '· 形参替换：<code>x → (a+b)</code>、<code>y → (b+c)</code>、' +
+         '<code>z → (a+c)</code>；<br>' +
+         '· 替换体是 <code>(x)*(y)+(z)</code>，替换后得到 ' +
+         '<code>((a+b))*((b+c))+((a+c))</code>；<br>' +
+         '· 合并多余的括号，就是 <code>(a+b)*(b+c)+(a+c)</code>；<br>' +
+         '· 代入 <code>a=2, b=3, c=4</code>：' +
+         '<code>(5)*(7)+(6) = 35 + 6 = 41</code>。' +
+         '<span class="box win"><b>★ 结果：</b>屏幕上输出 <code>(x)*(y)+(z)=41 </code>。</span>'
+  });
+
+  /* ---------------- 第 14 行：L 不带括号实参 ---------------- */
+  S.hlMacro = 'L'; S.hlVar = null;
+  S.expand = [
+    'L(a+b,b+c,a+c)',
+    '   → (a+b)*(b+c)+(a+c)   【x→a+b  y→b+c  z→a+c，替换体的括号照样锁住它们】',
+    '   → (2+3)*(3+4)+(2+4)',
+    '   → 5*7+6',
+    '   → 41'
+  ];
+  log('c-note', '[运行] 第 14 行：L(a+b,b+c,a+c)   实参不带括号');
+  log('c-info', '          展开：(a+b)*(b+c)+(a+c)');
+  log('c-info', '          计算：5*7+6 = 41   ← 与上一行【完全相同】！');
+  log('c-out',  '(x)*(y)+(z)=41 ');
+  snap({
+    line:14, cls:'green',
+    title:'<b>L(a+b,b+c,a+c)</b>　→　不带括号实参 = <b>41</b>（和上一行一样）',
+    desc:'这一次实参<b>没有</b>写括号，但结果依然是 <b>41</b>。<br>' +
+         '· 形参替换：<code>x → a+b</code>、<code>y → b+c</code>、' +
+         '<code>z → a+c</code>；<br>' +
+         '· 替换体是 <code>(x)*(y)+(z)</code>，' +
+         '每个形参<b>自己就带着一对括号</b>，所以替换后得到 ' +
+         '<code>(a+b)*(b+c)+(a+c)</code>；<br>' +
+         '· 代入得 <code>5*7+6 = 41</code>，和第 13 行完全一致。' +
+         '<span class="box win"><b>★ 这正是“参数加括号”的威力：</b><br>' +
+         '只要替换体里给每个形参都套上括号，' +
+         '调用者写不写括号都不会影响结果，' +
+         '宏的语义就<b>不会因为调用方的书写习惯而改变</b>。<br>' +
+         '对比下一行 <code>M</code> 的表现，差别一目了然。</span>'
+  });
+
+  /* ---------------- 第 15 行：M 带括号实参 ---------------- */
+  S.hlMacro = 'M'; S.hlVar = null;
+  S.expand = [
+    'M((a+b),(b+c),(a+c))',
+    '   → (a+b)*(b+c)+(a+c)   【x→(a+b)  y→(b+c)  z→(a+c)，括号来自实参】',
+    '   → (2+3)*(3+4)+(2+4)',
+    '   → 5*7+6',
+    '   → 41'
+  ];
+  log('c-note', '[运行] 第 15 行：M((a+b),(b+c),(a+c))   实参带括号');
+  log('c-info', '          展开：(a+b)*(b+c)+(a+c)');
+  log('c-info', '          计算：5*7+6 = 41');
+  log('c-out',  'x*y+z=41 ');
+  snap({
+    line:15, cls:'green',
+    title:'<b>M((a+b),(b+c),(a+c))</b>　→　带括号实参 = <b>41</b>',
+    desc:'函数宏 <code>M</code> 的展开与求值（实参带括号）。<br>' +
+         '· 替换体是 <code>x*y+z</code>，<b>没有任何括号</b>；<br>' +
+         '· 但这次实参自带括号：<code>x → (a+b)</code>、<code>y → (b+c)</code>、' +
+         '<code>z → (a+c)</code>；<br>' +
+         '· 替换后得到 <code>(a+b)*(b+c)+(a+c)</code>，' +
+         '括号把每个子表达式都锁成了整体；<br>' +
+         '· 代入 <code>a=2, b=3, c=4</code>：<code>5*7+6 = 41</code>，结果正确。' +
+         '<span class="box warn"><b>★ 注意：这次的“正确”全靠调用方写了括号！</b><br>' +
+         '宏 <code>M</code> 本身是不安全的，' +
+         '它把保护责任推给了每一个调用者。<br>' +
+         '只要有人忘了写括号（比如下一行），立刻就会出错。</span>'
+  });
+
+  /* ---------------- 第 16 行：M 不带括号实参 ---------------- */
+  S.hlMacro = 'M'; S.hlVar = null;
+  S.expand = [
+    'M(a+b,b+c,a+c)',
+    '   → a+b*b+c+a+c        【x→a+b  y→b+c  z→a+c，替换体没括号，实参也没括号】',
+    '   → 2+3*3+4+2+4        【a=2  b=3  c=4】',
+    '   → 2+9+4+2+4          【* 优先：3*3=9】',
+    '   → 21'
+  ];
+  log('c-note', '[运行] 第 16 行：M(a+b,b+c,a+c)   实参不带括号');
+  log('c-warn', '          展开：a+b*b+c+a+c   ← 没有括号保护，表达式被拆散！');
+  log('c-info', '          按优先级：(b*b)=9 先算，再加其余：2+9+4+2+4 = 21');
+  log('c-out',  'x*y+z=21 ');
+  snap({
+    line:16, cls:'green',
+    title:'<b>M(a+b,b+c,a+c)</b>　→　不带括号实参 = <b>21</b>（少了 20！）',
+    desc:'这一行是本程序<b>最关键的反面教材</b>。<br>' +
+         '· 替换体 <code>x*y+z</code> 没有任何括号，实参也没写括号；<br>' +
+         '· 形参替换：<code>x → a+b</code>、<code>y → b+c</code>、' +
+         '<code>z → a+c</code>；<br>' +
+         '· 得到 <code>a+b*b+c+a+c</code>，表达式被彻底“拆散”；<br>' +
+         '· 由于 <code>*</code> 的优先级高于 <code>+</code>，' +
+         '它等价于 <code>a + (b*b) + c + a + c</code>；<br>' +
+         '· 代入 <code>a=2, b=3, c=4</code>：' +
+         '<code>2 + 9 + 4 + 2 + 4 = 21</code>。' +
+         '<span class="box rose"><b>★ 对比一下：</b><br>' +
+         '<code>M((a+b),(b+c),(a+c))</code> = <code>(a+b)*(b+c)+(a+c)</code> = <b>41</b>；<br>' +
+         '<code>M(a+b,b+c,a+c)</code>　　 = <code>a+b*b+c+a+c</code>　　　　 = <b>21</b>。<br>' +
+         '同样的宏、同样的变量值，只差调用时的一对括号，' +
+         '结果就差了整整 <b>20</b>！<br>' +
+         '<b>结论：宏的替换体必须自己把括号加全，' +
+         '绝不能指望调用者替你加。</b></span>'
+  });
+
+  /* ---------------- 第 17 行：MAX 嵌套调用 ---------------- */
+  S.hlMacro = 'MAX'; S.hlVar = null;
+  S.expand = [
+    'MAX((int)S(r), M(a+b,b+c,a+c))',
+    '   → ((int)S(r)>M(a+b,b+c,a+c)) ? (int)S(r) : M(a+b,b+c,a+c)',
+    '        【MAX 替换体 (m>n)?m:n，m、n 分别被实参替换】',
+    '   → ((int)(PI*r*r) > a+b*b+c+a+c) ? (int)(PI*r*r) : a+b*b+c+a+c',
+    '        【S 展开成 (PI*r*r)，M 展开成 a+b*b+c+a+c】',
+    '   → ((int)28.26 > 21) ? 28 : 21',
+    '        【左：(int)(3.14*3.0*3.0) = (int)28.26 = 28；右：21】',
+    '   → (28 > 21) ? 28 : 21',
+    '   → 28',
+    '   → 输出：The Max is:28 '
+  ];
+  log('c-note', '[运行] 第 17 行：printf("The Max is:%d \\n", MAX((int)S(r), M(a+b,b+c,a+c)))');
+  log('c-info', '          MAX(m,n) → (m>n)?m:n');
+  log('c-info', '          m = (int)S(r) = (int)(3.14*3.0*3.0) = (int)28.26 = 28');
+  log('c-info', '          n = M(a+b,b+c,a+c) = a+b*b+c+a+c = 21');
+  log('c-info', '          (28 > 21) ? 28 : 21  →  28');
+  log('c-out',  'The Max is:28 ');
+  snap({
+    line:17, cls:'green',
+    title:'<b>MAX((int)S(r), M(a+b,b+c,a+c))</b>　→　嵌套展开后得 <b>28</b>',
+    desc:'本程序<b>最复杂的一行</b>：宏里套宏，还带强制类型转换。<br>' +
+         '· <b>第一层</b>：<code>MAX(m,n) → (m&gt;n)?m:n</code>，' +
+         '两个实参分别替换 <code>m</code>、<code>n</code>；<br>' +
+         '· <b>第二层</b>：左侧 <code>(int)S(r)</code> 里的 <code>S(r)</code> ' +
+         '继续展开成 <code>(PI*r*r)</code>，得到 <code>(int)(PI*r*r)</code>；' +
+         '右侧 <code>M(a+b,b+c,a+c)</code> 展开成 <code>a+b*b+c+a+c</code>；<br>' +
+         '· <b>代入求值</b>：左边 <code>(int)(3.14×3.0×3.0) = (int)28.26 = 28</code>' +
+         '（强制转换直接<b>截断</b>小数，不四舍五入）；<br>' +
+         '右边 <code>2 + 3*3 + 4 + 2 + 4 = 21</code>；<br>' +
+         '· <b>三元运算</b>：<code>(28 &gt; 21)</code> 为真，取第一个分支 <b>28</b>；<br>' +
+         '· 输出：<code>The Max is:28 </code>。' +
+         '<span class="box tip"><b>★ 两个细节：</b><br>' +
+         '① <code>(int)28.26</code> 的结果是 <b>28</b> 而不是 29，' +
+         'C 语言的浮点转整型是<b>向零截断</b>；<br>' +
+         '② 宏 <code>MAX</code> 的替换体 <code>(m&gt;n)?m:n</code> 缺少外层括号，' +
+         '这次之所以没事，是因为它直接作为 <code>printf</code> 的实参，' +
+         '外面没有运算符再跟它结合。<b>不要因此就以为这样写是安全的。</b></span>'
+  });
+
+  /* ---------------- 第 18 行 ---------------- */
+  S.phase = '已结束';
+  log('c-empty', '');
+  log('c-final', '==================== 程序运行结果 ====================');
+  log('c-out',  'Input r:3');
+  log('c-out',  'The area=28.26 ');
+  log('c-out',  '(x)*(y)+(z)=41 ');
+  log('c-out',  '(x)*(y)+(z)=41 ');
+  log('c-out',  'x*y+z=41 ');
+  log('c-out',  'x*y+z=21 ');
+  log('c-out',  'The Max is:28 ');
+  log('c-empty', '');
+  log('c-note', '宏映射  ：PI=3.14   S(r)=(PI*r*r)   L(x,y,z)=(x)*(y)+(z)');
+  log('c-note', '          M(x,y,z)=x*y+z   MAX(m,n)=(m>n)?m:n');
+  log('c-note', '变量终值：r=3.0   a=2   b=3   c=4');
+  log('c-warn', '关键差异：L 带括号 / 不带括号 → 都是 41（替换体给形参加了括号）');
+  log('c-warn', '          M((a+b),(b+c),(a+c)) = (a+b)*(b+c)+(a+c) = 41');
+  log('c-warn', '          M(a+b,b+c,a+c)       = a+b*b+c+a+c       = 21  ← 相差 20！');
+  log('c-empty', '');
+  log('c-final', '程序正常结束（return 0）');
+  hl({});
+  snap({
+    line:18, cls:'gold',
+    title:'<b>return 0;</b>　→　程序正常结束，输出 7 行结果',
+    desc:'<code>main</code> 返回 <b>0</b>，向操作系统表示程序正常退出。' +
+         '<span class="box win"><b>★ 程序完整运行结果（共 7 行）：</b><br>' +
+         '<code>Input r:3</code><br>' +
+         '<code>The area=28.26 </code><br>' +
+         '<code>(x)*(y)+(z)=41 </code><br>' +
+         '<code>(x)*(y)+(z)=41 </code><br>' +
+         '<code>x*y+z=41 </code><br>' +
+         '<code>x*y+z=21 </code><br>' +
+         '<code>The Max is:28 </code></span>' +
+         '<span class="box rose"><b>★ 本程序核心知识点总结：</b><br>' +
+         '① <b>宏是纯文本替换</b>：<code>#define</code> 在预处理阶段完成，' +
+         '编译后的代码里已经没有宏，只有替换后的表达式；<br>' +
+         '② <b>替换体必须加括号</b>：<code>M</code> 没加括号，' +
+         '带括号实参得 41、不带括号实参得 21；<br>' +
+         '③ <b>形参也必须加括号</b>：<code>L</code> 给每个形参都加了括号，' +
+         '所以两种调用方式结果都是 41；<br>' +
+         '④ <b>宏可以嵌套展开</b>：<code>MAX</code> 里套着 <code>S</code> 和 ' +
+         '<code>M</code>，会一层一层替换到底；<br>' +
+         '⑤ <b>三元宏要整体加括号</b>：<code>MAX</code> 缺了外层括号，' +
+         '只是本程序恰好没踩到；<br>' +
+         '⑥ <b>宏没有作用域</b>：不受 <code>{ }</code> 限制；<br>' +
+         '⑦ <b>宏不做类型检查</b>：' +
+         '所以第 17 行要手动写 <code>(int)S(r)</code> 来转换类型；<br>' +
+         '⑧ <b>scanf 需要地址（&amp;）</b>，<code>printf</code> 只需要值；<br>' +
+         '⑨ <b>字符串字面量里的内容不会被替换</b>；<br>' +
+         '⑩ <b>浮点转整型是截断</b>：<code>(int)28.26</code> 得到 28，不是 29。</span>' +
+         '<span class="box tip"><b>★ 正确的宏写法示范：</b><br>' +
+         '<code>#define PI 3.14</code>　✔ 对象宏，无需括号<br>' +
+         '<code>#define S(r) (PI*(r)*(r))</code>　✔ 形参也加括号更稳<br>' +
+         '<code>#define L(x,y,z) ((x)*(y)+(z))</code>　✔ 整体再包一层<br>' +
+         '<code>#define M(x,y,z) ((x)*(y)+(z))</code>　✔ 修正后的版本<br>' +
+         '<code>#define MAX(m,n) ((m)&gt;(n)?(m):(n))</code>　✔ 三元也要包<br>' +
+         '口诀：<b>整体加括号，每个参数加括号，用到几次就加几次。</b></span>'
+  });
+
+  /* ---------------- 第 19 行 ---------------- */
+  log('c-note', '[编译] 第 19 行：}   → main 函数结束，程序退出');
+  snap({
+    line:19, cls:'gold',
+    title:'<b>}</b>　→　main 函数结束，程序退出',
+    desc:'<code>main</code> 函数体结束，局部变量 <code>r</code>、<code>a</code>、' +
+         '<code>b</code>、<code>c</code> 所占的 16 字节栈空间被回收。<br>' +
+         '· 控制权交还给操作系统；<br>' +
+         '· 程序运行结果已经在右侧控制台中完整呈现，共 <b>7 行</b>。' +
+         '<span class="box tip"><b>★ 一句话记住本程序：</b><br>' +
+         '宏只是“换个写法”，它不懂运算优先级，' +
+         '所以<b>括号必须由宏的作者自己加全</b>——' +
+         '<code>L</code> 加了，处处安全；<code>M</code> 没加，结果差 20。</span>'
+  });
+
+  return steps;
+})();
+
+/* =========================================================
+   2. DOM 引用
+   ========================================================= */
+var codeStage  = $('#codeStage');
+var codeLines  = $$('#codeInner .code-line');
+var macroStrip = $('#macroStrip');
+var varCardsBox= $('#varCards');
+var expandBox  = $('#expandBox');
+var consoleBody= $('#consoleBody');
+var explainEl  = $('#explain');
+var stepCounter= $('#stepCounter');
+var lineValEl  = $('#lineVal');
+var phaseValEl = $('#phaseVal');
+var macroValEl = $('#macroVal');
+var initValEl  = $('#initVal');
+var mmBody     = $('#mmBody');
+var mmContent  = $('#mmContent');
+var mmViewport = $('#mmViewport');
+var toastEl    = $('#toast');
+
+var MM_LINE_H = 12;
+
+/* =========================================================
+   3. 面板管理：拖动 / 缩放 / 置顶 / 关闭 / 折叠
+   ========================================================= */
+var zTop = 100;
+function activate(panel){
+  if(!panel) return;
+  zTop += 1;
+  panel.style.zIndex = zTop;
+  $$('.panel').forEach(function(p){ p.classList.remove('active'); });
+  panel.classList.add('active');
+}
+function clampPos(panel, x, y){
+  var w = panel.offsetWidth || 200;
+  var h = panel.offsetHeight || 80;
+  var maxX = window.innerWidth  - 90;
+  var minX = -(w - 90);
+  var maxY = window.innerHeight - 70;
+  var minY = 0;
+  return [Math.min(maxX, Math.max(minX, x)), Math.min(maxY, Math.max(minY, y))];
+}
+function initPanel(panel){
+  var bar = panel.querySelector('[data-drag]');
+  var res = panel.querySelector('[data-resize]');
+  var closeBtn = panel.querySelector('.p-close');
+  var foldBtn  = panel.querySelector('.p-fold');
+
+  panel.addEventListener('pointerdown', function(){ activate(panel); }, true);
+
+  if(closeBtn){
+    closeBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      panel.classList.add('hidden');
+      showToast('面板已关闭 · 按 H 恢复全部');
+    });
+  }
+  if(foldBtn){
+    foldBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      panel.classList.toggle('folded');
+      foldBtn.textContent = panel.classList.contains('folded') ? '+' : '–';
+    });
+  }
+
+  if(bar){
+    var dragging=false, sx=0, sy=0, ox=0, oy=0;
+    bar.addEventListener('pointerdown', function(e){
+      if(e.target.closest('button')) return;
+      dragging = true;
+      sx = e.clientX; sy = e.clientY;
+      var r = panel.getBoundingClientRect();
+      ox = r.left; oy = r.top;
+      try{ bar.setPointerCapture(e.pointerId); }catch(_){}
+      e.preventDefault();
+    });
+    bar.addEventListener('pointermove', function(e){
+      if(!dragging) return;
+      var p = clampPos(panel, ox + (e.clientX-sx), oy + (e.clientY-sy));
+      panel.style.left = p[0] + 'px';
+      panel.style.top  = p[1] + 'px';
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+    });
+    function endDrag(e){
+      if(!dragging) return;
+      dragging = false;
+      try{ bar.releasePointerCapture(e.pointerId); }catch(_){}
+    }
+    bar.addEventListener('pointerup', endDrag);
+    bar.addEventListener('pointercancel', endDrag);
+  }
+
+  if(res){
+    var rz=false, rsx=0, rsy=0, rw=0, rh=0;
+    res.addEventListener('pointerdown', function(e){
+      rz = true;
+      rsx = e.clientX; rsy = e.clientY;
+      var r = panel.getBoundingClientRect();
+      rw = r.width; rh = r.height;
+      try{ res.setPointerCapture(e.pointerId); }catch(_){}
+      e.preventDefault(); e.stopPropagation();
+    });
+    res.addEventListener('pointermove', function(e){
+      if(!rz) return;
+      panel.style.width  = Math.max(0, rw + (e.clientX - rsx)) + 'px';
+      panel.style.height = Math.max(0, rh + (e.clientY - rsy)) + 'px';
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      syncMinimapViewport();
+    });
+    function endRz(e){
+      if(!rz) return;
+      rz = false;
+      try{ res.releasePointerCapture(e.pointerId); }catch(_){}
+    }
+    res.addEventListener('pointerup', endRz);
+    res.addEventListener('pointercancel', endRz);
+  }
+}
+
+/* =========================================================
+   4. 默认布局
+   ========================================================= */
+function applyLayout(){
+  var W = window.innerWidth, H = window.innerHeight;
+  function set(id, left, top, width, height){
+    var p = $(id);
+    if(!p) return;
+    p.style.left = left + 'px';
+    p.style.top  = top + 'px';
+    p.style.right = 'auto';
+    p.style.bottom = 'auto';
+    if(width  !== null) p.style.width  = width  + 'px'; else p.style.width  = '';
+    if(height !== null) p.style.height = height + 'px'; else p.style.height = '';
+  }
+
+  set('#pControl', 12, 12, Math.min(1180, W*0.62), null);
+  set('#pInfo',    12, 210, Math.min(1180, W*0.60), Math.min(460, H*0.44));
+  set('#pMacros',  12, Math.max(690, H*0.65), Math.min(1180, W*0.62), Math.min(250, H*0.26));
+  set('#pVars',    12, Math.max(950, H*0.90), Math.min(1180, W*0.62), Math.min(240, H*0.24));
+  set('#pExpand',  Math.max(1260, W*0.655), 12, Math.min(1100, W*0.34), Math.min(400, H*0.40));
+  set('#pConsole', Math.max(1260, W*0.655), Math.max(440, H*0.44), Math.min(1100, W*0.34), Math.min(540, H*0.52));
+  set('#pExplain', 12, Math.max(340, H - 320), Math.min(1240, W*0.62), 300);
+  set('#pMinimap', W - 260, 12, 240, 320);
+
+  var order = ['#pControl','#pInfo','#pMacros','#pVars','#pExpand','#pConsole','#pExplain','#pMinimap'];
+  order.forEach(function(sel, i){
+    var p = $(sel);
+    if(p){ p.style.zIndex = 120 + i; p.classList.remove('active'); }
+  });
+  zTop = 200;
+}
+
+/* =========================================================
+   5. 构建静态子视图
+   ========================================================= */
+function buildMacroStrip(){
+  var html = '';
+  for(var i=0;i<MACRO_ORDER.length;i++){
+    var n = MACRO_ORDER[i];
+    var info = MACRO_INFO[n];
+    html += '<div class="macro-chip ' + info.cls + '" data-macro="' + n + '">' +
+              '<span class="mn">' + escHtml(n) + '</span>' +
+              '<span class="md">' + escHtml(info.def) + '</span>' +
+              '<span class="mt">' + info.tag + '</span>' +
+            '</div>';
+  }
+  macroStrip.innerHTML = html;
+}
+
+function buildVarCards(){
+  var html = '';
+  for(var i=0;i<VAR_NAMES.length;i++){
+    var n = VAR_NAMES[i];
+    var ty = (n === 'r') ? 'float' : 'int';
+    html += '<div class="var-card" data-var="' + n + '">' +
+              '<span class="vn">' + n + '</span>' +
+              '<span class="vt">' + ty + '</span>' +
+              '<span class="vv">?</span>' +
+            '</div>';
+  }
+  varCardsBox.innerHTML = html;
+}
+
+/* =========================================================
+   6. 更新视图
+   ========================================================= */
+function updateMacros(step){
+  var st = step ? step.state : null;
+  var chips = macroStrip.querySelectorAll('.macro-chip');
+  Array.prototype.forEach.call(chips, function(chip){
+    var name = chip.getAttribute('data-macro');
+    var def = st ? st.macros[name] : 'no';
+    var isDead = (def !== 'def');
+    chip.classList.toggle('is-dead', isDead);
+    chip.classList.toggle('is-active', !!(st && st.hlMacro === name && !isDead));
+  });
+}
+
+function updateVarCards(step){
+  var st = step ? step.state : null;
+  var cards = varCardsBox.querySelectorAll('.var-card');
+  Array.prototype.forEach.call(cards, function(card){
+    var name = card.getAttribute('data-var');
+    var vv = card.querySelector('.vv');
+    var val = st ? st.vars[name] : null;
+    var has = (val !== null && val !== undefined);
+    var txt = has ? String(val) : '?';
+
+    if(vv.textContent !== txt){
+      vv.textContent = txt;
+      card.classList.remove('changed');
+      void card.offsetWidth;
+      if(has) card.classList.add('changed');
+    }
+    card.classList.toggle('has', has);
+    card.classList.toggle('is-active', !!(st && st.hlVar === name));
+  });
+}
+
+function updateExpand(step){
+  var st = step ? step.state : null;
+  var arr = (st && st.expand) ? st.expand : [];
+  if(!arr.length){
+    expandBox.innerHTML = '<div class="exp-empty">（当前步骤没有宏展开）</div>';
+    return;
+  }
+  var html = '';
+  for(var i=0;i<arr.length;i++){
+    var cls = 'exp-line' + (i === arr.length - 1 ? ' exp-final' : '');
+    html += '<div class="' + cls + '">' + escHtml(arr[i]) + '</div>';
+  }
+  expandBox.innerHTML = html;
+  expandBox.scrollTop = expandBox.scrollHeight;
+}
+
+function updateConsole(step, stepIdx){
+  if(!step){
+    consoleBody.innerHTML = '<div class="out-line c-empty">（等待程序开始…）</div>';
+    return;
+  }
+  var lines = step.state.console;
+  var frag = document.createDocumentFragment();
+  for(var i=0;i<lines.length;i++){
+    var d = document.createElement('div');
+    d.className = 'out-line ' + lines[i].cls;
+    d.textContent = lines[i].text;
+    frag.appendChild(d);
+  }
+  consoleBody.innerHTML = '';
+  consoleBody.appendChild(frag);
+
+  var last = consoleBody.lastElementChild;
+  if(last && stepIdx < STEPS.length - 1){
+    var cur = document.createElement('span');
+    cur.className = 'cursor';
+    cur.textContent = '▊';
+    last.appendChild(cur);
+  }
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+function updateInfoBar(step){
+  if(!step){
+    lineValEl.textContent  = '—';
+    phaseValEl.textContent = '—';
+    macroValEl.textContent = '0 / 5';
+    initValEl.textContent  = '0 / 4';
+    return;
+  }
+  var s = step.state;
+  lineValEl.textContent = '第 ' + step.line + ' 行';
+  phaseValEl.textContent = s.phase || '—';
+
+  var mc = 0, ic = 0, i;
+  for(i=0;i<MACRO_ORDER.length;i++){
+    if(s.macros[MACRO_ORDER[i]] === 'def') mc++;
+  }
+  for(i=0;i<VAR_NAMES.length;i++){
+    if(s.inited[VAR_NAMES[i]]) ic++;
+  }
+  macroValEl.textContent = mc + ' / 5';
+  initValEl.textContent  = ic + ' / 4';
+}
+
+/* =========================================================
+   7. 代码高亮 + 自动滚动
+   ========================================================= */
+function updateCode(step){
+  var activeLine = step ? step.line : -1;
+  var cls = (step && step.cls) ? step.cls : '';
+  codeLines.forEach(function(el, i){
+    var n = i + 1;
+    var isActive = (n === activeLine);
+    el.className = 'code-line' +
+                   (isActive ? ' active' : '') +
+                   (isActive && cls ? ' ' + cls + '-hi' : '') +
+                   (activeLine > 0 && n < activeLine ? ' done' : '');
+  });
+
+  if(step && codeLines[step.line - 1]){
+    var el = codeLines[step.line - 1];
+    var er = el.getBoundingClientRect();
+    var cr = codeStage.getBoundingClientRect();
+    var target = codeStage.scrollTop + (er.top - cr.top)
+               - (codeStage.clientHeight - er.height) / 2;
+    codeStage.scrollTop = Math.max(0, target);
+  }
+}
+
+/* =========================================================
+   8. 缩略图
+   ========================================================= */
+function buildMinimap(){
+  var html = '';
+  codeLines.forEach(function(el){
+    var src = el.querySelector('.src').innerHTML;
+    html += '<div class="mm-line">' + src + '</div>';
+  });
+  mmContent.innerHTML = html;
+}
+
+function getCodeLineHeight(){
+  if(codeLines.length < 2) return 0;
+  return codeLines[1].offsetTop - codeLines[0].offsetTop;
+}
+
+var rafPending = false;
+function syncMinimapViewport(){
+  if(rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(function(){
+    rafPending = false;
+    var lh = getCodeLineHeight();
+    if(!lh) return;
+    var scale = MM_LINE_H / lh;
+    var top = codeStage.scrollTop * scale;
+    var h   = codeStage.clientHeight * scale;
+    var contentH = codeLines.length * MM_LINE_H;
+
+    top = Math.max(0, Math.min(top, Math.max(0, contentH - 20)));
+    h   = Math.max(16, Math.min(h, contentH - top));
+
+    mmViewport.style.top    = top + 'px';
+    mmViewport.style.height = h + 'px';
+  });
+}
+
+function updateMinimap(step){
+  var lines = mmContent.children;
+  for(var i=0;i<lines.length;i++){
+    var n = i + 1;
+    var isActive = step && n === step.line;
+    var cls = (step && step.cls) ? step.cls : '';
+    lines[i].className = 'mm-line' +
+                         (isActive && cls ? ' ' + cls + '-hi' : '') +
+                         (isActive && !cls ? ' active' : '');
+  }
+  if(step){
+    var el = lines[step.line - 1];
+    if(el){
+      var top = (step.line - 1) * MM_LINE_H;
+      var bodyH = mmBody.clientHeight;
+      if(top < mmBody.scrollTop || top + MM_LINE_H > mmBody.scrollTop + bodyH){
+        mmBody.scrollTop = Math.max(0, top - bodyH/2);
+      }
+    }
+  }
+  syncMinimapViewport();
+}
+
+/* =========================================================
+   9. 总渲染
+   ========================================================= */
+var current = -1;
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+
+  updateCode(step);
+  updateMacros(step);
+  updateVarCards(step);
+  updateExpand(step);
+  updateConsole(step, current);
+  updateInfoBar(step);
+  updateMinimap(step);
+
+  if(step){
+    var tagCls = step.cls ? ' ' + step.cls : '';
+    explainEl.innerHTML =
+      '<span class="tag' + tagCls + '">第 ' + step.line + ' 行</span>' +
+      '<strong>' + step.title + '</strong><br>' + step.desc;
+    stepCounter.textContent = (current + 1) + ' / ' + STEPS.length;
+  }else{
+    explainEl.innerHTML =
+      '<em>点击「自动播放」或「下一步」，开始逐步执行模拟。</em><br><br>' +
+      '<strong>本程序演示：C 语言带参宏（函数宏）的展开与求值</strong><br>' +
+      '· 函数宏 <code>L(x,y,z) = (x)*(y)+(z)</code> —— 形参都加了括号，安全；<br>' +
+      '· 函数宏 <code>M(x,y,z) = x*y+z</code> —— 一个括号都没有，危险；<br>' +
+      '· 嵌套调用 <code>MAX((int)S(r), M(...))</code> 会层层展开；<br>' +
+      '· 输入 <code>r = 3.0</code>，最终结果：<br>' +
+      '　　S(r) = 3.14×3×3 = <b>28.26</b><br>' +
+      '　　L 带括号实参 = <b>41</b>　　L 不带括号实参 = <b>41</b><br>' +
+      '　　M 带括号实参 = <b>41</b>　　M 不带括号实参 = <b>21</b><br>' +
+      '　　MAX((int)S(r), M(...)) = <b>28</b><br>' +
+      '· 程序输出共 <b>7 行</b>：<br>' +
+      '　　<code>Input r:3</code><br>' +
+      '　　<code>The area=28.26 </code><br>' +
+      '　　<code>(x)*(y)+(z)=41 </code>（两次）<br>' +
+      '　　<code>x*y+z=41 </code><br>' +
+      '　　<code>x*y+z=21 </code><br>' +
+      '　　<code>The Max is:28 </code><br>' +
+      '· ★ 核心教训：<b>宏的替换体和每个形参都要加括号</b>，' +
+      '否则运算符优先级会把表达式拆得面目全非。<br><br>' +
+      '共 ' + STEPS.length + ' 个执行步骤。快捷键：空格 播放/暂停，← → 上一步/下一步，R 重置，F 全屏，M 缩略图，H 面板。';
+    stepCounter.textContent = '— / ' + STEPS.length;
+  }
+
+  var btnPrev = $('#btnPrev'), btnNext = $('#btnNext');
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+
+  syncMinimapViewport();
+}
+
+/* =========================================================
+   10. 播放控制
+   ========================================================= */
+var playing = false;
+var timer = null;
+var speed = 560;
+var btnPlay = $('#btnPlay');
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+function tick(){
+  if(current >= STEPS.length - 1){ pause(); return; }
+  current += 1;
+  render();
+  if(current >= STEPS.length - 1) pause();
+}
+function play(){
+  if(playing) return;
+  if(current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+function pause(){
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+function nextStep(){
+  pause();
+  if(current < STEPS.length - 1){ current += 1; render(); }
+}
+function prevStep(){
+  pause();
+  if(current > -1){ current -= 1; render(); }
+}
+function resetAll(){
+  pause();
+  current = -1;
+  codeStage.scrollTop = 0;
+  codeStage.scrollLeft = 0;
+  render();
+}
+
+/* =========================================================
+   11. Toast
+   ========================================================= */
+var toastTimer = null;
+function showToast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(function(){ toastEl.classList.remove('show'); }, 1400);
+}
+
+/* =========================================================
+   12. 事件绑定
+   ========================================================= */
+$('#btnPlay').addEventListener('click', function(){ playing ? pause() : play(); });
+$('#btnNext').addEventListener('click', nextStep);
+$('#btnPrev').addEventListener('click', prevStep);
+$('#btnReset').addEventListener('click', resetAll);
+
+$('#btnFull').addEventListener('click', function(){
+  if(!document.fullscreenElement){
+    (document.documentElement.requestFullscreen || function(){}).call(document.documentElement);
+  }else{
+    (document.exitFullscreen || function(){}).call(document);
+  }
+});
+
+$('#btnMini').addEventListener('click', function(){
+  var p = $('#pMinimap');
+  p.classList.toggle('hidden');
+  if(!p.classList.contains('hidden')) activate(p);
+});
+
+$('#btnPanels').addEventListener('click', function(){
+  var panels = $$('.panel');
+  var anyHidden = panels.some(function(p){ return p.classList.contains('hidden'); });
+  panels.forEach(function(p){ p.classList.toggle('hidden', !anyHidden); });
+  showToast(anyHidden ? '已显示全部面板' : '已隐藏全部面板 · 按 H 恢复');
+});
+
+$('#btnLayout').addEventListener('click', function(){
+  $$('.panel').forEach(function(p){
+    p.classList.remove('hidden','folded');
+    var f = p.querySelector('.p-fold');
+    if(f) f.textContent = '–';
+    p.style.width = '';
+    p.style.height = '';
+  });
+  applyLayout();
+  buildMinimap();
+  syncMinimapViewport();
+  showToast('已恢复默认布局');
+});
+
+var speedInput = $('#speed');
+var speedLabel = $('#speedLabel');
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+  if(playing){
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+document.addEventListener('keydown', function(e){
+  var t = e.target;
+  if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+
+  switch(e.code){
+    case 'Space':
+      e.preventDefault();
+      playing ? pause() : play();
+      break;
+    case 'ArrowRight': e.preventDefault(); nextStep(); break;
+    case 'ArrowLeft':  e.preventDefault(); prevStep(); break;
+    case 'KeyR':       e.preventDefault(); resetAll(); break;
+    case 'KeyF':
+      e.preventDefault();
+      $('#btnFull').click();
+      break;
+    case 'KeyM':
+      e.preventDefault();
+      $('#btnMini').click();
+      break;
+    case 'KeyH':
+      e.preventDefault();
+      $('#btnPanels').click();
+      break;
+  }
+});
+
+mmBody.addEventListener('click', function(e){
+  var rect = mmContent.getBoundingClientRect();
+  var y = e.clientY - rect.top;
+  var lh = getCodeLineHeight();
+  if(!lh) return;
+  var scale = MM_LINE_H / lh;
+  codeStage.scrollTop = Math.max(0, y / scale);
+  syncMinimapViewport();
+});
+
+codeStage.addEventListener('scroll', syncMinimapViewport, {passive:true});
+window.addEventListener('resize', function(){
+  applyLayout();
+  buildMinimap();
+  syncMinimapViewport();
+});
+window.addEventListener('load', function(){
+  buildMinimap();
+  syncMinimapViewport();
+});
+
+/* =========================================================
+   13. 初始化
+   ========================================================= */
+buildMacroStrip();
+buildVarCards();
+buildMinimap();
+
+$$('.panel').forEach(initPanel);
+
+applyLayout();
+speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+updatePlayBtn();
+render();
+
+requestAnimationFrame(function(){
+  buildMinimap();
+  syncMinimapViewport();
+});
+setTimeout(function(){ buildMinimap(); syncMinimapViewport(); }, 300);
+setTimeout(function(){ buildMinimap(); syncMinimapViewport(); }, 900);
+
+})();
+</script>
+</body>
+</html>

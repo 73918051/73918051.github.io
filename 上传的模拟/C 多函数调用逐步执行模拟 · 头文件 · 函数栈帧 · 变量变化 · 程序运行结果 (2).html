@@ -1,0 +1,2252 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 多函数调用逐步执行模拟 · 头文件 · 函数栈帧 · 变量变化 · 程序运行结果</title>
+<style>
+:root{
+  --bg:#070e1a;
+  --panel-bg:rgba(13,22,38,.86);
+  --border:#1e2f49;
+  --border-hi:#38bdf8;
+  --text:#dce8f8;
+  --accent:#38bdf8;
+  --green:#4ade80;
+  --amber:#fbbf24;
+  --pink:#f472b6;
+  --purple:#c084fc;
+  --teal:#2dd4bf;
+  --gold:#facc15;
+  --rose:#fb7185;
+
+  --fs:1;
+  /* ★ 大幅提高代码字号：1920px 下约 69px，可调至 80px */
+  --code-font: calc(clamp(22px, 3.4vw, 80px) * var(--fs));
+  --ln-font:   calc(clamp(15px, 2.3vw, 54px) * var(--fs));
+  --out-font:  calc(clamp(18px, 2.3vw, 54px) * var(--fs));
+  --var-font:  calc(clamp(14px, 1.05vw, 26px) * var(--fs));
+  --exp-font:  calc(clamp(14px, 1.05vw, 26px) * var(--fs));
+  --explain-font: calc(clamp(15px, 1.25vw, 30px) * var(--fs));
+  --btn-font:  calc(clamp(14px, 1vw, 23px) * var(--fs));
+  --title-font:calc(clamp(14px, 1vw, 23px) * var(--fs));
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;padding:0;}
+body{
+  background:#070e1a;color:var(--text);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  overflow:hidden;
+}
+button{font-family:inherit;}
+
+/* ===== 全屏代码区 ===== */
+#codeArea{
+  position:fixed;inset:0;
+  background:radial-gradient(1200px 700px at 10% -10%,#132340 0%,#070e1a 62%);
+  overflow:auto;scrollbar-width:thin;scrollbar-color:#334155 transparent;
+  z-index:0;
+}
+#codeArea::-webkit-scrollbar{width:14px;height:14px;}
+#codeArea::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:12px;}
+
+.code-scroll{
+  padding:18px 0 45vh 0;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  line-height:1.55;
+}
+
+.file-head{
+  margin:.6em .8em .4em;padding:.3em .8em;
+  font-size:.58em;letter-spacing:.06em;
+  color:var(--accent);background:rgba(56,189,248,.10);
+  border-left:5px solid var(--accent);border-radius:.35em;
+  font-family:ui-monospace,Consolas,monospace;
+  white-space:nowrap;
+}
+.file-head.cpp{color:var(--amber);background:rgba(251,191,36,.10);border-left-color:var(--amber);}
+
+.code-line{
+  display:flex;align-items:flex-start;gap:.7em;
+  padding:.08em 1.2em .08em .5em;
+  border-left:6px solid transparent;
+  white-space:pre;
+  transition:background .25s,border-color .25s;
+}
+.code-line .ln{
+  flex:0 0 auto;width:3ch;text-align:right;color:#3f5a7d;
+  user-select:none;font-variant-numeric:tabular-nums;
+  font-size:.62em;line-height:2.5;
+}
+.code-line .src{flex:0 0 auto;}
+.code-line.active{
+  background:linear-gradient(90deg,rgba(56,189,248,.30),rgba(56,189,248,0));
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 2px rgba(56,189,248,.25);
+}
+.code-line.active .ln{color:var(--accent);font-weight:700;}
+.code-line.active .src{color:#ffffff;}
+
+.code-line.pp-hi.active{background:linear-gradient(90deg,rgba(192,132,252,.40),rgba(192,132,252,0));border-left-color:var(--purple);}
+.code-line.pp-hi.active .ln{color:var(--purple);}
+.code-line.gold-hi.active{background:linear-gradient(90deg,rgba(250,204,21,.34),rgba(250,204,21,0));border-left-color:var(--gold);}
+.code-line.gold-hi.active .ln{color:var(--gold);}
+.code-line.mv-hi.active{background:linear-gradient(90deg,rgba(244,114,182,.36),rgba(244,114,182,0));border-left-color:var(--pink);}
+.code-line.mv-hi.active .ln{color:var(--pink);}
+.code-line.out-hi.active{background:linear-gradient(90deg,rgba(45,212,191,.36),rgba(45,212,191,0));border-left-color:var(--teal);}
+.code-line.out-hi.active .ln{color:var(--teal);}
+.code-line.green-hi.active{background:linear-gradient(90deg,rgba(74,222,128,.34),rgba(74,222,128,0));border-left-color:var(--green);}
+.code-line.green-hi.active .ln{color:var(--green);}
+.code-line.rose-hi.active{background:linear-gradient(90deg,rgba(251,113,133,.36),rgba(251,113,133,0));border-left-color:var(--rose);}
+.code-line.rose-hi.active .ln{color:var(--rose);}
+
+.cmt{color:#5b6f8c;font-style:italic;}
+.fn{color:var(--accent);}
+.kw{color:var(--pink);font-weight:600;}
+.num{color:var(--amber);}
+.ty{color:var(--teal);font-weight:600;}
+.str{color:var(--green);}
+.pp{color:var(--purple);font-weight:600;}
+.macro-n{color:var(--rose);font-weight:700;}
+
+/* ===== 悬浮面板 ===== */
+.panel{
+  position:fixed;
+  background:var(--panel-bg);
+  backdrop-filter:blur(10px) saturate(1.2);
+  -webkit-backdrop-filter:blur(10px) saturate(1.2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  box-shadow:0 12px 34px rgba(0,0,0,.55);
+  display:flex;flex-direction:column;
+  min-width:0;min-height:0;
+  z-index:10;overflow:hidden;
+  transition:border-color .18s,box-shadow .18s;
+}
+.panel:hover{border-color:#33507d;}
+.panel.front{
+  border-color:var(--border-hi);
+  box-shadow:0 16px 46px rgba(0,0,0,.7),0 0 0 1px rgba(56,189,248,.35);
+}
+.panel.closed{display:none;}
+
+.p-head{
+  flex:0 0 auto;
+  display:flex;align-items:center;gap:.4em;
+  padding:.3em .5em .3em .65em;
+  background:linear-gradient(180deg,rgba(30,47,73,.95),rgba(20,33,53,.95));
+  border-bottom:1px solid var(--border);
+  cursor:move;user-select:none;
+  font-size:var(--title-font);
+  color:#a9c4e4;white-space:nowrap;
+}
+.p-head .p-title{
+  flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;
+  letter-spacing:.03em;font-weight:600;
+}
+.p-head .dots{display:flex;gap:.22em;flex:0 0 auto;}
+.p-head .dots i{width:.5em;height:.5em;border-radius:50%;display:block;}
+.p-head .dots i:nth-child(1){background:#ef4444;}
+.p-head .dots i:nth-child(2){background:#eab308;}
+.p-head .dots i:nth-child(3){background:#22c55e;}
+
+.p-close{
+  flex:0 0 auto;
+  width:1.85em;height:1.85em;line-height:1;
+  border-radius:6px;border:1px solid #33415c;
+  background:#1a2740;color:#b9cbe4;
+  font-size:.95em;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;padding:0;
+}
+.p-close:hover{background:#7f1d1d;border-color:#ef4444;color:#fff;}
+
+.p-body{
+  flex:1 1 auto;min-height:0;overflow:auto;
+  padding:.5em .6em;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+  font-size:var(--var-font);
+}
+.p-body::-webkit-scrollbar{width:10px;height:10px;}
+.p-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+
+.p-resize{
+  position:absolute;right:0;bottom:0;width:18px;height:18px;
+  cursor:nwse-resize;z-index:5;
+  background:linear-gradient(135deg,transparent 46%,#3b567f 46%,#3b567f 56%,transparent 56%,transparent 68%,#3b567f 68%,#3b567f 78%,transparent 78%);
+}
+
+/* ===== 控制栏 ===== */
+#pCtrl .p-body{display:flex;align-items:center;gap:.45em;flex-wrap:wrap;padding:.45em .6em;}
+.btn{
+  font-size:var(--btn-font);
+  padding:.42em .8em;border-radius:8px;
+  border:1px solid var(--border);
+  background:#182741;color:var(--text);
+  cursor:pointer;white-space:nowrap;
+  transition:background .15s,border-color .15s,transform .08s;
+}
+.btn:hover{background:#213352;border-color:#33507d;}
+.btn:active{transform:translateY(1px);}
+.btn:disabled{opacity:.32;cursor:not-allowed;}
+.btn.primary{
+  background:linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#38bdf8;color:#04121f;font-weight:700;
+}
+.btn.primary.playing{
+  background:linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24;color:#1a1200;
+}
+.btn.ghost{background:#101c30;color:#8fa8c8;}
+
+/* ===== 信息条 ===== */
+#pInfo .p-body{display:flex;align-items:center;gap:.5em;flex-wrap:wrap;padding:.42em .6em;}
+.tag{
+  font-size:.85em;padding:.14em .5em;border-radius:5px;
+  background:rgba(148,163,184,.16);color:#9db1cb;
+  font-family:ui-monospace,Consolas,monospace;
+}
+.val{font-family:ui-monospace,Consolas,monospace;font-weight:700;color:var(--teal);}
+.val.fn{color:var(--accent);}
+.val.gold{color:var(--gold);}
+.val.rose{color:var(--rose);}
+.sep{color:#2c3f5e;}
+
+/* ===== 宏条 ===== */
+.macro-strip{display:flex;flex-wrap:wrap;gap:8px;}
+.macro-chip{
+  min-width:8em;max-width:14em;
+  background:#0a1322;border:1px solid #1b293f;border-radius:8px;
+  padding:.5em .7em;text-align:center;
+  font-family:ui-monospace,Consolas,monospace;
+  transition:all .3s;
+}
+.macro-chip .mn{display:block;font-size:1.2em;font-weight:700;line-height:1.3;}
+.macro-chip .md{display:block;font-size:.62em;color:#5f7796;margin-top:.28em;line-height:1.4;}
+.macro-chip.cPI{border-color:rgba(251,113,133,.6);}
+.macro-chip.cPI .mn{color:#fda4af;}
+.macro-chip.is-active{box-shadow:0 0 0 2px #fff,0 0 18px rgba(255,255,255,.65);transform:scale(1.06);}
+.macro-chip.is-dead{opacity:.3;}
+.macro-chip.is-dead .mn{text-decoration:line-through;}
+.legend{margin-top:.6em;font-size:.72em;color:#7d93b3;line-height:1.7;}
+.legend b{color:#fda4af;}
+
+/* ===== 变量卡片 ===== */
+.var-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(5.2em,1fr));gap:7px;}
+.var-card{
+  background:#0d1728;border:1px solid #1b293f;border-radius:8px;
+  padding:.4em .55em;
+  font-family:ui-monospace,Consolas,monospace;
+  transition:all .3s;min-width:0;
+}
+.var-card.hidden{display:none;}
+.var-card .vrow{display:flex;align-items:baseline;gap:.3em;flex-wrap:wrap;}
+.var-card .vn{font-size:.9em;font-weight:700;color:#7d93b3;word-break:break-all;}
+.var-card .vt{font-size:.55em;color:#4a6488;}
+.var-card .vv{
+  font-size:1.3em;font-weight:700;color:#3d5474;
+  display:block;margin-top:.08em;word-break:break-all;line-height:1.25;
+}
+.var-card.has{border-color:rgba(56,189,248,.55);}
+.var-card.has .vn{color:#7dd3fc;}
+.var-card.has .vv{color:#7dd3fc;text-shadow:0 0 8px rgba(56,189,248,.5);}
+.var-card.is-active{
+  box-shadow:0 0 0 2px #fff,0 0 18px rgba(56,189,248,.7);
+  transform:scale(1.07);
+}
+.var-card.changed .vv{animation:flashVar .7s ease-out;}
+@keyframes flashVar{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.35);color:#fff;text-shadow:0 0 14px #fff;}
+  100%{transform:scale(1);}
+}
+
+/* ===== 求值链 ===== */
+#pExpand .p-body{
+  background:#050c17;
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:var(--exp-font);
+  line-height:1.85;
+}
+.exp-line{color:#9fd8ff;white-space:pre-wrap;transition:color .3s;}
+.exp-line.exp-warn{color:#fcd34d;}
+.exp-line.exp-final{color:var(--gold);font-weight:700;text-shadow:0 0 12px rgba(250,204,21,.5);}
+.exp-empty{color:#3d5474;font-size:.9em;}
+
+/* ===== 平台模型 ===== */
+#pModel .p-body{font-size:var(--var-font);line-height:1.8;color:#b8c9e0;}
+#pModel .k{color:var(--gold);font-weight:700;}
+#pModel .g{color:var(--green);font-weight:700;}
+#pModel .r{color:var(--rose);font-weight:700;}
+#pModel .c{color:var(--accent);font-weight:700;}
+#pModel ul{margin:.4em 0;padding-left:1.2em;}
+#pModel li{margin:.22em 0;}
+
+/* ===== 控制台 ===== */
+#pOut .p-body{
+  background:#050c17;
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);
+  line-height:1.75;
+  color:#86efac;
+  white-space:pre;word-break:normal;
+}
+.out-line{margin:0;white-space:pre;min-height:1.3em;line-height:1.75;tab-size:4;}
+.out-empty{color:#3d5474;}
+.out-note{color:#7dd3fc;}
+.out-ok{color:#86efac;}
+.out-final{color:#facc15;font-weight:700;}
+.out-wait{color:#3d5474;}
+.out-info{color:#c084fc;}
+.out-warn{color:#fbbf24;font-weight:700;}
+.out-out{color:#f472b6;font-weight:700;}
+.cursor{
+  display:inline-block;color:#4ade80;font-weight:400;
+  animation:blink 1s step-end infinite;margin-left:1px;
+}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+/* ===== 解说 ===== */
+#pExplain .p-body{font-size:var(--explain-font);line-height:1.75;color:#b8c9e0;}
+.ex-line{
+  display:inline-block;margin-right:.5em;padding:.06em .55em;
+  border-radius:6px;background:rgba(56,189,248,.18);
+  color:var(--accent);font-weight:700;font-size:.8em;vertical-align:middle;
+}
+.ex-line.pp{background:rgba(192,132,252,.26);color:var(--purple);}
+.ex-line.mv{background:rgba(244,114,182,.24);color:var(--pink);}
+.ex-line.out{background:rgba(45,212,191,.24);color:var(--teal);}
+.ex-line.green{background:rgba(74,222,128,.24);color:var(--green);}
+.ex-line.gold{background:rgba(250,204,21,.26);color:var(--gold);}
+.ex-line.rose{background:rgba(251,113,133,.28);color:var(--rose);}
+#pExplain strong{color:#eaf3ff;}
+#pExplain code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(148,163,184,.16);border-radius:4px;
+  padding:0 .3em;color:#e2e8f0;
+}
+.tip,.warn,.win,.rose-box{display:block;margin-top:.55em;padding:.5em .7em;border-radius:7px;}
+.tip{background:rgba(45,212,191,.12);border-left:4px solid var(--teal);color:#bff5ec;}
+.warn{background:rgba(251,191,36,.14);border-left:4px solid var(--amber);color:#ffe6b0;}
+.win{background:rgba(250,204,21,.16);border-left:4px solid var(--gold);color:#fff3c4;font-weight:600;}
+.rose-box{background:rgba(251,113,133,.18);border-left:4px solid var(--rose);color:#fecdd3;}
+
+/* ===== 缩略图 ===== */
+#pMini{width:170px;}
+#pMini .p-body{padding:0;overflow:hidden;position:relative;}
+.mini-content{
+  position:relative;
+  font-family:ui-monospace,Consolas,monospace;
+  line-height:1;overflow:hidden;
+}
+/* ★★★ 关键修复：white-space:pre 保留前导空格缩进 */
+.mini-line{
+  white-space:pre;
+  overflow:hidden;
+  padding-left:3px;
+  color:#7d93b3;
+  border-left:2px solid transparent;
+}
+.mini-line.cur{background:rgba(56,189,248,.55);border-left-color:#38bdf8;}
+.mini-viewport{
+  position:absolute;left:0;width:100%;
+  border:1px solid rgba(250,204,21,.85);
+  background:rgba(250,204,21,.10);
+  box-shadow:0 0 10px rgba(250,204,21,.45);
+  pointer-events:none;border-radius:2px;
+}
+
+/* 缩略图里的语法元素在小字号下退化为纯色 */
+.mini-line .cmt{color:#5b6f8c;}
+.mini-line .fn{color:#7dd3fc;}
+.mini-line .kw{color:#f9a8d4;}
+.mini-line .num{color:#fbbf24;}
+.mini-line .ty{color:#5eead4;}
+.mini-line .str{color:#86efac;}
+.mini-line .pp{color:#d8b4fe;}
+.mini-line .macro-n{color:#fda4af;}
+
+@media (max-width:900px){
+  :root{
+    --code-font:calc(clamp(16px,4.2vw,32px) * var(--fs));
+    --out-font:calc(clamp(14px,3.6vw,26px) * var(--fs));
+    --var-font:calc(clamp(12px,2.8vw,18px) * var(--fs));
+    --exp-font:calc(clamp(12px,2.8vw,18px) * var(--fs));
+    --explain-font:calc(clamp(13px,3vw,20px) * var(--fs));
+    --btn-font:calc(clamp(12px,2.6vw,17px) * var(--fs));
+    --title-font:calc(clamp(12px,2.8vw,18px) * var(--fs));
+  }
+}
+</style>
+</head>
+<body>
+
+<div id="codeArea">
+  <div class="code-scroll" id="codeScroll"></div>
+</div>
+
+<!-- 控制栏 -->
+<section class="panel front" id="pCtrl">
+  <div class="p-head">
+    <span class="dots"><i></i><i></i><i></i></span>
+    <span class="p-title">C 多函数调用逐步执行模拟</span>
+    <button class="p-close" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <button class="btn primary" id="btnPlay">▶ 自动播放</button>
+    <button class="btn" id="btnPrev">◀ 上一步</button>
+    <button class="btn" id="btnNext">下一步 ▶</button>
+    <button class="btn" id="btnReset">⟲ 重置</button>
+    <button class="btn ghost" id="btnFontDown">A－</button>
+    <button class="btn ghost" id="btnFontUp">A＋</button>
+    <button class="btn ghost" id="btnLayout">重置布局</button>
+    <button class="btn ghost" id="btnAllPanels">隐藏面板</button>
+    <span class="sep">│</span>
+    <label class="tag" style="display:flex;align-items:center;gap:.4em;">
+      速度 <input type="range" id="speed" min="60" max="2000" step="20" value="700" style="width:5em;">
+    </label>
+    <span class="tag" id="stepCounter">步骤 — / —</span>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 当前信息 -->
+<section class="panel" id="pInfo">
+  <div class="p-head"><span class="p-title">当前状态</span><button class="p-close">×</button></div>
+  <div class="p-body">
+    <span class="tag">位置</span><span class="val fn" id="lineVal">—</span>
+    <span class="sep">│</span>
+    <span class="tag">阶段</span><span class="val" id="phaseVal">—</span>
+    <span class="sep">│</span>
+    <span class="tag">作用域</span><span class="val gold" id="scopeVal">main</span>
+    <span class="sep">│</span>
+    <span class="tag">输出行数</span><span class="val rose" id="outVal">0</span>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 宏定义条 -->
+<section class="panel" id="pMacro">
+  <div class="p-head"><span class="p-title">#define 宏环境</span><button class="p-close">×</button></div>
+  <div class="p-body">
+    <div class="macro-strip" id="macroStrip"></div>
+    <div class="legend">
+      <b>PI</b>：对象宏，预处理阶段纯文本替换为 <b>3.14</b>，无类型检查、不占运行时内存。
+    </div>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 变量卡片 -->
+<section class="panel" id="pVars">
+  <div class="p-head"><span class="p-title">变量与函数栈帧</span><button class="p-close">×</button></div>
+  <div class="p-body"><div class="var-cards" id="varCards"></div></div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 求值链 -->
+<section class="panel" id="pExpand">
+  <div class="p-head"><span class="p-title">函数调用 / 宏展开 / 表达式求值链</span><button class="p-close">×</button></div>
+  <div class="p-body" id="expandBox"></div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 平台模型 -->
+<section class="panel" id="pModel">
+  <div class="p-head"><span class="p-title">平台模型 · 关键结论</span><button class="p-close">×</button></div>
+  <div class="p-body">
+    <div><span class="k">平台：</span>int=4B　float=4B　char=1B　指针=4B　小端序</div>
+    <ul>
+      <li><span class="c">#include "myh.h"</span> → 预处理阶段把头文件<b>整段复制</b>进来</li>
+      <li><span class="r">PI → 3.14</span> → 预处理阶段<b>纯文本替换</b>，不是函数</li>
+      <li><span class="g">函数栈帧</span> → 每调用一次建立新栈帧，返回时<b>自动销毁</b></li>
+      <li><span class="g">值传递</span> → 形参只是副本，函数内修改<b>不影响</b>调用者</li>
+      <li><span class="c">短路求值</span> → <code>A || B || C</code> 中 A 成立后 B、C 不计算</li>
+      <li><span class="r">continue</span> → 跳过 <code>j++</code>，把同一个质因数<b>除干净</b></li>
+      <li><span class="k">变量备份</span> → <code>int m = x;</code> 保存原数</li>
+      <li><span class="k">数组下标</span> → 最后一个元素是 <code>count-1</code></li>
+      <li><span class="c">printf 不换行</span> → 输出<b>追加到同一行</b></li>
+      <li><span class="c">%.2f</span> → 保留 2 位小数，78.5 → 78.50</li>
+      <li><span class="r">scanf</span> → 必须传<b>地址</b>（&amp;r）</li>
+      <li><span class="k">==比较浮点</span> → 有风险，工程建议 <code>fabs(...) &lt; 1e-6</code></li>
+      <li><span class="k">局部变量</span> → 未初始化是<b>垃圾值</b>（显示 ?）</li>
+    </ul>
+    <div style="margin-top:.5em;color:var(--gold);font-weight:700;">
+      最终输出 7 行：Input r:5 / Area=78.50 / Input x,y,z:3 4 5 / It is a Delta /
+      Input n:12 / It isn't prime! / 12=2*2*3
+    </div>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 程序输出 -->
+<section class="panel" id="pOut">
+  <div class="p-head"><span class="p-title">程序运行输出 · 控制台</span><button class="p-close">×</button></div>
+  <div class="p-body" id="consoleBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 解说 -->
+<section class="panel" id="pExplain">
+  <div class="p-head"><span class="p-title">本步解说</span><button class="p-close">×</button></div>
+  <div class="p-body" id="explainBox"></div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 缩略图 -->
+<section class="panel" id="pMini">
+  <div class="p-head"><span class="p-title">缩略图</span><button class="p-close">×</button></div>
+  <div class="p-body" id="miniBody">
+    <div class="mini-content" id="miniContent"></div>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<script>
+(function () {
+'use strict';
+
+var MYH_SRC = [
+  '<span class="pp">#define</span> <span class="macro-n">PI</span> <span class="num">3.14</span>                     <span class="cmt">// 定义PI</span>',
+  '<span class="ty">float</span> <span class="fn">area</span>(<span class="ty">float</span> r) {               <span class="cmt">// 求圆面积函数</span>',
+  '    <span class="ty">float</span> f = <span class="num">1</span>;                    <span class="cmt">// 定义局部变量</span>',
+  '    f = <span class="macro-n">PI</span> * r * r;                 <span class="cmt">// 计算面积</span>',
+  '    <span class="kw">return</span> f;                       <span class="cmt">// 返回面积</span>',
+  '}',
+  '<span class="ty">int</span> <span class="fn">delta</span>(<span class="ty">float</span> a, <span class="ty">float</span> b, <span class="ty">float</span> c) { <span class="cmt">// 判断直角三角形</span>',
+  '    <span class="kw">if</span>(a*a+b*b==c*c || a*a+c*c==b*b || b*b+c*c==a*a)',
+  '        <span class="kw">return</span> <span class="num">1</span>;                   <span class="cmt">// 是直角三角形</span>',
+  '    <span class="kw">else</span>',
+  '        <span class="kw">return</span> <span class="num">0</span>;                   <span class="cmt">// 不是直角三角形</span>',
+  '}',
+  '<span class="ty">int</span> <span class="fn">prime</span>(<span class="ty">int</span> x) {                  <span class="cmt">// 判断素数函数</span>',
+  '    <span class="ty">int</span> i, flag = <span class="num">1</span>;                <span class="cmt">// 标记变量</span>',
+  '    <span class="kw">for</span>(i=<span class="num">2</span>; i&lt;x/<span class="num">2</span>; ) {             <span class="cmt">// 从2到x/2</span>',
+  '        <span class="kw">if</span>(x % i == <span class="num">0</span>) {             <span class="cmt">// 如果能整除</span>',
+  '            flag = <span class="num">0</span>;                <span class="cmt">// 不是素数</span>',
+  '            <span class="kw">break</span>;',
+  '        } <span class="kw">else</span> i++;                  <span class="cmt">// 否则继续</span>',
+  '    }',
+  '    <span class="kw">return</span> flag;                     <span class="cmt">// 返回标记</span>',
+  '}',
+  '<span class="ty">void</span> <span class="fn">primefactor</span>(<span class="ty">int</span> x) {            <span class="cmt">// 分解质因数函数</span>',
+  '    <span class="ty">int</span> i, j, count = <span class="num">0</span>;            <span class="cmt">// 计数器</span>',
+  '    <span class="ty">int</span> m = x;                      <span class="cmt">// 保存原数</span>',
+  '    <span class="ty">int</span> a[<span class="num">10</span>];                    <span class="cmt">// 存储因子</span>',
+  '    <span class="kw">for</span>(i=<span class="num">0</span>, j=<span class="num">2</span>; j&lt;=x; ) {          <span class="cmt">// 从2开始试除</span>',
+  '        <span class="kw">if</span>(x % j == <span class="num">0</span>) {             <span class="cmt">// 如果能整除</span>',
+  '            a[i++] = j;              <span class="cmt">// 存入因子</span>',
+  '            count++;                 <span class="cmt">// 计数</span>',
+  '            x /= j;                  <span class="cmt">// 继续分解</span>',
+  '            <span class="kw">continue</span>;                <span class="cmt">// 继续用同一j</span>',
+  '        }',
+  '        j++;                         <span class="cmt">// j递增</span>',
+  '    }',
+  '    <span class="fn">printf</span>(<span class="str">"%d="</span>, m);               <span class="cmt">// 输出等式左边</span>',
+  '    <span class="kw">for</span>(i=<span class="num">0</span>; i&lt;count-<span class="num">1</span>; i++)         <span class="cmt">// 输出除最后一个因子</span>',
+  '        <span class="fn">printf</span>(<span class="str">"%d*"</span>, a[i]);',
+  '    <span class="fn">printf</span>(<span class="str">"%d"</span>, a[count-<span class="num">1</span>]);         <span class="cmt">// 输出最后一个因子</span>',
+  '    <span class="fn">putchar</span>(<span class="str">\'\\n\'</span>);',
+  '}'
+];
+
+var MYC_SRC = [
+  '<span class="pp">#include</span> <span class="str">"stdio.h"</span>                   <span class="cmt">// 包含标准头文件</span>',
+  '<span class="pp">#include</span> <span class="str">"myh.h"</span>                    <span class="cmt">// 包含自建头文件</span>',
+  '<span class="ty">int</span> <span class="fn">main</span>() {                        <span class="cmt">// 主函数</span>',
+  '    <span class="ty">float</span> r, x, y, z;               <span class="cmt">// 定义变量</span>',
+  '    <span class="ty">int</span> m, n;                       <span class="cmt">// 定义变量</span>',
+  '    <span class="fn">printf</span>(<span class="str">"Input r:"</span>);              <span class="cmt">// 提示输入半径</span>',
+  '    <span class="fn">scanf</span>(<span class="str">"%f"</span>, &amp;r);                 <span class="cmt">// 输入半径</span>',
+  '    <span class="fn">printf</span>(<span class="str">"Area=%.2f \\n"</span>, <span class="fn">area</span>(r)); <span class="cmt">// 调用area求面积</span>',
+  '    <span class="fn">printf</span>(<span class="str">"Input x,y,z:"</span>);          <span class="cmt">// 提示输入三条边</span>',
+  '    <span class="fn">scanf</span>(<span class="str">"%f%f%f"</span>, &amp;x, &amp;y, &amp;z);     <span class="cmt">// 输入三条边</span>',
+  '    m = <span class="fn">delta</span>(x, y, z);               <span class="cmt">// 调用delta判断直角三角形</span>',
+  '    <span class="kw">if</span>(m == <span class="num">1</span>)                      <span class="cmt">// 如果是直角三角形</span>',
+  '        <span class="fn">printf</span>(<span class="str">"It is a Delta \\n"</span>);',
+  '    <span class="kw">else</span>',
+  '        <span class="fn">printf</span>(<span class="str">"It isn\'t a Delta \\n"</span>);',
+  '    <span class="fn">printf</span>(<span class="str">"Input n:"</span>);              <span class="cmt">// 提示输入整数</span>',
+  '    <span class="fn">scanf</span>(<span class="str">"%d"</span>, &amp;n);                 <span class="cmt">// 输入整数</span>',
+  '    m = <span class="fn">prime</span>(n);                   <span class="cmt">// 调用prime判断素数</span>',
+  '    <span class="kw">if</span>(m == <span class="num">1</span>)                      <span class="cmt">// 如果是素数</span>',
+  '        <span class="fn">printf</span>(<span class="str">"It is prime! \\n"</span>);',
+  '    <span class="kw">else</span>',
+  '        <span class="fn">printf</span>(<span class="str">"It isn\'t prime! \\n"</span>);',
+  '    <span class="fn">primefactor</span>(n);                  <span class="cmt">// 调用primefactor分解质因数</span>',
+  '    <span class="kw">return</span> <span class="num">0</span>;',
+  '}'
+];
+
+var FILE_NAME = { myh:'myh.h', myc:'myc.cpp' };
+
+var VAR_DEFS = [
+  { key:'r@main',     label:'r',          type:'float', scope:'main' },
+  { key:'x@main',     label:'x',          type:'float', scope:'main' },
+  { key:'y@main',     label:'y',          type:'float', scope:'main' },
+  { key:'z@main',     label:'z',          type:'float', scope:'main' },
+  { key:'m@main',     label:'m',          type:'int',   scope:'main' },
+  { key:'n@main',     label:'n',          type:'int',   scope:'main' },
+  { key:'r@area',     label:'area.r',     type:'float', scope:'area' },
+  { key:'f@area',     label:'area.f',     type:'float', scope:'area' },
+  { key:'a@delta',    label:'delta.a',    type:'float', scope:'delta' },
+  { key:'b@delta',    label:'delta.b',    type:'float', scope:'delta' },
+  { key:'c@delta',    label:'delta.c',    type:'float', scope:'delta' },
+  { key:'x@prime',    label:'prime.x',    type:'int',   scope:'prime' },
+  { key:'i@prime',    label:'prime.i',    type:'int',   scope:'prime' },
+  { key:'flag@prime', label:'prime.flag', type:'int',   scope:'prime' },
+  { key:'x@pf',       label:'pf.x',       type:'int',   scope:'primefactor' },
+  { key:'i@pf',       label:'pf.i',       type:'int',   scope:'primefactor' },
+  { key:'j@pf',       label:'pf.j',       type:'int',   scope:'primefactor' },
+  { key:'count@pf',   label:'pf.count',   type:'int',   scope:'primefactor' },
+  { key:'m@pf',       label:'pf.m',       type:'int',   scope:'primefactor' },
+  { key:'a0@pf',      label:'pf.a[0]',    type:'int',   scope:'primefactor' },
+  { key:'a1@pf',      label:'pf.a[1]',    type:'int',   scope:'primefactor' },
+  { key:'a2@pf',      label:'pf.a[2]',    type:'int',   scope:'primefactor' }
+];
+var VAR_MAP = {};
+for (var _i=0; _i<VAR_DEFS.length; _i++) VAR_MAP[VAR_DEFS[_i].key] = VAR_DEFS[_i];
+
+var MACRO_ORDER = ['PI'];
+var MACRO_INFO = { PI:{ cls:'cPI', def:'3.14', tag:'对象宏 · 圆面积系数' } };
+
+var S;
+function resetState(){
+  var vars={}, inited={};
+  for (var i=0;i<VAR_DEFS.length;i++){vars[VAR_DEFS[i].key]=null;inited[VAR_DEFS[i].key]=false;}
+  S={phase:'—',scope:'main',vars:vars,inited:inited,hlVar:null,hlMacro:null,
+     macros:{PI:'no'},expand:[],console:[]};
+}
+
+var steps=[];
+function snap(o){
+  steps.push({
+    file:o.file, line:o.line, cls:o.cls||'',
+    title:o.title||'', desc:o.desc||'',
+    state:JSON.parse(JSON.stringify(S))
+  });
+}
+function log(cls,text){S.console.push({cls:cls,text:text});}
+function setV(k,v){S.vars[k]=v;S.inited[k]=true;}
+function clrV(k){S.vars[k]=null;S.inited[k]=false;}
+function outOpen(t){S.console.push({cls:'out-out',text:t,open:true});}
+function outAppend(t){
+  for (var k=S.console.length-1;k>=0;k--){
+    if (S.console[k].cls==='out-out'&&S.console[k].open){S.console[k].text+=t;return;}
+  }
+  outOpen(t);
+}
+function outClose(t){
+  if (t) outAppend(t);
+  for (var k=S.console.length-1;k>=0;k--){
+    if (S.console[k].cls==='out-out'&&S.console[k].open){S.console[k].open=false;return;}
+  }
+}
+function outLine(t){outOpen(t);outClose();}
+
+/* =========================================================
+   构建步骤 —— ★ 修正：continue 之后必须回到 for 判断 ★
+   ========================================================= */
+function buildSteps(){
+  resetState();
+  steps=[];
+
+  /* ---- 1 ---- */
+  S.phase='预处理期';
+  S.expand=['#include "stdio.h"',
+    '   → 双引号形式：先在当前目录查找，再去系统目录查找',
+    '   → 把标准输入输出头文件的内容整段复制到这里',
+    '   → 声明 printf / scanf / putchar，供 myc.cpp 使用'];
+  log('out-note','[预处理] myc.cpp 第 1 行：#include "stdio.h"');
+  log('out-info','          → 展开标准头文件，声明 printf / scanf / putchar');
+  snap({file:'myc',line:1,cls:'pp',
+    title:'<b>#include "stdio.h"</b>',
+    desc:'预处理器把标准输入输出头文件的内容<b>整段展开</b>到本文件中。<br>' +
+      '· 双引号形式先在<b>当前目录</b>找，找不到再去系统目录找；<br>' +
+      '· <code>printf</code>、<code>scanf</code>、<code>putchar</code> 都在此声明；<br>' +
+      '· 头文件只参与<b>编译</b>，<b>不占用程序运行时的内存</b>。' +
+      '<span class="tip"><b>★ 本程序核心看点：</b>多文件结构 · 4 次函数调用 · 宏替换 · 栈帧建立销毁 · 值传递。<br>' +
+      '固定输入：r=5，x,y,z=3,4,5，n=12。</span>'});
+
+  /* ---- 2 ---- */
+  S.expand=['#include "myh.h"',
+    '   → 在工程目录下找到 myh.h',
+    '   → 把它的内容整段复制进来，相当于：',
+    '        #define PI 3.14',
+    '        float area(float r) { ... }',
+    '        int   delta(float a, float b, float c) { ... }',
+    '        int   prime(int x) { ... }',
+    '        void  primefactor(int x) { ... }'];
+  log('out-note','[预处理] myc.cpp 第 2 行：#include "myh.h"');
+  log('out-info','          → 展开自建头文件：1 个宏 + 4 个函数定义');
+  snap({file:'myc',line:2,cls:'pp',
+    title:'<b>#include "myh.h"</b>　→　展开自建头文件',
+    desc:'预处理器把 <code>myh.h</code> 的内容<b>整段复制</b>到这一行的位置。<br>' +
+      '· <code>#define PI 3.14</code> —— 对象宏；<br>' +
+      '· <code>area</code> / <code>delta</code> / <code>prime</code> / <code>primefactor</code> —— 4 个函数定义。' +
+      '<span class="warn"><b>★ 头文件里写函数定义有风险</b><br>' +
+      '如果 <code>myh.h</code> 被<b>多个 .c 文件</b>同时包含，链接时可能报「重复定义」。<br>' +
+      '规范做法：头文件只放<b>函数声明</b>，函数体放到 .c 文件。</span>'});
+
+  /* ---- 3 ---- */
+  S.macros.PI='def'; S.hlMacro='PI';
+  S.expand=['#define PI 3.14',
+    '   → 定义对象宏 PI，替换体是 3.14',
+    '   → 源代码中出现的 PI 都会被替换成 3.14',
+    '   → 本程序中只在 myh.h 第 4 行用到一次：f = PI * r * r;'];
+  log('out-ok','[预处理] myh.h 第 1 行：#define PI 3.14');
+  log('out-info','          → 定义对象宏 PI，替换体为 3.14');
+  snap({file:'myh',line:1,cls:'pp',
+    title:'<b>#define PI 3.14</b>　→　定义对象宏 PI',
+    desc:'定义一个<b>对象宏</b> <code>PI</code>，替换体是 <code>3.14</code>。<br>' +
+      '· 预处理阶段，源代码里凡是出现 <code>PI</code> 的地方，都会被原样替换成 <code>3.14</code>；<br>' +
+      '· 本程序只在 <code>myh.h</code> 第 4 行用了一次：<code>f = PI * r * r;</code> → <code>f = 3.14 * r * r;</code>；<br>' +
+      '· 宏替换是<b>纯文本替换</b>，没有类型检查，也不占内存。</span>'});
+
+  /* ---- 4 ---- */
+  S.phase='编译期'; S.hlMacro=null;
+  S.expand=['float area(float r) {',
+    '   → 定义一个返回 float 的函数 area',
+    '   → 形参：float r',
+    '   → 此刻只是【编译】，函数体不会执行'];
+  log('out-note','[编译] myh.h 第 2 行：float area(float r) {   → 定义函数');
+  snap({file:'myh',line:2,cls:'gold',
+    title:'<b>float area(float r) {</b>　→　定义函数 area',
+    desc:'定义求圆面积的函数 <code>area</code>。<br>' +
+      '· <b>定义 ≠ 执行</b>：现在只是把函数体编译成机器码，真正执行要等到 myc.cpp 第 8 行调用它；<br>' +
+      '· 每次调用都会在<b>栈</b>上新建一个栈帧，形参 <code>r</code> 和局部变量 <code>f</code> 都住在里面。' +
+      '<span class="tip"><b>★ 形参是「值传递」：</b>实参的值被<b>复制</b>一份给形参，两个 <code>r</code> 是两个不同栈帧里的不同变量。</span>'});
+
+  /* ---- 5 ---- */
+  S.expand=['int delta(float a, float b, float c) {',
+    '   → 返回 int：1 表示是直角三角形，0 表示不是',
+    '   → 三个 float 形参 a、b、c 代表三条边',
+    '   → 同样只是编译，不执行'];
+  log('out-note','[编译] myh.h 第 7 行：int delta(float a, float b, float c) {');
+  snap({file:'myh',line:7,cls:'gold',
+    title:'<b>int delta(float a, float b, float c) {</b>　→　定义函数 delta',
+    desc:'定义判断直角三角形的函数 <code>delta</code>。<br>' +
+      '· 判断式是 <code>a*a+b*b==c*c || ...</code>，利用勾股定理的逆定理。' +
+      '<span class="warn"><b>★ 浮点数用 == 比较有风险：</b>浮点是近似存储，本程序用能精确表示的小整数 3、4、5 所以成立；<br>' +
+      '工程中更稳妥：<code>fabs(a*a+b*b-c*c) &lt; 1e-6</code>。</span>'});
+
+  /* ---- 6 ---- */
+  S.expand=['int prime(int x) {',
+    '   → 返回 int：1 表示是素数，0 表示不是',
+    '   → 形参 int x 是被判断的整数',
+    '   → 循环上界写的是 x/2（整数除法）'];
+  log('out-note','[编译] myh.h 第 13 行：int prime(int x) {');
+  snap({file:'myh',line:13,cls:'gold',
+    title:'<b>int prime(int x) {</b>　→　定义函数 prime',
+    desc:'定义判断素数的函数 <code>prime</code>。<br>' +
+      '· 内部用 <code>flag</code> 做标记，一开始假设是素数；<br>' +
+      '· 循环 <code>for(i=2; i&lt;x/2; )</code>，一旦发现能整除就把 <code>flag</code> 置 0 并 <code>break</code>。' +
+      '<span class="tip"><b>★ 循环上界为什么是 x/2？</b>不是素数的话，最小因子一定 ≤ √x。写到 x/2 安全但偏保守。<br>' +
+      '本程序 x=12，<code>x/2 = 6</code>，在 <code>i=2</code> 时就发现 12%2==0，直接跳出。</span>'});
+
+  /* ---- 7 ---- */
+  S.expand=['void primefactor(int x) {',
+    '   → 无返回值（void）',
+    '   → 把 x 分解成质因数并打印，如 12=2*2*3',
+    '   → 内部用数组 a[10] 暂存因子'];
+  log('out-note','[编译] myh.h 第 23 行：void primefactor(int x) {');
+  snap({file:'myh',line:23,cls:'gold',
+    title:'<b>void primefactor(int x) {</b>　→　定义函数 primefactor',
+    desc:'定义分解质因数的函数 <code>primefactor</code>。<br>' +
+      '· 从 <code>j=2</code> 开始试除，能整除就存入数组、计数加一、把 <code>x</code> 除以 <code>j</code>，' +
+      '然后 <code>continue</code> 用<b>同一个 j</b> 继续试。' +
+      '<span class="tip"><b>★ 为什么用 continue 而不是 else？</b>' +
+      '<code>continue</code> 跳过循环体剩余部分，此时 <code>j</code> <b>不变</b>，' +
+      '同一个质因数会被反复除干净（例如 12 先被 2 除两次）。<br>' +
+      '如果把 <code>continue</code> 换成 <code>j++</code>，12 就会分解成 <code>2*3</code>。</span>'});
+
+  /* ---- 8 ---- */
+  S.phase='运行期'; S.scope='main'; S.hlVar=null; S.expand=[];
+  log('out-note','[运行] myc.cpp 第 3 行：int main() {   → 主函数入口，建立 main 栈帧');
+  snap({file:'myc',line:3,cls:'gold',
+    title:'<b>int main() {</b>　→　程序入口，建立 main 栈帧',
+    desc:'程序从 <code>main</code> 开始执行，系统为它建立<b>栈帧</b>。<br>' +
+      '· 前面 7 步的预处理 / 编译工作全部完成；<br>' +
+      '· 从这一行开始进入<b>运行期</b>。' +
+      '<span class="tip"><b>★ 栈帧是什么？</b>每调用一个函数，系统就在<b>栈</b>上压入一块内存，' +
+      '存放形参、局部变量和返回地址。<br>函数返回时栈帧被<b>自动弹出</b>，局部变量随之消失。</span>'});
+
+  /* ---- 9 ---- */
+  S.expand=['float r, x, y, z;',
+    '   → 在 main 栈帧上申请 4 个 float 变量',
+    '   → 每个 4 字节，共 16 字节',
+    '   → 未初始化，内容是随机垃圾值（显示为 ?）'];
+  log('out-note','[运行] myc.cpp 第 4 行：float r, x, y, z;');
+  log('out-warn','          ⚠ 局部变量未初始化，值是随机的垃圾数据');
+  snap({file:'myc',line:4,cls:'mv',
+    title:'<b>float r, x, y, z;</b>　→　声明 4 个 float 变量',
+    desc:'在 <code>main</code> 的栈帧上声明 4 个 <code>float</code> 变量，每个占 <b>4 字节</b>。<br>' +
+      '· <b>未初始化</b>，里面是栈上残留的随机值（面板中显示为 <b>?</b>）。' +
+      '<span class="warn">★ C 语言不会自动把局部变量清零。好习惯是声明时给初值。</span>'});
+
+  /* ---- 10 ---- */
+  S.expand=['int m, n;',
+    '   → 在 main 栈帧上申请 2 个 int 变量',
+    '   → 每个 4 字节，共 8 字节',
+    '   → m 用来接收函数返回值，n 是待判断的整数'];
+  log('out-note','[运行] myc.cpp 第 5 行：int m, n;');
+  snap({file:'myc',line:5,cls:'mv',
+    title:'<b>int m, n;</b>　→　声明 2 个 int 变量',
+    desc:'声明两个 <code>int</code> 变量。<code>m</code> 用来接收返回值，<code>n</code> 是待判断的整数。' +
+      '<span class="tip">★ 注意 <code>m</code> 被复用了两次：<code>delta</code> 结果 1 → <code>prime</code> 结果 0。</span>'});
+
+  /* ---- 11 ---- */
+  log('out-note','[运行] myc.cpp 第 6 行：printf("Input r:");');
+  log('out-info','          → 输出提示，不带换行符');
+  outOpen('Input r:');
+  snap({file:'myc',line:6,cls:'out',
+    title:'<b>printf("Input r:");</b>　→　输出提示',
+    desc:'输出提示文字 <code>Input r:</code>，格式串里<b>没有 <code>\\n</code></b>，所以不换行，' +
+      '光标停在冒号后面等待输入。</span>'});
+
+  /* ---- 12 ---- */
+  setV('r@main','5.0'); S.hlVar='r@main';
+  S.expand=['scanf("%f", &r)',
+    '   → %f 表示按 float 读取',
+    '   → &r 取变量 r 的地址（scanf 必须拿到地址才能写回）',
+    '   → 用户输入 5  →  r = 5.0'];
+  log('out-note','[运行] myc.cpp 第 7 行：scanf("%f", &r);');
+  log('out-ok','          → 用户输入 5  →  r = 5.0');
+  outClose('5');
+  snap({file:'myc',line:7,cls:'rose',
+    title:'<b>scanf("%f", &amp;r);</b>　→　r = <b>5.0</b>',
+    desc:'从键盘读入一个浮点数存进 <code>r</code>。<br>' +
+      '· <code>&amp;r</code> 是 <b>取地址</b>：<code>scanf</code> 需要地址才能把值写进去。' +
+      '<span class="warn">★ 忘写 <code>&amp;</code> 是最经典的错误。printf 要值，scanf 要地址。</span>'});
+
+  /* ---- 13 ---- */
+  S.hlVar='r@main';
+  S.expand=['printf("Area=%.2f \\n", area(r))',
+    '   → 先求实参：r = 5.0',
+    '   → 调用函数 area(5.0)  ← 控制权转到 myh.h',
+    '   → 等 area 返回后，printf 才会执行'];
+  log('out-note','[运行] myc.cpp 第 8 行：printf("Area=%.2f \\n", area(r));');
+  log('out-info','          → 先调用 area(r)，实参 r = 5.0，压栈');
+  snap({file:'myc',line:8,cls:'out',
+    title:'<b>area(r)</b> 被调用　→　实参 r = <b>5.0</b> 压栈',
+    desc:'这一行先执行<b>函数调用</b>，拿到返回值后 <code>printf</code> 才执行。<br>' +
+      '· 实参 <code>r</code> 当前值 <b>5.0</b>，被<b>复制</b>一份传给 <code>area</code> 的形参；<br>' +
+      '· 控制权交给 <code>area</code>，程序跳到 myh.h 第 2 行。' +
+      '<span class="tip">★ 值传递五步：计算实参 → 新建栈帧 → 复制到形参 → 执行函数体 → 返回时销毁栈帧。</span>'});
+
+  /* ---- 14 ---- */
+  S.scope='area'; setV('r@area','5.0'); S.hlVar='r@area';
+  S.expand=['进入 area 函数',
+    '   → 新建 area 栈帧',
+    '   → 形参 r ← 实参 5.0（值传递，复制一份）',
+    '   → 函数体尚未执行'];
+  log('out-note','[运行] myh.h 第 2 行：进入 area 函数，形参 r = 5.0');
+  snap({file:'myh',line:2,cls:'gold',
+    title:'<b>进入 area 函数</b>　→　形参 area.r = <b>5.0</b>',
+    desc:'控制权进入 <code>area</code>，系统为它建立新的<b>栈帧</b>。<br>' +
+      '· 形参 <code>r</code> 被初始化为 <b>5.0</b>；<br>' +
+      '· 两个 <code>r</code> 在不同栈帧，互不影响。<br>' +
+      '· 函数头本身不执行语句，真正的第一条可执行语句是下一行 <code>float f = 1;</code>。'});
+
+  /* ---- 15 ---- */
+  setV('f@area','1.0'); S.hlVar='f@area';
+  S.expand=['float f = 1;',
+    '   → 在 area 栈帧上新建局部变量 f',
+    '   → 初始化为 1.0',
+    '   → 后面马上会被覆盖成面积值'];
+  log('out-ok','[运行] myh.h 第 3 行：float f = 1;   →  area.f = 1.0');
+  snap({file:'myh',line:3,cls:'mv',
+    title:'<b>float f = 1;</b>　→　area.f = <b>1.0</b>',
+    desc:'在 <code>area</code> 的栈帧里声明局部变量 <code>f</code>，初始化为 <b>1.0</b>。<br>' +
+      '· 这个初值只是占位，下一行就会被真正的面积值覆盖。</span>'});
+
+  /* ---- 16 ---- */
+  setV('f@area','78.5'); S.hlVar='f@area';
+  S.expand=['f = PI * r * r;',
+    '   → 宏替换：PI → 3.14，变成 f = 3.14 * r * r;',
+    '   → r = 5.0',
+    '   → 3.14 * 5.0 = 15.7',
+    '   → 15.7 * 5.0 = 78.5',
+    '   → f = 78.5'];
+  log('out-note','[运行] myh.h 第 4 行：f = PI * r * r;');
+  log('out-info','          → 宏替换后：f = 3.14 * 5.0 * 5.0');
+  log('out-ok','          → f = 78.5');
+  snap({file:'myh',line:4,cls:'mv',
+    title:'<b>f = PI * r * r;</b>　→　area.f = <b>78.5</b>',
+    desc:'计算圆面积并存入 <code>f</code>。<br>' +
+      '· <b>宏替换</b>在预处理阶段完成：<code>PI</code> → <code>3.14</code>；<br>' +
+      '· 带入 <code>r = 5.0</code>：3.14 × 5.0 × 5.0 = <b>78.5</b>。' +
+      '<span class="tip">★ 3.14 在二进制浮点里无法精确表示，实际存储是近似值；<br>' +
+      '按 <code>%.2f</code> 输出仍然是 <b>78.50</b>。</span>'});
+
+  /* ---- 17 ---- */
+  S.hlVar='f@area';
+  S.expand=['return f;',
+    '   → 把 f 的值 78.5 作为函数结果返回',
+    '   → 返回值被复制到调用处',
+    '   → area 栈帧即将销毁'];
+  log('out-note','[运行] myh.h 第 5 行：return f;   →  返回 78.5');
+  snap({file:'myh',line:5,cls:'green',
+    title:'<b>return f;</b>　→　返回 <b>78.5</b>',
+    desc:'<code>return</code> 把 <code>f</code> 的值 <b>78.5</b> 复制成函数返回值，结束 <code>area</code> 的执行。' +
+      '<span class="tip">★ 返回的是<b>值的副本</b>，不是 <code>f</code> 这个变量本身。<br>' +
+      '所以 <code>area</code> 返回后，<code>f</code> 随栈帧一起消失，但返回值仍然有效。</span>'});
+
+  /* ---- 18 ---- */
+  S.scope='main'; S.hlVar=null; clrV('r@area'); clrV('f@area');
+  S.expand=['}  ← area 函数结束',
+    '   → area 栈帧弹出',
+    '   → 形参 r、局部变量 f 全部销毁',
+    '   → 返回值 78.5 已交回 main'];
+  log('out-note','[运行] myh.h 第 6 行：}   → area 栈帧销毁，局部变量 r、f 消失');
+  snap({file:'myh',line:6,cls:'gold',
+    title:'<b>}</b>　→　area 栈帧销毁，变量 r、f 消失',
+    desc:'<code>area</code> 函数体结束，它的<b>栈帧被弹出</b>。<br>' +
+      '· 形参 <code>area.r</code> 和局部变量 <code>area.f</code> 随栈帧<b>自动销毁</b>；<br>' +
+      '· <code>main</code> 的变量安然无恙。' +
+      '<span class="tip">★ 千万不能返回局部变量的地址！那会变成<b>悬垂指针</b>，再访问是未定义行为。</span>'});
+
+  /* ---- 19 ---- */
+  S.expand=['printf("Area=%.2f \\n", 78.5)',
+    '   → %.2f 表示保留 2 位小数',
+    '   → 78.5 → "78.50"',
+    '   → 输出：Area=78.50 ',
+    '   → \\n 换行'];
+  log('out-note','[运行] myc.cpp 第 8 行：printf("Area=%.2f \\n", area(r));');
+  log('out-info','          → area(r) 返回 78.5，%.2f 格式化为 78.50');
+  log('out-out','Area=78.50 ');
+  outLine('Area=78.50 ');
+  snap({file:'myc',line:8,cls:'out',
+    title:'<b>printf(...)</b>　→　输出 <b>Area=78.50</b>',
+    desc:'拿到 <code>area</code> 的返回值后，<code>printf</code> 才执行。<br>' +
+      '· <code>%.2f</code> 保留 2 位小数；<br>' +
+      '· 格式串里 <code>%f</code> 后有一个<b>空格</b>，然后才是 <code>\\n</code>；<br>' +
+      '· 所以屏幕上出现 <code>Area=78.50 </code>（末尾一个空格，然后换行）。'});
+
+  /* ---- 20 ---- */
+  S.expand=['printf("Input x,y,z:");',
+    '   → 输出提示，不带换行符',
+    '   → 等待用户输入三条边'];
+  log('out-note','[运行] myc.cpp 第 9 行：printf("Input x,y,z:");');
+  outOpen('Input x,y,z:');
+  snap({file:'myc',line:9,cls:'out',
+    title:'<b>printf("Input x,y,z:");</b>　→　输出提示',
+    desc:'输出提示文字 <code>Input x,y,z:</code>，同样不带 <code>\\n</code>，让输入内容紧跟其后。' +
+      '<span class="tip">★ 3、4、5 是勾股数：3² + 4² = 9 + 16 = 25 = 5²，所以是<b>直角三角形</b>。</span>'});
+
+  /* ---- 21 ---- */
+  setV('x@main','3.0'); setV('y@main','4.0'); setV('z@main','5.0');
+  S.hlVar='x@main';
+  S.expand=['scanf("%f%f%f", &x, &y, &z)',
+    '   → 连续读 3 个 float',
+    '   → 用户输入 3 4 5',
+    '   → x = 3.0, y = 4.0, z = 5.0'];
+  log('out-note','[运行] myc.cpp 第 10 行：scanf("%f%f%f", &x, &y, &z);');
+  log('out-ok','          → 输入 3 4 5  →  x = 3.0, y = 4.0, z = 5.0');
+  outClose('3 4 5');
+  snap({file:'myc',line:10,cls:'rose',
+    title:'<b>scanf("%f%f%f", &amp;x, &amp;y, &amp;z);</b>　→　x=3.0, y=4.0, z=5.0',
+    desc:'一次读入三个浮点数。三个取地址告诉 <code>scanf</code> 往哪里写。' +
+      '<span class="warn">★ scanf 常见坑：① 别在格式串里随便加逗号；② 别忘 <code>&amp;</code>；③ 类型必须匹配。</span>'});
+
+  /* ---- 22 ---- */
+  S.hlVar=null;
+  S.expand=['m = delta(x, y, z);',
+    '   → 实参依次为 x = 3.0, y = 4.0, z = 5.0',
+    '   → 调用 delta(3.0, 4.0, 5.0)',
+    '   → 控制权转到 myh.h 第 7 行'];
+  log('out-note','[运行] myc.cpp 第 11 行：m = delta(x, y, z);');
+  log('out-info','          → 调用 delta(3.0, 4.0, 5.0)');
+  snap({file:'myc',line:11,cls:'mv',
+    title:'<b>delta(x, y, z)</b> 被调用　→　实参 (3.0, 4.0, 5.0)',
+    desc:'调用 <code>delta</code> 判断直角三角形。三个实参按顺序复制给形参 <code>a, b, c</code>。<br>' +
+      '· 新建 <code>delta</code> 栈帧，控制权跳转到 myh.h 第 7 行。</span>'});
+
+  /* ---- 23 ---- */
+  S.scope='delta'; setV('a@delta','3.0'); setV('b@delta','4.0'); setV('c@delta','5.0');
+  S.hlVar='a@delta';
+  S.expand=['进入 delta 函数',
+    '   → 新建 delta 栈帧',
+    '   → a = 3.0   b = 4.0   c = 5.0'];
+  log('out-note','[运行] myh.h 第 7 行：进入 delta 函数，a=3.0  b=4.0  c=5.0');
+  snap({file:'myh',line:7,cls:'gold',
+    title:'<b>进入 delta 函数</b>　→　a=3.0, b=4.0, c=5.0',
+    desc:'控制权进入 <code>delta</code>，三个形参已就位。<br>' +
+      '· 面板上新增 <code>delta.a / delta.b / delta.c</code> 三张卡片。<br>' +
+      '· 接下来执行 <code>if</code> 里的复合条件判断。'});
+
+  /* ---- 24 ---- */
+  S.hlVar=null;
+  S.expand=['if(a*a+b*b==c*c || a*a+c*c==b*b || b*b+c*c==a*a)',
+    '   → 第 1 个条件：a*a + b*b == c*c',
+    '        3*3 + 4*4 = 9 + 16 = 25',
+    '        c*c = 5*5 = 25',
+    '        25 == 25  → 真',
+    '   → || 短路，后两个条件不再计算',
+    '   → 整个 if 条件为真，进入 if 分支'];
+  log('out-note','[运行] myh.h 第 8 行：if(a*a+b*b==c*c || ...)');
+  log('out-info','          → 9 + 16 = 25，c*c = 25，25 == 25 → 真');
+  log('out-ok','          → || 短路，后两个条件不再计算');
+  snap({file:'myh',line:8,cls:'green',
+    title:'<b>if(a*a+b*b==c*c || ...)</b>　→　条件为<b>真</b>',
+    desc:'判断三条边能否构成直角三角形，用勾股定理的逆定理。<br>' +
+      '· 第一个条件 <code>a*a+b*b==c*c</code> 成立 → <b>|| 短路，后面两个条件不计算</b>；<br>' +
+      '· 整个条件为真，程序进入 <code>if</code> 分支。' +
+      '<span class="tip">★ 三个条件分别在测：c 是斜边 / b 是斜边 / a 是斜边。函数不知道哪条边是斜边，' +
+      '所以必须把三种可能都试一遍。</span>'});
+
+  /* ---- 25 ---- */
+  S.expand=['return 1;',
+    '   → 条件成立，返回 1（表示是直角三角形）',
+    '   → 复制 1 到调用处'];
+  log('out-ok','[运行] myh.h 第 9 行：return 1;   →  返回 1');
+  snap({file:'myh',line:9,cls:'green',
+    title:'<b>return 1;</b>　→　返回 <b>1</b>（是直角三角形）',
+    desc:'条件成立，<code>return 1;</code>。返回值 <b>1</b> 表示这三条边能组成直角三角形。<br>' +
+      '· 函数立即结束，<code>else</code> 分支不会被执行。'});
+
+  /* ---- 26 ---- */
+  S.scope='main'; clrV('a@delta'); clrV('b@delta'); clrV('c@delta');
+  S.hlVar=null;
+  S.expand=['}  ← delta 函数结束',
+    '   → delta 栈帧弹出，a、b、c 销毁',
+    '   → 返回值 1 已交回 main'];
+  log('out-note','[运行] myh.h 第 12 行：}   → delta 栈帧销毁，a、b、c 消失');
+  snap({file:'myh',line:12,cls:'gold',
+    title:'<b>}</b>　→　delta 栈帧销毁，返回值 1 交回 main',
+    desc:'<code>delta</code> 函数结束，栈帧弹出。形参全部销毁。' +
+      '<span class="tip">★ 主调函数 <code>main</code> 的变量从头到尾稳稳待在自己的栈帧里，不受任何影响。</span>'});
+
+  /* ---- 27 ---- */
+  setV('m@main','1'); S.hlVar='m@main';
+  S.expand=['m = delta(x, y, z);',
+    '   → delta 返回 1',
+    '   → m = 1'];
+  log('out-ok','[运行] myc.cpp 第 11 行：m = delta(x, y, z);   →  m = 1');
+  snap({file:'myc',line:11,cls:'mv',
+    title:'<b>m = delta(x, y, z);</b>　→　m = <b>1</b>',
+    desc:'<code>delta</code> 的返回值写入 <code>m</code>。<br>' +
+      '· 此时 <code>m = 1</code>，表示三条边构成直角三角形。'});
+
+  /* ---- 28 ---- */
+  S.hlVar=null;
+  S.expand=['if(m == 1)',
+    '   → m 当前值是 1',
+    '   → 1 == 1  → 真',
+    '   → 进入 if 分支：第 13 行 printf'];
+  log('out-note','[运行] myc.cpp 第 12 行：if(m == 1)');
+  log('out-ok','          → m = 1，条件为真，执行第 13 行');
+  snap({file:'myc',line:12,cls:'green',
+    title:'<b>if(m == 1)</b>　→　条件为<b>真</b>',
+    desc:'<code>m</code> 的值是 <b>1</b>，条件成立。<br>' +
+      '· 程序将执行第 13 行的 <code>printf</code>；<br>' +
+      '· 第 14~15 行的 <code>else</code> 分支被跳过。'});
+
+  /* ---- 29 ---- */
+  S.expand=['printf("It is a Delta \\n");',
+    '   → 直接输出字符串',
+    '   → 输出：It is a Delta '];
+  log('out-note','[运行] myc.cpp 第 13 行：printf("It is a Delta \\n");');
+  log('out-out','It is a Delta ');
+  outLine('It is a Delta ');
+  snap({file:'myc',line:13,cls:'out',
+    title:'<b>printf("It is a Delta \\n");</b>　→　输出 <b>It is a Delta</b>',
+    desc:'条件成立，打印「是直角三角形」。<br>' +
+      '· 注意格式串里 <code>Delta</code> 后面有个空格，所以实际输出是 <code>It is a Delta </code>。'});
+
+  /* ---- 30 ---- */
+  S.expand=['printf("Input n:");',
+    '   → 输出提示，不带换行符',
+    '   → 等待用户输入一个整数'];
+  log('out-note','[运行] myc.cpp 第 16 行：printf("Input n:");');
+  outOpen('Input n:');
+  snap({file:'myc',line:16,cls:'out',
+    title:'<b>printf("Input n:");</b>　→　输出提示',
+    desc:'输出提示文字 <code>Input n:</code>，等待用户输入一个整数。本模拟固定输入 <b>12</b>。' +
+      '<span class="tip">★ 12 能被 2 整除，<b>不是素数</b>；12 = 2 × 2 × 3。</span>'});
+
+  /* ---- 31 ---- */
+  setV('n@main','12'); S.hlVar='n@main';
+  S.expand=['scanf("%d", &n)',
+    '   → %d 表示按十进制整数读取',
+    '   → 用户输入 12',
+    '   → n = 12'];
+  log('out-note','[运行] myc.cpp 第 17 行：scanf("%d", &n);');
+  log('out-ok','          → 输入 12  →  n = 12');
+  outClose('12');
+  snap({file:'myc',line:17,cls:'rose',
+    title:'<b>scanf("%d", &amp;n);</b>　→　n = <b>12</b>',
+    desc:'读入一个整数存进 <code>n</code>。<span class="warn">★ %d 与 %f 不能混用。</span>'});
+
+  /* ---- 32 ---- */
+  S.hlVar=null;
+  S.expand=['m = prime(n);',
+    '   → 实参 n = 12',
+    '   → 调用 prime(12)',
+    '   → 控制权转到 myh.h 第 13 行'];
+  log('out-note','[运行] myc.cpp 第 18 行：m = prime(n);');
+  log('out-info','          → 调用 prime(12)');
+  snap({file:'myc',line:18,cls:'mv',
+    title:'<b>prime(n)</b> 被调用　→　实参 n = <b>12</b>',
+    desc:'调用 <code>prime</code> 判断 12 是不是素数。实参 <code>n = 12</code> 复制给形参 <code>x</code>。' +
+      '<span class="tip">★ <code>m</code> 之前存着 1（直角三角形结果），这次调用后会被覆盖。</span>'});
+
+  /* ---- 33 ---- */
+  S.scope='prime'; setV('x@prime','12'); S.hlVar='x@prime';
+  S.expand=['进入 prime 函数',
+    '   → 新建 prime 栈帧',
+    '   → 形参 x = 12'];
+  log('out-note','[运行] myh.h 第 13 行：进入 prime 函数，x = 12');
+  snap({file:'myh',line:13,cls:'gold',
+    title:'<b>进入 prime 函数</b>　→　prime.x = <b>12</b>',
+    desc:'控制权进入 <code>prime</code>，形参 <code>x = 12</code>。<br>' +
+      '· 这里的 <code>x</code> 和 <code>main</code> 里的 <code>x</code> 是两个毫不相干的变量（作用域不同）。'});
+
+  /* ---- 34 ---- */
+  setV('flag@prime','1'); S.hlVar='flag@prime';
+  S.expand=['int i, flag = 1;',
+    '   → flag 初始化为 1（先假设是素数）',
+    '   → i 尚未赋值，等待 for 初始化'];
+  log('out-ok','[运行] myh.h 第 14 行：int i, flag = 1;   →  prime.flag = 1');
+  snap({file:'myh',line:14,cls:'mv',
+    title:'<b>int i, flag = 1;</b>　→　prime.flag = <b>1</b>',
+    desc:'声明两个 <code>int</code> 变量。<code>flag = 1</code>：<b>先假设 x 是素数</b>，一旦发现能整除就改成 0。' +
+      '<span class="tip">★ 「标记变量」模式：循环结束后看它是否被改过。</span>'});
+
+  /* ---- 35 ---- */
+  setV('i@prime','2'); S.hlVar='i@prime';
+  S.expand=['for(i=2; i<x/2; )',
+    '   → 初始化：i = 2',
+    '   → 判断：x/2 = 12/2 = 6（整数除法）',
+    '   → 2 < 6  → 真',
+    '   → 进入循环体'];
+  log('out-note','[运行] myh.h 第 15 行：for(i=2; i<x/2; )');
+  log('out-ok','          → i = 2，x/2 = 6，2 < 6 → 真，进入循环体');
+  snap({file:'myh',line:15,cls:'gold',
+    title:'<b>for(i=2; i&lt;x/2; )</b>　→　i = 2，条件为<b>真</b>',
+    desc:'<code>for</code> 循环开始：<b>初始化</b> i = 2，<b>判断</b> x/2 = 6，2 < 6 成立。<br>' +
+      '· 这个 <code>for</code> 的第三部分是<b>空的</b>，<code>i</code> 的递增放在循环体里的 <code>else i++;</code>。'});
+
+  /* ---- 36 ---- */
+  S.hlVar=null;
+  S.expand=['if(x % i == 0)',
+    '   → x = 12, i = 2',
+    '   → 12 % 2 = 0（余数为 0，能整除）',
+    '   → 0 == 0  → 真',
+    '   → 进入 if 分支：flag = 0'];
+  log('out-note','[运行] myh.h 第 16 行：if(x % i == 0)');
+  log('out-ok','          → 12 % 2 = 0 → 真，说明 12 不是素数');
+  snap({file:'myh',line:16,cls:'green',
+    title:'<b>if(x % i == 0)</b>　→　条件为<b>真</b>',
+    desc:'<code>12 % 2 = 0</code>，能整除，说明 <code>x</code> 除了 1 和它本身还有别的因子，<b>不是素数</b>。<br>' +
+      '· 条件成立，进入 <code>if</code> 分支。' +
+      '<span class="tip">★ 素数的定义：大于 1 且只能被 1 和自身整除。判断思路：从 2 逐个试除，' +
+      '只要找到一个因子就提前退出。</span>'});
+
+  /* ---- 37 ---- */
+  setV('flag@prime','0'); S.hlVar='flag@prime';
+  S.expand=['flag = 0;',
+    '   → 把「是素数」的假设推翻',
+    '   → prime.flag: 1 → 0'];
+  log('out-ok','[运行] myh.h 第 17 行：flag = 0;   →  prime.flag = 0');
+  snap({file:'myh',line:17,cls:'mv',
+    title:'<b>flag = 0;</b>　→　prime.flag = <b>0</b>',
+    desc:'把标记变量改成 0，表示「<b>不是素数</b>」。<br>' +
+      '· <code>flag</code> 从 <b>1</b> 变成 <b>0</b>；<br>' +
+      '· 这个值会保留到函数结束，最后由 <code>return flag;</code> 带回给 <code>main</code>。'});
+
+  /* ---- 38 ---- */
+  S.hlVar=null;
+  S.expand=['break;',
+    '   → 立即跳出 for 循环',
+    '   → 不再执行 else i++',
+    '   → 跳到第 20 行 } 之后，即第 21 行 return flag;'];
+  log('out-note','[运行] myh.h 第 18 行：break;   → 跳出 for 循环');
+  snap({file:'myh',line:18,cls:'rose',
+    title:'<b>break;</b>　→　立即跳出 for 循环',
+    desc:'<code>break</code> 的作用是<b>立即终止当前循环</b>。<br>' +
+      '· 已经确定不是素数，继续试除没有意义，提前退出节省时间。' +
+      '<span class="tip">★ break 只能跳出一层循环；多层嵌套需用标志变量或 return。</span>'});
+
+  /* ---- 39 ---- */
+  S.hlVar='flag@prime';
+  S.expand=['return flag;',
+    '   → flag 当前是 0',
+    '   → 返回 0（表示 12 不是素数）'];
+  log('out-note','[运行] myh.h 第 21 行：return flag;   →  返回 0');
+  snap({file:'myh',line:21,cls:'green',
+    title:'<b>return flag;</b>　→　返回 <b>0</b>',
+    desc:'把 <code>flag</code> 的当前值作为函数结果返回。<br>' +
+      '· 此刻 <code>flag = 0</code>，所以返回 <b>0</b>，表示 12 <b>不是素数</b>。'});
+
+  /* ---- 40 ---- */
+  S.scope='main'; S.hlVar=null;
+  clrV('x@prime'); clrV('i@prime'); clrV('flag@prime');
+  S.expand=['}  ← prime 函数结束',
+    '   → prime 栈帧弹出，x、i、flag 销毁',
+    '   → 返回值 0 已交回 main'];
+  log('out-note','[运行] myh.h 第 22 行：}   → prime 栈帧销毁，x、i、flag 消失');
+  snap({file:'myh',line:22,cls:'gold',
+    title:'<b>}</b>　→　prime 栈帧销毁，返回值 0 交回 main',
+    desc:'<code>prime</code> 函数结束，栈帧弹出。<code>prime.x / prime.i / prime.flag</code> 全部消失。'});
+
+  /* ---- 41 ---- */
+  setV('m@main','0'); S.hlVar='m@main';
+  S.expand=['m = prime(n);',
+    '   → prime 返回 0',
+    '   → m = 0（m 从 1 变成了 0）'];
+  log('out-ok','[运行] myc.cpp 第 18 行：m = prime(n);   →  m = 0');
+  snap({file:'myc',line:18,cls:'mv',
+    title:'<b>m = prime(n);</b>　→　m = <b>0</b>',
+    desc:'<code>prime</code> 的返回值写入 <code>m</code>。<br>' +
+      '· <code>m</code> 从 <b>1</b>（直角三角形结果）变成 <b>0</b>（不是素数）。'});
+
+  /* ---- 42 ---- */
+  S.hlVar=null;
+  S.expand=['if(m == 1)',
+    '   → m 当前值是 0',
+    '   → 0 == 1  → 假',
+    '   → 跳过 if 分支，转去执行 else 分支（第 22 行）'];
+  log('out-note','[运行] myc.cpp 第 19 行：if(m == 1)');
+  log('out-warn','          → m = 0，条件为假，跳过第 20 行，执行第 22 行');
+  snap({file:'myc',line:19,cls:'green',
+    title:'<b>if(m == 1)</b>　→　条件为<b>假</b>',
+    desc:'<code>m</code> 的值是 <b>0</b>，条件不成立。第 20 行的 printf <b>被跳过</b>，程序转去执行 <code>else</code> 后面的第 22 行。'});
+
+  /* ---- 43 ---- */
+  S.expand=['printf("It isn\'t prime! \\n");',
+    '   → 直接输出字符串',
+    '   → 输出：It isn\'t prime! '];
+  log('out-note','[运行] myc.cpp 第 22 行：printf("It isn\'t prime! \\n");');
+  log('out-out','It isn\'t prime! ');
+  outLine('It isn\'t prime! ');
+  snap({file:'myc',line:22,cls:'out',
+    title:'<b>printf("It isn\'t prime! \\n");</b>　→　输出 <b>It isn\'t prime!</b>',
+    desc:'<code>else</code> 分支被选中，打印「不是素数」。<br>' +
+      '· 注意第 21 行只有 <code>else</code> 这个关键字，本身不是可执行语句，执行时不停留。'});
+
+  /* ---- 44 ---- */
+  S.expand=['primefactor(n);',
+    '   → 实参 n = 12',
+    '   → 调用 primefactor(12)',
+    '   → 该函数无返回值（void），调用后直接继续'];
+  log('out-note','[运行] myc.cpp 第 23 行：primefactor(n);');
+  log('out-info','          → 调用 primefactor(12)');
+  snap({file:'myc',line:23,cls:'mv',
+    title:'<b>primefactor(n)</b> 被调用　→　实参 n = <b>12</b>',
+    desc:'调用 <code>primefactor</code> 分解质因数。<br>' +
+      '· 返回类型是 <code>void</code>，不需要接收返回值。<br>' +
+      '· 这个函数会直接打印结果，属于「有副作用」的函数。'});
+
+  /* ---- 45 ---- */
+  S.scope='primefactor'; setV('x@pf','12'); S.hlVar='x@pf';
+  S.expand=['进入 primefactor 函数',
+    '   → 新建 primefactor 栈帧',
+    '   → 形参 x = 12'];
+  log('out-note','[运行] myh.h 第 23 行：进入 primefactor 函数，x = 12');
+  snap({file:'myh',line:23,cls:'gold',
+    title:'<b>进入 primefactor 函数</b>　→　pf.x = <b>12</b>',
+    desc:'控制权进入 <code>primefactor</code>，形参 <code>x = 12</code>。<br>' +
+      '· 这是<b>两个不同的变量</b>：函数内部会把 <code>pf.x</code> 除到 1，但 <code>main.n</code> 始终是 12。' +
+      '<span class="tip">★ C 语言默认<b>值传递</b>，改的是副本，所以 <code>main.n</code> 安然无恙。</span>'});
+
+  /* ---- 46 ---- */
+  setV('count@pf','0'); S.hlVar='count@pf';
+  S.expand=['int i, j, count = 0;',
+    '   → count 初始化为 0（因子个数）',
+    '   → i 用于存放因子时的下标',
+    '   → j 是试除的除数'];
+  log('out-ok','[运行] myh.h 第 24 行：int i, j, count = 0;   →  pf.count = 0');
+  snap({file:'myh',line:24,cls:'mv',
+    title:'<b>int i, j, count = 0;</b>　→　pf.count = <b>0</b>',
+    desc:'声明三个 <code>int</code> 变量。三个变量各司其职：<code>j</code> 试除除数，<code>i</code> 数组下标，<code>count</code> 因子个数。'});
+
+  /* ---- 47 ---- */
+  setV('m@pf','12'); S.hlVar='m@pf';
+  S.expand=['int m = x;',
+    '   → 把原数 12 备份到 m',
+    '   → 因为后面 x 会被不断除小，最后变成 1',
+    '   → pf.m = 12'];
+  log('out-ok','[运行] myh.h 第 25 行：int m = x;   →  pf.m = 12（备份原数）');
+  snap({file:'myh',line:25,cls:'mv',
+    title:'<b>int m = x;</b>　→　pf.m = <b>12</b>（备份原数）',
+    desc:'把 <code>x</code> 的初始值 <b>12</b> 复制到变量 <code>m</code> 里备份。<br>' +
+      '· 后面 <code>x /= j;</code> 会不断把 <code>x</code> 除小，最终变成 1；<br>' +
+      '· 但输出时需要打印 <code>12=2*2*3</code>，等号左边的原数不能丢。' +
+      '<span class="tip">★ 如果直接 <code>printf("%d=", x);</code>，会输出 <code>1=2*2*3</code>，明显错误。</span>'});
+
+  /* ---- 48 ---- */
+  S.expand=['int a[10];',
+    '   → 在 primefactor 栈帧上申请 10 个 int',
+    '   → 共 40 字节，元素未初始化',
+    '   → 本例只会用到 a[0]、a[1]、a[2]'];
+  log('out-note','[运行] myh.h 第 26 行：int a[10];   →  申请 10 个 int 的数组');
+  log('out-warn','          ⚠ 数组元素未初始化，内容是垃圾值');
+  snap({file:'myh',line:26,cls:'mv',
+    title:'<b>int a[10];</b>　→　声明数组 a，可存 10 个因子',
+    desc:'在栈上声明一个长度为 10 的整型数组 <code>a</code>，占 <b>40 字节</b>，元素未初始化。' +
+      '<span class="warn">★ 这个数组只能装 10 个因子。工程代码必须加边界检查：<code>if (i &lt; 10) a[i++] = j;</code></span>'});
+
+  /* ---- 49 ---- */
+  setV('i@pf','0'); setV('j@pf','2'); S.hlVar='j@pf';
+  S.expand=['for(i=0, j=2; j<=x; )',
+    '   → 初始化：i = 0，j = 2',
+    '   → 判断：j <= x  →  2 <= 12  → 真',
+    '   → 进入循环体'];
+  log('out-note','[运行] myh.h 第 27 行：for(i=0, j=2; j<=x; )');
+  log('out-ok','          → i = 0, j = 2, 2 <= 12 → 真，进入循环体');
+  snap({file:'myh',line:27,cls:'gold',
+    title:'<b>for(i=0, j=2; j&lt;=x; )</b>　→　i=0, j=2，条件为<b>真</b>',
+    desc:'<code>for</code> 循环开始，同时初始化 <code>i=0</code>、<code>j=2</code>。<br>' +
+      '· 判断 <code>2 &lt;= 12</code> 成立，进入循环体；<br>' +
+      '· 循环的第三部分同样是空的，<code>j</code> 的递增放在循环体末尾的 <code>j++;</code>。'});
+
+  /* ---- 50 · 第 1 轮 if ---- */
+  S.hlVar=null;
+  S.expand=['if(x % j == 0)   ← 第 1 轮',
+    '   → x = 12, j = 2',
+    '   → 12 % 2 = 0',
+    '   → 0 == 0  → 真',
+    '   → 进入 if 分支，把 2 存为因子'];
+  log('out-note','[运行] myh.h 第 28 行（第 1 轮）：if(x % j == 0)');
+  log('out-ok','          → 12 % 2 = 0 → 真，2 是一个质因数');
+  snap({file:'myh',line:28,cls:'green',
+    title:'<b>if(x % j == 0)</b>　→　第 1 轮，条件为<b>真</b>',
+    desc:'<code>12 % 2 = 0</code>，能整除，说明 2 是 12 的一个质因数。<br>' +
+      '· 进入 <code>if</code> 分支，依次执行第 29~32 行的四条语句。' +
+      '<span class="tip">★ 从小到大试除，找到的第一个能整除的除数<b>一定是质数</b>。</span>'});
+
+  /* ---- 51 ---- */
+  setV('a0@pf','2'); setV('i@pf','1'); S.hlVar='a0@pf';
+  S.expand=['a[i++] = j;',
+    '   → 等价于两步：a[0] = 2;  i = i + 1;',
+    '   → a[0] = 2',
+    '   → i 从 0 变成 1'];
+  log('out-ok','[运行] myh.h 第 29 行：a[i++] = j;   →  a[0] = 2, i 变成 1');
+  snap({file:'myh',line:29,cls:'mv',
+    title:'<b>a[i++] = j;</b>　→　pf.a[0] = <b>2</b>，pf.i 变成 <b>1</b>',
+    desc:'把因子 <code>j</code> 存进数组，同时让下标自增。<br>' +
+      '· <code>i++</code> 是<b>后缀自增</b>：先取旧值 0 作为下标，写入后再 <code>i++</code>；<br>' +
+      '· 这一行同时完成了「存储」和「推进下标」两个动作。'});
+
+  /* ---- 52 ---- */
+  setV('count@pf','1'); S.hlVar='count@pf';
+  S.expand=['count++;',
+    '   → 因子个数加一',
+    '   → pf.count: 0 → 1'];
+  log('out-ok','[运行] myh.h 第 30 行：count++;   →  pf.count = 1');
+  snap({file:'myh',line:30,cls:'mv',
+    title:'<b>count++;</b>　→　pf.count = <b>1</b>',
+    desc:'因子计数器加一。<code>count</code> 从 0 变成 1，用于后续控制输出循环次数。'});
+
+  /* ---- 53 ---- */
+  setV('x@pf','6'); S.hlVar='x@pf';
+  S.expand=['x /= j;',
+    '   → 等价于 x = x / j',
+    '   → x = 12 / 2 = 6',
+    '   → 把已经提取出来的因子从 x 中除掉'];
+  log('out-ok','[运行] myh.h 第 31 行：x /= j;   →  pf.x = 6');
+  snap({file:'myh',line:31,cls:'mv',
+    title:'<b>x /= j;</b>　→　pf.x = <b>6</b>',
+    desc:'把已经找到的因子从 <code>x</code> 中除掉。<code>12 / 2 = 6</code>。<br>' +
+      '· 这里改的是 <code>primefactor</code> 自己的形参，<code>main</code> 的 <code>n</code> 仍然是 12。'});
+
+  /* ---- 54 · continue（第 1 轮） ★ 分两步：先 continue，再回 for 判断 ---- */
+  S.hlVar=null;
+  S.expand=['continue;',
+    '   → 跳过本轮循环体剩余部分（即跳过 j++）',
+    '   → j 保持为 2',
+    '   → 接下来回到 for 语句重新判断'];
+  log('out-note','[运行] myh.h 第 32 行：continue;   → 跳过 j++，j 保持为 2');
+  snap({file:'myh',line:32,cls:'rose',
+    title:'<b>continue;</b>　→　跳过 <code>j++</code>，<b>j 保持为 2</b>',
+    desc:'<code>continue</code> 结束本轮循环的剩余部分，<b>不执行</b> <code>j++;</code>。<br>' +
+      '· 关键点：<code>j</code> <b>没有递增</b>，仍然是 2；<br>' +
+      '· 这样就能<b>把同一个质因数除干净</b>。' +
+      '<span class="tip">★ <b>continue 的完整执行路径：</b><br>' +
+      'continue → 跳过循环体剩余 → 执行 for 的"增量"部分（这里是空的）→ 检查循环条件 → 若为真则重新执行循环体。<br>' +
+      '所以下一步必须先回到 <code>for(i=0, j=2; j&lt;=x; )</code> 重新判断！</span>'});
+
+  /* ---- 54b · 回到 for 判断（第 1 轮） ★ 新增 ---- */
+  S.expand=['for(i=0, j=2; j<=x; )   ← 回到判断',
+    '   → j = 2, x = 6',
+    '   → 2 <= 6  → 真',
+    '   → 进入循环体（第 2 轮）'];
+  log('out-note','[运行] myh.h 第 27 行：continue 后回到 for 判断');
+  log('out-ok','          → 2 <= 6 → 真，继续循环');
+  snap({file:'myh',line:27,cls:'gold',
+    title:'<b>for(...; j&lt;=x; )</b>　→　2 &lt;= 6，条件为<b>真</b>',
+    desc:'<code>continue</code> 之后，程序回到 <code>for</code> 语句重新判断。<br>' +
+      '· <code>j</code> 保持为 <b>2</b>（未执行 j++）；<br>' +
+      '· <code>x</code> 已经变成 <b>6</b>；<br>' +
+      '· <code>2 &lt;= 6</code> 成立，继续执行循环体。' +
+      '<span class="tip">★ 这一步至关重要：<b>continue 不是跳过 for 判断</b>，而是跳过循环体剩余部分后回到 for 判断。</span>'});
+
+  /* ---- 55 · 第 2 轮 if ---- */
+  S.expand=['if(x % j == 0)   ← 第 2 轮',
+    '   → x = 6, j = 2',
+    '   → 6 % 2 = 0',
+    '   → 0 == 0  → 真',
+    '   → 再取一个因子 2'];
+  log('out-note','[运行] myh.h 第 28 行（第 2 轮）：if(x % j == 0)');
+  log('out-ok','          → 6 % 2 = 0 → 真，又得到一个因子 2');
+  snap({file:'myh',line:28,cls:'green',
+    title:'<b>if(x % j == 0)</b>　→　第 2 轮，条件为<b>真</b>',
+    desc:'第二轮判断。此时 <code>x = 6</code>、<code>j</code> 仍然是 <b>2</b>。<br>' +
+      '· <code>6 % 2 = 0</code>，仍然能整除，说明 12 里含有<b>两个</b>质因数 2。'});
+
+  /* ---- 56 ---- */
+  setV('a1@pf','2'); setV('i@pf','2'); S.hlVar='a1@pf';
+  S.expand=['a[i++] = j;',
+    '   → a[1] = 2',
+    '   → i 从 1 变成 2'];
+  log('out-ok','[运行] myh.h 第 29 行：a[i++] = j;   →  a[1] = 2, i 变成 2');
+  snap({file:'myh',line:29,cls:'mv',
+    title:'<b>a[i++] = j;</b>　→　pf.a[1] = <b>2</b>，pf.i 变成 <b>2</b>',
+    desc:'第二个因子 2 被存进数组。数组内容目前是：<code>a[0]=2, a[1]=2</code>。'});
+
+  /* ---- 57 ---- */
+  setV('count@pf','2'); S.hlVar='count@pf';
+  S.expand=['count++;','   → pf.count: 1 → 2'];
+  log('out-ok','[运行] myh.h 第 30 行：count++;   →  pf.count = 2');
+  snap({file:'myh',line:30,cls:'mv',
+    title:'<b>count++;</b>　→　pf.count = <b>2</b>',
+    desc:'因子计数器第二次加一。'});
+
+  /* ---- 58 ---- */
+  setV('x@pf','3'); S.hlVar='x@pf';
+  S.expand=['x /= j;','   → x = 6 / 2 = 3'];
+  log('out-ok','[运行] myh.h 第 31 行：x /= j;   →  pf.x = 3');
+  snap({file:'myh',line:31,cls:'mv',
+    title:'<b>x /= j;</b>　→　pf.x = <b>3</b>',
+    desc:'<code>x</code> 从 6 变成 <b>3</b>，现在剩下 3 待分解。<br>' +
+      '· 3 是质数，不能被 2 整除了，所以下一轮会走到 <code>j++</code>。'});
+
+  /* ---- 59 · continue（第 2 轮） ---- */
+  S.hlVar=null;
+  S.expand=['continue;',
+    '   → 跳过 j++，j 保持为 2',
+    '   → 回到 for 判断'];
+  log('out-note','[运行] myh.h 第 32 行：continue;   → 再次跳过 j++');
+  snap({file:'myh',line:32,cls:'rose',
+    title:'<b>continue;</b>　→　再次跳过 <code>j++</code>',
+    desc:'再次 <code>continue</code>，<code>j</code> 依然保持 2。<br>' +
+      '· 下一步回到 <code>for</code> 语句重新判断。'});
+
+  /* ---- 59b · 回到 for 判断（第 2 轮） ★ 新增 ---- */
+  S.expand=['for(i=0, j=2; j<=x; )   ← 回到判断',
+    '   → j = 2, x = 3',
+    '   → 2 <= 3  → 真',
+    '   → 进入循环体（第 3 轮）'];
+  log('out-note','[运行] myh.h 第 27 行：continue 后回到 for 判断');
+  log('out-ok','          → 2 <= 3 → 真，继续循环');
+  snap({file:'myh',line:27,cls:'gold',
+    title:'<b>for(...; j&lt;=x; )</b>　→　2 &lt;= 3，条件为<b>真</b>',
+    desc:'<code>continue</code> 之后回到 <code>for</code> 判断。<br>' +
+      '· <code>j = 2</code>、<code>x = 3</code>，<code>2 &lt;= 3</code> 成立；<br>' +
+      '· 进入循环体，准备用 2 再试一次。'});
+
+  /* ---- 60 · 第 3 轮 if（假） ---- */
+  S.expand=['if(x % j == 0)   ← 第 3 轮',
+    '   → x = 3, j = 2',
+    '   → 3 % 2 = 1',
+    '   → 1 == 0  → 假',
+    '   → 不进入 if 分支，执行后面的 j++'];
+  log('out-note','[运行] myh.h 第 28 行（第 3 轮）：if(x % j == 0)');
+  log('out-warn','          → 3 % 2 = 1 → 假，2 不再是因子，需要把 j 加 1');
+  snap({file:'myh',line:28,cls:'green',
+    title:'<b>if(x % j == 0)</b>　→　第 3 轮，条件为<b>假</b>',
+    desc:'第三次判断，结果不成立。<br>' +
+      '· <code>3 % 2 = 1</code>，说明 2 已经除不尽 3 了；<br>' +
+      '· 不进入 <code>if</code> 分支，程序直接落到第 34 行的 <code>j++;</code>。'});
+
+  /* ---- 61 · j++ ---- */
+  setV('j@pf','3'); S.hlVar='j@pf';
+  S.expand=['j++;',
+    '   → pf.j: 2 → 3',
+    '   → 回到循环判断'];
+  log('out-ok','[运行] myh.h 第 34 行：j++;   →  pf.j = 3');
+  snap({file:'myh',line:34,cls:'rose',
+    title:'<b>j++;</b>　→　pf.j = <b>3</b>',
+    desc:'因为 2 已经除不尽了，把试除的除数加一。<code>j</code> 从 2 变成 <b>3</b>。' +
+      '<span class="tip">★ 能整除时用 <code>continue</code> 跳过这一句，不能整除时才执行。</span>'});
+
+  /* ---- 62 · 回到 for 判断（j++路径） ---- */
+  S.hlVar=null;
+  S.expand=['for(i=0, j=2; j<=x; )   ← 回到判断',
+    '   → j = 3, x = 3',
+    '   → 3 <= 3  → 真',
+    '   → 进入循环体（第 4 轮）'];
+  log('out-note','[运行] myh.h 第 27 行：循环判断 j <= x');
+  log('out-ok','          → 3 <= 3 → 真，继续循环');
+  snap({file:'myh',line:27,cls:'gold',
+    title:'<b>for(...; j&lt;=x; )</b>　→　3 &lt;= 3，条件为<b>真</b>',
+    desc:'回到 <code>for</code> 的循环判断。<code>j = 3</code>、<code>x = 3</code>，<code>3 &lt;= 3</code> 成立。' +
+      '<span class="tip">★ 为什么是 &lt;= 而不是 &lt;？如果写 <code>j &lt; x</code>，' +
+      '<code>j = x = 3</code> 时条件为假，最后一个因子 3 就取不到，结果会变成 12=2*2。</span>'});
+
+  /* ---- 63 · 第 4 轮 if ---- */
+  S.expand=['if(x % j == 0)   ← 第 4 轮',
+    '   → x = 3, j = 3',
+    '   → 3 % 3 = 0',
+    '   → 0 == 0  → 真',
+    '   → 3 是一个质因数'];
+  log('out-note','[运行] myh.h 第 28 行（第 4 轮）：if(x % j == 0)');
+  log('out-ok','          → 3 % 3 = 0 → 真，3 是最后一个质因数');
+  snap({file:'myh',line:28,cls:'green',
+    title:'<b>if(x % j == 0)</b>　→　第 4 轮，条件为<b>真</b>',
+    desc:'第四次判断，终于轮到 3 了。<code>3 % 3 = 0</code>，能整除，3 是 12 的最后一个质因数。'});
+
+  /* ---- 64 ---- */
+  setV('a2@pf','3'); setV('i@pf','3'); S.hlVar='a2@pf';
+  S.expand=['a[i++] = j;',
+    '   → a[2] = 3',
+    '   → i 从 2 变成 3'];
+  log('out-ok','[运行] myh.h 第 29 行：a[i++] = j;   →  a[2] = 3, i 变成 3');
+  snap({file:'myh',line:29,cls:'mv',
+    title:'<b>a[i++] = j;</b>　→　pf.a[2] = <b>3</b>，pf.i 变成 <b>3</b>',
+    desc:'第三个因子 3 被存进数组。数组现在是 <code>[2, 2, 3]</code>。'});
+
+  /* ---- 65 ---- */
+  setV('count@pf','3'); S.hlVar='count@pf';
+  S.expand=['count++;','   → pf.count: 2 → 3'];
+  log('out-ok','[运行] myh.h 第 30 行：count++;   →  pf.count = 3');
+  snap({file:'myh',line:30,cls:'mv',
+    title:'<b>count++;</b>　→　pf.count = <b>3</b>',
+    desc:'因子计数器第三次加一，与数组里实际存放的因子个数一致。'});
+
+  /* ---- 66 ---- */
+  setV('x@pf','1'); S.hlVar='x@pf';
+  S.expand=['x /= j;',
+    '   → x = 3 / 3 = 1',
+    '   → x 变成 1，分解完成'];
+  log('out-ok','[运行] myh.h 第 31 行：x /= j;   →  pf.x = 1');
+  snap({file:'myh',line:31,cls:'mv',
+    title:'<b>x /= j;</b>　→　pf.x = <b>1</b>',
+    desc:'<code>x</code> 从 3 变成 <b>1</b>，12 已经被完全分解。' +
+      '<span class="tip">★ <code>x</code> 被除到 1 之后，任何 <code>j &gt;= 2</code> 都不满足 <code>j &lt;= x</code>，循环必然终止。</span>'});
+
+  /* ---- 67 · continue（第 4 轮） ---- */
+  S.hlVar=null;
+  S.expand=['continue;',
+    '   → 跳过 j++，回到 for 判断',
+    '   → j = 3, x = 1',
+    '   → 3 <= 1  → 假，循环结束'];
+  log('out-note','[运行] myh.h 第 32 行：continue;   → 回到 for 判断');
+  snap({file:'myh',line:32,cls:'rose',
+    title:'<b>continue;</b>　→　回到 <code>for</code> 判断',
+    desc:'最后一次 <code>continue</code>，回到 <code>for</code> 判断。'});
+
+  /* ---- 67b · 回到 for 判断（退出循环） ★ 新增 ---- */
+  S.expand=['for(i=0, j=2; j<=x; )   ← 回到判断',
+    '   → j = 3, x = 1',
+    '   → 3 <= 1  → 假',
+    '   → 循环结束，执行第 36 行'];
+  log('out-note','[运行] myh.h 第 27 行：循环判断 3 <= 1 → 假，循环结束');
+  log('out-ok','          → 跳转到第 36 行开始输出');
+  snap({file:'myh',line:27,cls:'gold',
+    title:'<b>for(...; j&lt;=x; )</b>　→　3 &lt;= 1，条件为<b>假</b>，循环结束',
+    desc:'回到 <code>for</code> 判断。<code>j = 3</code>、<code>x = 1</code>，<code>3 &lt;= 1</code> 为假。<br>' +
+      '· 循环结束，程序跳到第 35 行的右花括号之后，也就是第 36 行，开始输出结果。' +
+      '<span class="tip"><b>★ 循环执行轨迹回顾</b><br>' +
+      'j=2, x=12 → 整除 → a[0]=2, x=6, count=1 → continue → 2&lt;=6 真<br>' +
+      'j=2, x=6  → 整除 → a[1]=2, x=3, count=2 → continue → 2&lt;=3 真<br>' +
+      'j=2, x=3  → 不整除 → j++ → j=3 → 3&lt;=3 真<br>' +
+      'j=3, x=3  → 整除 → a[2]=3, x=1, count=3 → continue → 3&lt;=1 假 → 结束</span>'});
+
+  /* ---- 68 ---- */
+  S.hlVar='m@pf';
+  S.expand=['printf("%d=", m);',
+    '   → m = 12（原数备份）',
+    '   → %d 输出 12，然后输出一个等号',
+    '   → 输出 "12="（不带换行）'];
+  log('out-note','[运行] myh.h 第 36 行：printf("%d=", m);');
+  log('out-out','12=');
+  outOpen('12=');
+  snap({file:'myh',line:36,cls:'out',
+    title:'<b>printf("%d=", m);</b>　→　输出 <b>12=</b>（暂不换行）',
+    desc:'输出等式的左边。<code>%d</code> 输出 <code>m</code> 的值（原数 12），再输出一个等号。<br>' +
+      '· 格式串里<b>没有 <code>\\n</code></b>，光标停在这里，等待后面的因子接着输出。' +
+      '<span class="tip">★ 用备份的 <code>m</code> 而不是 <code>x</code>：因为 <code>x</code> 已经被除到 1 了。</span>'});
+
+  /* ---- 69 ---- */
+  setV('i@pf','0'); S.hlVar='i@pf';
+  S.expand=['for(i=0; i<count-1; i++)',
+    '   → 初始化：i = 0',
+    '   → 判断：i < count-1 → 0 < 2 → 真',
+    '   → 进入循环体，准备输出 a[0]'];
+  log('out-note','[运行] myh.h 第 37 行：for(i=0; i<count-1; i++)');
+  log('out-ok','          → i = 0，0 < 2 → 真，输出 a[0]');
+  snap({file:'myh',line:37,cls:'gold',
+    title:'<b>for(i=0; i&lt;count-1; i++)</b>　→　i=0，条件为<b>真</b>',
+    desc:'输出因子的循环开始。上界是 <code>count-1 = 2</code>，所以 <code>i</code> 取 0 和 1，<b>不取 2</b>。<br>' +
+      '· 这样前两个因子后面各带一个 <code>*</code>，最后一个因子留到循环外单独输出。'});
+
+  /* ---- 70 ---- */
+  S.hlVar='a0@pf';
+  S.expand=['printf("%d*", a[i]);   ← i = 0',
+    '   → a[0] = 2',
+    '   → 输出 "2*"，追加到当前行末尾',
+    '   → 当前行变成 "12=2*"'];
+  log('out-note','[运行] myh.h 第 38 行：printf("%d*", a[i]);   →  追加 "2*"');
+  log('out-out','2*');
+  outAppend('2*');
+  snap({file:'myh',line:38,cls:'out',
+    title:'<b>printf("%d*", a[i]);</b>　→　追加 <b>2*</b>',
+    desc:'输出第一个因子和分隔符。<code>a[0] = 2</code>，输出 <code>2*</code>。<br>' +
+      '· 因为格式串里没有 <code>\\n</code>，内容直接<b>接在</b> <code>12=</code> 后面，当前行变成 <code>12=2*</code>。'});
+
+  /* ---- 71 ---- */
+  setV('i@pf','1'); S.hlVar='i@pf';
+  S.expand=['for(...; i<count-1; i++)   ← i 自增',
+    '   → i 从 0 变成 1',
+    '   → 判断：1 < 2 → 真',
+    '   → 继续输出 a[1]'];
+  log('out-note','[运行] myh.h 第 37 行：i++  →  i = 1，1 < 2 → 真');
+  snap({file:'myh',line:37,cls:'gold',
+    title:'<b>for(...; i&lt;count-1; i++)</b>　→　i = 1，继续循环',
+    desc:'循环变量自增，<code>i</code> 从 0 变成 1，继续输出下一个因子。'});
+
+  /* ---- 72 ---- */
+  S.hlVar='a1@pf';
+  S.expand=['printf("%d*", a[i]);   ← i = 1',
+    '   → a[1] = 2',
+    '   → 输出 "2*"',
+    '   → 当前行变成 "12=2*2*"'];
+  log('out-note','[运行] myh.h 第 38 行：printf("%d*", a[i]);   →  追加 "2*"');
+  log('out-out','2*');
+  outAppend('2*');
+  snap({file:'myh',line:38,cls:'out',
+    title:'<b>printf("%d*", a[i]);</b>　→　追加 <b>2*</b>',
+    desc:'输出第二个因子和分隔符。<code>a[1] = 2</code>，当前输出行变成 <code>12=2*2*</code>。'});
+
+  /* ---- 73 ---- */
+  setV('i@pf','2'); S.hlVar='i@pf';
+  S.expand=['for(...; i<count-1; i++)   ← i 自增',
+    '   → i 从 1 变成 2',
+    '   → 判断：2 < 2 → 假',
+    '   → 循环结束，执行第 39 行'];
+  log('out-note','[运行] myh.h 第 37 行：i++  →  i = 2，2 < 2 → 假，循环结束');
+  snap({file:'myh',line:37,cls:'gold',
+    title:'<b>for(...; i&lt;count-1; i++)</b>　→　i = 2，条件为<b>假</b>',
+    desc:'循环变量再次自增，<code>i</code> 变成 2。判断 <code>2 &lt; 2</code> 不成立，循环结束，程序跳到第 39 行。'});
+
+  /* ---- 74 ---- */
+  S.hlVar='a2@pf';
+  S.expand=['printf("%d", a[count-1]);',
+    '   → count - 1 = 2',
+    '   → a[2] = 3',
+    '   → 输出 "3"（不带星号）',
+    '   → 当前行变成 "12=2*2*3"'];
+  log('out-note','[运行] myh.h 第 39 行：printf("%d", a[count-1]);   →  追加 "3"');
+  log('out-out','3');
+  outAppend('3');
+  snap({file:'myh',line:39,cls:'out',
+    title:'<b>printf("%d", a[count-1]);</b>　→　追加 <b>3</b>',
+    desc:'输出最后一个因子，不带分隔符。<code>count - 1 = 2</code>，取 <code>a[2] = 3</code>，当前行变成完整的 <code>12=2*2*3</code>。' +
+      '<span class="tip">★ 数组下标从 0 开始，最后一个元素是 <code>count-1</code>。</span>'});
+
+  /* ---- 75 ---- */
+  S.hlVar=null;
+  S.expand=["putchar('\\n');",
+    '   → 输出一个换行符',
+    '   → 当前行 "12=2*2*3" 结束换行'];
+  log('out-note',"[运行] myh.h 第 40 行：putchar('\\n');   → 输出换行，本行结束");
+  log('out-out','12=2*2*3');
+  outClose();
+  snap({file:'myh',line:40,cls:'out',
+    title:"<b>putchar('\\n');</b>　→　换行，输出行 <b>12=2*2*3</b> 结束",
+    desc:'输出一个换行符，结束这一行。控制台上完整显示了 <code>12=2*2*3</code> 并换行。'});
+
+  /* ---- 76 ---- */
+  S.scope='main';
+  clrV('x@pf'); clrV('i@pf'); clrV('j@pf'); clrV('count@pf'); clrV('m@pf');
+  clrV('a0@pf'); clrV('a1@pf'); clrV('a2@pf');
+  S.hlVar=null;
+  S.expand=['}  ← primefactor 函数结束',
+    '   → primefactor 栈帧弹出',
+    '   → x、i、j、count、m、a[] 全部销毁',
+    '   → 无返回值，控制权交回 main'];
+  log('out-note','[运行] myh.h 第 41 行：}   → primefactor 栈帧销毁，全部局部变量消失');
+  snap({file:'myh',line:41,cls:'gold',
+    title:'<b>}</b>　→　primefactor 栈帧销毁，局部变量全部消失',
+    desc:'<code>primefactor</code> 函数结束，栈帧弹出。所有局部变量销毁，面板恢复成只显示 <code>main</code> 的 6 个变量。' +
+      '<span class="tip">★ 至此 4 次函数调用全部完成：area(5)=78.5，delta(3,4,5)=1，prime(12)=0，primefactor(12) 打印 12=2*2*3。</span>'});
+
+  /* ---- 77 · return 0 ---- */
+  S.phase='已结束'; S.hlVar=null; S.expand=[];
+  log('out-empty','');
+  log('out-final','==================== 程序运行结果 ====================');
+  log('out-out','Input r:5');
+  log('out-out','Area=78.50 ');
+  log('out-out','Input x,y,z:3 4 5');
+  log('out-out','It is a Delta ');
+  log('out-out','Input n:12');
+  log('out-out','It isn\'t prime! ');
+  log('out-out','12=2*2*3');
+  log('out-empty','');
+  log('out-note','函数调用：area(5)=78.5   delta(3,4,5)=1   prime(12)=0   primefactor(12) 打印结果');
+  log('out-note','宏替换  ：PI 在预处理阶段被替换成 3.14');
+  log('out-warn','值传递  ：形参只是实参的副本，函数内修改不影响 main 的变量');
+  log('out-warn','栈帧    ：函数返回时局部变量自动销毁，无需手动释放');
+  log('out-empty','');
+  log('out-final','程序正常结束（return 0）');
+  snap({file:'myc',line:24,cls:'gold',
+    title:'<b>return 0;</b>　→　程序正常结束，共 7 行输出',
+    desc:'<code>main</code> 返回 <b>0</b>，向操作系统报告程序正常退出。' +
+      '<span class="win"><b>★ 程序完整运行结果（共 7 行）：</b><br>' +
+      '<code>Input r:5</code><br><code>Area=78.50 </code><br>' +
+      '<code>Input x,y,z:3 4 5</code><br><code>It is a Delta </code><br>' +
+      '<code>Input n:12</code><br><code>It isn\'t prime! </code><br>' +
+      '<code>12=2*2*3</code></span>'});
+
+  /* ---- 78 · main 结束 ---- */
+  log('out-note','[运行] myc.cpp 第 25 行：}   → main 函数结束，程序退出');
+  snap({file:'myc',line:25,cls:'gold',
+    title:'<b>}</b>　→　main 函数结束，程序退出',
+    desc:'<code>main</code> 函数体结束，栈帧回收。所有局部变量销毁，控制权交还操作系统。' +
+      '<span class="tip"><b>★ 一句话记住本程序：</b>函数调用 = 建栈帧 + 值传递 + 执行 + 返回值 + 销毁栈帧。</span>'});
+
+  return steps;
+}
+
+var STEPS = buildSteps();
+
+/* =========================================================
+   DOM
+   ========================================================= */
+var codeScroll  = document.getElementById('codeScroll');
+var macroStrip  = document.getElementById('macroStrip');
+var varCardsBox = document.getElementById('varCards');
+var expandBox   = document.getElementById('expandBox');
+var consoleBody = document.getElementById('consoleBody');
+var explainBox  = document.getElementById('explainBox');
+var miniBody    = document.getElementById('miniBody');
+var miniContent = document.getElementById('miniContent');
+var btnPlay     = document.getElementById('btnPlay');
+var btnPrev     = document.getElementById('btnPrev');
+var btnNext     = document.getElementById('btnNext');
+var btnReset    = document.getElementById('btnReset');
+var btnFontUp   = document.getElementById('btnFontUp');
+var btnFontDown = document.getElementById('btnFontDown');
+var btnLayout   = document.getElementById('btnLayout');
+var btnAll      = document.getElementById('btnAllPanels');
+var speedInput  = document.getElementById('speed');
+var stepCounter = document.getElementById('stepCounter');
+var lineValEl   = document.getElementById('lineVal');
+var phaseValEl  = document.getElementById('phaseVal');
+var scopeValEl  = document.getElementById('scopeVal');
+var outValEl    = document.getElementById('outVal');
+
+var ALL_PANELS = ['pCtrl','pInfo','pMacro','pVars','pExpand','pModel','pOut','pExplain','pMini'];
+
+var codeLines=[], miniLines=[];
+var current=-1, playing=false, timer=null;
+var speed = Number(speedInput.value);
+var miniViewport=null;
+var zTop=100;
+
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+/* =========================================================
+   构建代码区 + 缩略图（缩略图保留缩进）
+   ========================================================= */
+function buildCode(){
+  var html='', mini='', i;
+  html += '<div class="file-head">📄 myh.h　（头文件：宏定义 + 4 个函数定义，共 41 行）</div>';
+  for (i=0;i<MYH_SRC.length;i++){
+    html += '<div class="code-line" data-file="myh" data-line="'+(i+1)+'">' +
+              '<span class="ln">'+(i+1)+'</span>' +
+              '<span class="src">'+MYH_SRC[i]+'</span>' +
+            '</div>';
+    mini += '<div class="mini-line" data-file="myh" data-line="'+(i+1)+'">'+MYH_SRC[i]+'</div>';
+  }
+  html += '<div class="file-head cpp">📄 myc.cpp　（主程序：main 函数，共 25 行）</div>';
+  for (i=0;i<MYC_SRC.length;i++){
+    html += '<div class="code-line" data-file="myc" data-line="'+(i+1)+'">' +
+              '<span class="ln">'+(i+1)+'</span>' +
+              '<span class="src">'+MYC_SRC[i]+'</span>' +
+            '</div>';
+    mini += '<div class="mini-line" data-file="myc" data-line="'+(i+1)+'">'+MYC_SRC[i]+'</div>';
+  }
+  codeScroll.innerHTML = html;
+  codeLines = Array.prototype.slice.call(codeScroll.querySelectorAll('.code-line'));
+  miniContent.innerHTML = mini + '<div class="mini-viewport" id="miniViewport"></div>';
+  miniLines = Array.prototype.slice.call(miniContent.querySelectorAll('.mini-line'));
+  miniViewport = document.getElementById('miniViewport');
+  layoutMini();
+}
+
+function layoutMini(){
+  var h = miniBody.clientHeight;
+  if (h <= 0) return;
+  var lh = h / 66;
+  for (var i=0;i<miniLines.length;i++){
+    miniLines[i].style.height = lh+'px';
+    miniLines[i].style.fontSize = Math.max(1.5, lh*0.82)+'px';
+    miniLines[i].style.lineHeight = lh+'px';
+  }
+  syncMini();
+}
+
+function syncMini(){
+  if (!miniViewport) return;
+  var h = miniBody.clientHeight;
+  if (h <= 0) return;
+  var sh = codeScroll.scrollHeight;
+  var ch = codeScroll.clientHeight;
+  var ratio = sh > 0 ? ch/sh : 1;
+  var vh = Math.max(6, h*ratio);
+  var maxScroll = sh - ch;
+  var r = maxScroll > 0 ? codeScroll.scrollTop/maxScroll : 0;
+  miniViewport.style.height = vh+'px';
+  miniViewport.style.top = (r*(h-vh))+'px';
+}
+
+function renderMini(step){
+  if (!miniLines.length) return;
+  var file = step ? step.file : null;
+  var line = step ? step.line : -1;
+  for (var i=0;i<miniLines.length;i++){
+    var el = miniLines[i];
+    var isCur = (file!==null && el.getAttribute('data-file')===file &&
+                 Number(el.getAttribute('data-line'))===line);
+    el.classList.toggle('cur', isCur);
+  }
+  syncMini();
+}
+
+miniBody.addEventListener('click', function(e){
+  var r = miniBody.getBoundingClientRect();
+  var ratio = (e.clientY - r.top)/r.height;
+  ratio = Math.max(0, Math.min(1, ratio));
+  var maxScroll = codeScroll.scrollHeight - codeScroll.clientHeight;
+  codeScroll.scrollTop = ratio * maxScroll;
+});
+
+/* =========================================================
+   宏条 / 变量卡
+   ========================================================= */
+function buildMacroStrip(){
+  var html='';
+  for (var i=0;i<MACRO_ORDER.length;i++){
+    var n = MACRO_ORDER[i], info = MACRO_INFO[n];
+    html += '<div class="macro-chip '+info.cls+'" data-macro="'+n+'">' +
+              '<span class="mn">'+escHtml(n)+' = '+escHtml(info.def)+'</span>' +
+              '<span class="md">'+escHtml(info.tag)+'</span>' +
+            '</div>';
+  }
+  macroStrip.innerHTML = html;
+}
+
+function buildVarCards(){
+  var html='';
+  for (var i=0;i<VAR_DEFS.length;i++){
+    var d = VAR_DEFS[i];
+    html += '<div class="var-card hidden" data-key="'+d.key+'">' +
+              '<span class="vrow">' +
+                '<span class="vn">'+escHtml(d.label)+'</span>' +
+                '<span class="vt">'+escHtml(d.type)+'</span>' +
+              '</span>' +
+              '<span class="vv">?</span>' +
+            '</div>';
+  }
+  varCardsBox.innerHTML = html;
+}
+
+/* =========================================================
+   渲染
+   ========================================================= */
+function updateMacros(step){
+  var st = step ? step.state : null;
+  var chips = macroStrip.querySelectorAll('.macro-chip');
+  for (var k=0;k<chips.length;k++){
+    var chip = chips[k];
+    var name = chip.getAttribute('data-macro');
+    var def = st ? st.macros[name] : 'no';
+    var isDead = (def !== 'def');
+    chip.classList.toggle('is-dead', isDead);
+    chip.classList.toggle('is-active', !!(st && st.hlMacro===name && !isDead));
+  }
+}
+
+function updateVarCards(step){
+  var st = step ? step.state : null;
+  var scope = st ? st.scope : 'main';
+  var cards = varCardsBox.querySelectorAll('.var-card');
+  for (var k=0;k<cards.length;k++){
+    var card = cards[k];
+    var key = card.getAttribute('data-key');
+    var def = VAR_MAP[key];
+    var visible = (def.scope==='main' || def.scope===scope);
+    card.classList.toggle('hidden', !visible);
+    if (!visible){ card.classList.remove('is-active'); continue; }
+    var vv = card.querySelector('.vv');
+    var val = st ? st.vars[key] : null;
+    var has = (val !== null && val !== undefined);
+    var txt = has ? String(val) : '?';
+    if (vv.textContent !== txt){
+      vv.textContent = txt;
+      card.classList.remove('changed');
+      void card.offsetWidth;
+      if (has) card.classList.add('changed');
+    }
+    card.classList.toggle('has', has);
+    card.classList.toggle('is-active', !!(st && st.hlVar===key));
+  }
+}
+
+function updateExpand(step){
+  var st = step ? step.state : null;
+  var arr = (st && st.expand) ? st.expand : [];
+  if (!arr.length){
+    expandBox.innerHTML = '<div class="exp-empty">（当前步骤没有宏展开 / 函数调用 / 求值过程）</div>';
+    return;
+  }
+  var html='';
+  for (var i=0;i<arr.length;i++){
+    var cls = 'exp-line';
+    if (i === arr.length-1) cls += ' exp-final';
+    else if (arr[i].indexOf('⚠')>=0) cls += ' exp-warn';
+    html += '<div class="'+cls+'">'+escHtml(arr[i])+'</div>';
+  }
+  expandBox.innerHTML = html;
+  expandBox.scrollTop = expandBox.scrollHeight;
+}
+
+function updateConsole(step){
+  if (!step){
+    consoleBody.innerHTML = '<div class="out-line out-wait">（等待程序开始…）</div>';
+    return;
+  }
+  var lines = step.state.console;
+  var frag = document.createDocumentFragment();
+  for (var i=0;i<lines.length;i++){
+    var d = document.createElement('div');
+    d.className = 'out-line ' + lines[i].cls;
+    d.textContent = lines[i].text;
+    frag.appendChild(d);
+  }
+  consoleBody.innerHTML = '';
+  consoleBody.appendChild(frag);
+  var last = consoleBody.lastElementChild;
+  if (last && !(step.file==='myc' && step.line===25)){
+    var cur = document.createElement('span');
+    cur.className = 'cursor';
+    cur.textContent = '▊';
+    last.appendChild(cur);
+  }
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+function countOutLines(st){
+  if (!st) return 0;
+  var n=0;
+  for (var i=0;i<st.console.length;i++) if (st.console[i].cls==='out-out') n++;
+  return n;
+}
+
+function updateInfoBar(step){
+  if (!step){
+    lineValEl.textContent='—'; phaseValEl.textContent='—';
+    scopeValEl.textContent='main'; outValEl.textContent='0';
+    stepCounter.textContent = '步骤 — / '+STEPS.length;
+    return;
+  }
+  var s = step.state;
+  lineValEl.textContent = FILE_NAME[step.file]+' 第 '+step.line+' 行';
+  phaseValEl.textContent = s.phase||'—';
+  scopeValEl.textContent = s.scope||'main';
+  outValEl.textContent = countOutLines(s)+' 行';
+  stepCounter.textContent = '步骤 '+(current+1)+' / '+STEPS.length;
+}
+
+function centerActiveLine(){
+  var el = codeScroll.querySelector('.code-line.active');
+  if (!el) return;
+  var er = el.getBoundingClientRect();
+  var cr = codeScroll.getBoundingClientRect();
+  var delta = (er.top + er.height/2) - (cr.top + cr.height/2);
+  if (Math.abs(delta) > 4) codeScroll.scrollTop = Math.max(0, codeScroll.scrollTop + delta);
+}
+
+function updateCode(step){
+  var cls = (step && step.cls) ? step.cls : '';
+  for (var w=0;w<codeLines.length;w++){
+    var el = codeLines[w];
+    var isActive = !!(step &&
+      el.getAttribute('data-file')===step.file &&
+      Number(el.getAttribute('data-line'))===step.line);
+    el.className = 'code-line' + (isActive?' active':'') +
+                   (isActive && cls ? ' '+cls+'-hi' : '');
+  }
+  centerActiveLine();
+  syncMini();
+}
+
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+  updateCode(step);
+  updateMacros(step);
+  updateVarCards(step);
+  updateExpand(step);
+  updateConsole(step);
+  updateInfoBar(step);
+  renderMini(step);
+  if (step){
+    explainBox.innerHTML =
+      '<span class="ex-line'+(step.cls?' '+step.cls:'')+'">' +
+        FILE_NAME[step.file]+' 第 '+step.line+' 行</span>' +
+      '<strong>'+step.title+'</strong> —— '+step.desc;
+  } else {
+    explainBox.innerHTML =
+      '<em>点击「自动播放」或「下一步」，开始逐步执行模拟。<br><br>' +
+      '<b>本程序演示：C 语言 头文件 + 多函数调用 + 函数栈帧 + 变量逐步变化</b><br>' +
+      '· myh.h：1 个对象宏 PI + 4 个函数定义<br>' +
+      '· myc.cpp：main 依次调用 area → delta → prime → primefactor<br>' +
+      '· 固定输入：r=5，x,y,z=3,4,5，n=12<br>' +
+      '· 程序输出共 7 行：<br>' +
+      '　　Input r:5<br>　　Area=78.50 <br>　　Input x,y,z:3 4 5<br>' +
+      '　　It is a Delta <br>　　Input n:12<br>　　It isn\'t prime! <br>　　' +
+      '12=2*2*3<br><br>' +
+      '共 '+STEPS.length+' 个执行步骤。快捷键：空格 / ← / → / R / F / M / H。</em>';
+  }
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length-1;
+}
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+
+function tick(){
+  if (current >= STEPS.length-1){ pause(); return; }
+  current += 1;
+  render();
+  if (current >= STEPS.length-1) pause();
+}
+
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length-1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){ pause(); if (current<STEPS.length-1){ current+=1; render(); } }
+function prevStep(){ pause(); if (current>-1){ current-=1; render(); } }
+function resetAll(){ pause(); current=-1; codeScroll.scrollTop=0; render(); }
+
+/* =========================================================
+   面板：拖动 / 调整大小 / 置顶 / 关闭
+   ========================================================= */
+function bringToFront(el){
+  zTop += 1;
+  el.style.zIndex = zTop;
+  for (var i=0;i<ALL_PANELS.length;i++){
+    var p = document.getElementById(ALL_PANELS[i]);
+    if (p && p !== el) p.classList.remove('front');
+  }
+  el.classList.add('front');
+}
+
+function makeDraggable(el, handle){
+  handle.addEventListener('pointerdown', function(e){
+    if (e.target.closest('.p-close')) return;
+    if (e.button!==undefined && e.button!==0) return;
+    bringToFront(el);
+    e.preventDefault();
+    var r = el.getBoundingClientRect();
+    var ox = e.clientX - r.left, oy = e.clientY - r.top;
+    el.style.left = r.left+'px';
+    el.style.top  = r.top+'px';
+    el.style.right = 'auto'; el.style.bottom = 'auto';
+    el.style.transform = 'none';
+    function mv(ev){
+      el.style.left = (ev.clientX - ox)+'px';
+      el.style.top  = (ev.clientY - oy)+'px';
+    }
+    function up(){
+      document.removeEventListener('pointermove', mv);
+      document.removeEventListener('pointerup', up);
+    }
+    document.addEventListener('pointermove', mv);
+    document.addEventListener('pointerup', up);
+  });
+}
+
+function makeResizable(el, handle){
+  handle.addEventListener('pointerdown', function(e){
+    if (e.button!==undefined && e.button!==0) return;
+    bringToFront(el);
+    e.preventDefault(); e.stopPropagation();
+    var r = el.getBoundingClientRect();
+    var sw = r.width, sh = r.height;
+    var sx = e.clientX, sy = e.clientY;
+    el.style.width = sw+'px';
+    el.style.height = sh+'px';
+    function mv(ev){
+      el.style.width  = Math.max(24, sw + (ev.clientX - sx))+'px';
+      el.style.height = Math.max(24, sh + (ev.clientY - sy))+'px';
+      if (el.id === 'pMini') layoutMini();
+      syncMini();
+    }
+    function up(){
+      document.removeEventListener('pointermove', mv);
+      document.removeEventListener('pointerup', up);
+      layoutMini(); syncMini();
+    }
+    document.addEventListener('pointermove', mv);
+    document.addEventListener('pointerup', up);
+  });
+}
+
+function setupPanels(){
+  for (var i=0;i<ALL_PANELS.length;i++){
+    var el = document.getElementById(ALL_PANELS[i]);
+    if (!el) continue;
+    var head = el.querySelector('.p-head');
+    var rz   = el.querySelector('.p-resize');
+    var close = el.querySelector('.p-close');
+    if (head) makeDraggable(el, head);
+    if (rz) makeResizable(el, rz);
+    if (close){
+      close.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        this.closest('.panel').classList.add('closed');
+      });
+    }
+    el.addEventListener('pointerdown', function(){ bringToFront(this); });
+  }
+}
+
+function defaultLayout(){
+  var W = window.innerWidth, H = window.innerHeight;
+  function place(id, left, top, w, h){
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('closed');
+    el.style.left = Math.max(0, left)+'px';
+    el.style.top  = Math.max(0, top)+'px';
+    el.style.right = 'auto'; el.style.bottom = 'auto';
+    el.style.transform = 'none';
+    el.style.width  = w ? (w+'px') : '';
+    el.style.height = h ? (h+'px') : '';
+    el.style.zIndex = 10;
+    el.classList.remove('front');
+  }
+  if (W < 900){
+    place('pCtrl',   6, 6);
+    place('pInfo',   6, 96);
+    place('pMini',   W-186, 6, 180, 440);
+    place('pVars',   6, 172);
+    place('pMacro',  6, 440);
+    place('pExpand', 6, 600);
+    place('pOut',    6, H-320);
+    place('pModel',  6, H-560);
+    place('pExplain',6, H-180);
+  } else {
+    place('pCtrl',   W*0.28, 10);
+    place('pInfo',   W*0.28, 78);
+    place('pMini',   W-190, 10, 180, 700);
+    place('pVars',   W-720, 10, 540, 300);
+    place('pMacro',  W-720, 322, 540, 180);
+    place('pExpand', 14, 10, 430, 340);
+    place('pModel',  14, 362, 430, 340);
+    place('pOut',    W-720, H-400, 700, 390);
+    place('pExplain',W*0.26, H-240, 660, 230);
+  }
+  layoutMini(); syncMini();
+}
+
+function toggleAllPanels(){
+  var anyOpen = false;
+  for (var i=0;i<ALL_PANELS.length;i++){
+    var p = document.getElementById(ALL_PANELS[i]);
+    if (p && !p.classList.contains('closed')){ anyOpen = true; break; }
+  }
+  for (var j=0;j<ALL_PANELS.length;j++){
+    var el = document.getElementById(ALL_PANELS[j]);
+    if (!el) continue;
+    if (anyOpen) el.classList.add('closed');
+    else el.classList.remove('closed');
+  }
+  btnAll.textContent = anyOpen ? '显示面板' : '隐藏面板';
+}
+
+/* =========================================================
+   事件绑定
+   ========================================================= */
+btnPlay.addEventListener('click', function(){ playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+btnLayout.addEventListener('click', defaultLayout);
+btnAll.addEventListener('click', toggleAllPanels);
+
+var fsLevel = 1;
+btnFontUp.addEventListener('click', function(){
+  fsLevel = Math.min(3, fsLevel + 0.2);
+  document.documentElement.style.setProperty('--fs', fsLevel);
+  setTimeout(function(){ layoutMini(); syncMini(); }, 60);
+});
+btnFontDown.addEventListener('click', function(){
+  fsLevel = Math.max(0.6, fsLevel - 0.2);
+  document.documentElement.style.setProperty('--fs', fsLevel);
+  setTimeout(function(){ layoutMini(); syncMini(); }, 60);
+});
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  if (playing){
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+codeScroll.addEventListener('scroll', function(){ window.requestAnimationFrame(syncMini); });
+window.addEventListener('resize', function(){ layoutMini(); syncMini(); });
+
+document.addEventListener('keydown', function(e){
+  if (e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
+  if (e.code==='Space'){ e.preventDefault(); playing ? pause() : play(); }
+  else if (e.code==='ArrowRight'){ e.preventDefault(); nextStep(); }
+  else if (e.code==='ArrowLeft'){ e.preventDefault(); prevStep(); }
+  else if (e.code==='KeyR'){ resetAll(); }
+  else if (e.code==='KeyF'){
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  }
+  else if (e.code==='KeyM'){
+    var m = document.getElementById('pMini');
+    if (m) m.classList.toggle('closed');
+  }
+  else if (e.code==='KeyH'){ toggleAllPanels(); }
+});
+
+/* =========================================================
+   初始化
+   ========================================================= */
+buildCode();
+buildMacroStrip();
+buildVarCards();
+setupPanels();
+defaultLayout();
+render();
+updatePlayBtn();
+setTimeout(function(){ layoutMini(); syncMini(); }, 120);
+})();
+</script>
+</body>
+</html>

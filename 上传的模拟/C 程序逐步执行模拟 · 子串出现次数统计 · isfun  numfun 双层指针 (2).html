@@ -1,0 +1,1662 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 子串出现次数统计 · isfun / numfun 双层指针</title>
+<style>
+  :root{
+    --bg:#0d1117;
+    --border:#1e2f49;
+    --text:#dce8f8;
+    --muted:#7d93b3;
+    --accent:#38bdf8;
+    --green:#4ade80;
+    --amber:#fbbf24;
+    --pink:#f472b6;
+    --purple:#c084fc;
+    --teal:#2dd4bf;
+    --orange:#fb923c;
+    --gold:#facc15;
+    --red:#f87171;
+    --code-font: clamp(22px, 2.6vw, 56px);
+    --ln-font:   clamp(16px, 1.6vw, 34px);
+    --out-font:  clamp(24px, 2.6vw, 56px);
+    --var-font:  clamp(13px, .95vw, 22px);
+    --cell-font: clamp(12px, .9vw, 20px);
+    --idx-font:  clamp(9px, .65vw, 14px);
+    --explain-font: clamp(14px, 1vw, 22px);
+    --btn-font:  clamp(12px, .82vw, 18px);
+    --title-font:clamp(15px, 1vw, 24px);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:#0d1117;color:var(--text);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    overflow:hidden;
+  }
+  /* ===== 全屏代码区 ===== */
+  #codeLayer{position:fixed;inset:0;background:#0d1117;overflow:hidden;z-index:1;}
+  #codeScroll{
+    position:absolute;inset:0;overflow:auto;
+    padding:1.5vh 1.5vw 40vh 0;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:var(--code-font);line-height:1.5;
+    scrollbar-width:thin;scrollbar-color:#334155 transparent;scroll-behavior:smooth;
+  }
+  #codeScroll::-webkit-scrollbar{width:14px;height:14px;}
+  #codeScroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+  .code-line{
+    display:flex;align-items:flex-start;gap:.9vw;
+    padding:0 1.5vw 0 .5vw;border-left:6px solid transparent;
+    white-space:pre;transition:background .25s,border-color .25s;min-height:1.5em;
+  }
+  .code-line .ln{
+    flex:0 0 auto;width:3ch;text-align:right;color:#3f5a7d;
+    user-select:none;font-size:var(--ln-font);line-height:1.5;
+    font-variant-numeric:tabular-nums;
+  }
+  .code-line .src{flex:1 1 auto;line-height:1.5;}
+  .code-line.active{
+    background:linear-gradient(90deg,rgba(56,189,248,.28),rgba(56,189,248,.02));
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 2px rgba(56,189,248,.22);
+  }
+  .code-line.active .ln{color:var(--accent);font-weight:800;}
+  .code-line.active .src{color:#fff;}
+  .code-line.aux-num{
+    background:linear-gradient(90deg,rgba(192,132,252,.2),rgba(192,132,252,.02));
+    border-left-color:var(--purple);
+  }
+  .code-line.aux-num .ln{color:var(--purple);font-weight:800;}
+  .code-line.aux-is{
+    background:linear-gradient(90deg,rgba(251,191,36,.2),rgba(251,191,36,.02));
+    border-left-color:var(--amber);
+  }
+  .code-line.aux-is .ln{color:var(--amber);font-weight:800;}
+  .tok-pp{color:#c084fc;font-weight:700;}
+  .tok-str{color:#4ade80;}
+  .tok-cmt{color:#5b6f8c;font-style:italic;}
+  .tok-fn{color:#38bdf8;font-weight:700;}
+  .tok-kw{color:#f472b6;font-weight:700;}
+  .tok-num{color:#fbbf24;}
+  .tok-op{color:#fb923c;font-weight:700;}
+
+  /* ===== 浮动面板 ===== */
+  .fp{
+    position:fixed;background:rgba(13,17,23,.86);
+    backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+    border:1px solid rgba(56,189,248,.5);border-radius:14px;
+    color:var(--text);box-shadow:0 12px 44px rgba(0,0,0,.6);
+    z-index:100;display:flex;flex-direction:column;overflow:hidden;
+    font-size:var(--var-font);transition:border-color .2s,box-shadow .2s;
+  }
+  .fp.is-active{border-color:var(--accent);box-shadow:0 14px 60px rgba(56,189,248,.5);}
+  .fp-head{
+    display:flex;align-items:center;gap:.5em;padding:.35em .65em;
+    background:linear-gradient(180deg,rgba(56,189,248,.14),rgba(56,189,248,.04));
+    border-bottom:1px solid rgba(56,189,248,.25);
+    cursor:move;user-select:none;font-size:var(--title-font);font-weight:800;flex:0 0 auto;
+  }
+  .fp-close{
+    margin-left:auto;width:1.9em;height:1.9em;border-radius:8px;border:none;
+    background:rgba(248,113,113,.25);color:#fca5a5;font-size:.9em;
+    cursor:pointer;display:flex;align-items:center;justify-content:center;font-weight:800;
+  }
+  .fp-close:hover{background:#ef4444;color:#fff;}
+  .fp-mini{
+    position:absolute;right:2.4em;top:.3em;width:1.7em;height:1.7em;
+    border-radius:6px;border:none;background:rgba(148,163,184,.2);
+    color:#cbd5e1;cursor:pointer;font-weight:800;
+    display:flex;align-items:center;justify-content:center;font-size:.85em;
+  }
+  .fp-mini:hover{background:rgba(148,163,184,.4);color:#fff;}
+  .fp-body{flex:1 1 auto;overflow:auto;padding:.45em .7em .5em;min-height:0;
+    scrollbar-width:thin;scrollbar-color:#334155 transparent;}
+  .fp-body::-webkit-scrollbar{width:8px;height:8px;}
+  .fp-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+  .resize-handle{
+    position:absolute;right:0;bottom:0;width:22px;height:22px;
+    cursor:nwse-resize;
+    background:linear-gradient(135deg,transparent 48%,rgba(56,189,248,.65) 48%);
+    border-bottom-right-radius:14px;z-index:5;
+  }
+  .fp.collapsed .fp-body{display:none;}
+
+  /* ===== 控制栏 ===== */
+  #fp-controls .fp-body{padding:.25em .5em;display:flex;flex-wrap:wrap;gap:.3em;align-items:center;}
+  .btn{
+    font:inherit;font-size:var(--btn-font);font-weight:700;
+    padding:.3em .65em;border-radius:.5em;border:1px solid var(--border);
+    background:#182741;color:var(--text);cursor:pointer;
+    transition:background .15s,border-color .15s,transform .1s;
+    white-space:nowrap;min-height:2em;
+  }
+  .btn:hover:not(:disabled){background:#213352;border-color:#3a587f;}
+  .btn:active:not(:disabled){transform:translateY(1px);}
+  .btn:disabled{opacity:.32;cursor:not-allowed;}
+  .btn.primary{background:linear-gradient(180deg,#0ea5e9,#0284c7);border-color:#38bdf8;color:#04121f;}
+  .btn.primary.playing{background:linear-gradient(180deg,#f59e0b,#d97706);border-color:#fbbf24;color:#1a1200;}
+  .btn.ghost{background:#101c30;color:#8fa8c8;}
+  .speed{display:flex;align-items:center;gap:.35em;font-size:var(--btn-font);color:var(--muted);padding:0 .3em;}
+  .speed input[type=range]{width:4.5em;accent-color:var(--accent);cursor:pointer;}
+  .speed b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:2.8em;display:inline-block;}
+  #stepCounter{font-size:var(--btn-font);color:var(--accent);font-weight:700;
+    padding:0 .5em;font-variant-numeric:tabular-nums;white-space:nowrap;}
+
+  /* ===== 变量表 ===== */
+  .vrow{
+    display:flex;align-items:flex-start;gap:.45em;padding:.15em .4em;
+    border-radius:.4em;background:rgba(13,23,40,.55);
+    border-left:4px solid transparent;margin-bottom:.08em;
+    font-size:var(--var-font);line-height:1.35;
+  }
+  .vrow.k-ctx{border-left-color:#64748b;}
+  .vrow.k-val{border-left-color:var(--accent);}
+  .vrow.k-sw{border-left-color:var(--teal);}
+  .vrow.k-p{border-left-color:var(--accent);}
+  .vrow.k-a{border-left-color:var(--pink);}
+  .vrow.k-b{border-left-color:var(--amber);}
+  .vrow.k-num{border-left-color:var(--green);}
+  .vrow.k-mother{border-left-color:var(--accent);}
+  .vrow.k-son{border-left-color:var(--amber);}
+  .vrow.k-out{border-left-color:#86efac;}
+  .vrow.k-info{border-left-color:#94a3b8;}
+  .vname{flex:0 0 auto;min-width:6em;color:var(--muted);font-size:.82em;padding-top:.06em;}
+  .vval{flex:1 1 auto;font-family:ui-monospace,Consolas,monospace;font-weight:800;
+    color:var(--accent);word-break:break-word;font-size:.95em;}
+  .vrow.k-ctx .vval{color:var(--green);}
+  .vrow.k-sw .vval{color:var(--teal);}
+  .vrow.k-p .vval{color:var(--accent);}
+  .vrow.k-a .vval{color:var(--pink);}
+  .vrow.k-b .vval{color:var(--amber);}
+  .vrow.k-num .vval{color:var(--green);}
+  .vrow.k-mother .vval{color:var(--accent);}
+  .vrow.k-son .vval{color:var(--amber);}
+  .vrow.k-out .vval{color:#86efac;}
+  .vrow.k-info .vval{color:#cbd5e1;font-weight:600;}
+
+  /* ===== 调用栈 ===== */
+  .stack-strip{
+    display:flex;align-items:center;gap:.4em;flex-wrap:wrap;
+    padding:.3em .2em .45em;margin-bottom:.25em;
+    border-bottom:1px dashed rgba(56,189,248,.25);
+  }
+  .stack-tag{font-size:.75em;color:var(--muted);font-family:ui-monospace,monospace;}
+  .stack-frame{
+    font-family:ui-monospace,monospace;font-size:.85em;font-weight:800;
+    padding:.1em .5em;border-radius:.4em;background:#0d1728;border:2px solid #1b293f;
+    color:#8aa2c0;transition:all .3s;
+  }
+  .stack-frame.active{border-color:var(--accent);background:rgba(56,189,248,.22);color:#fff;
+    box-shadow:0 0 0 2px rgba(56,189,248,.5);animation:pop .35s ease-out;}
+  .stack-frame.func-num{border-color:var(--purple);background:rgba(192,132,252,.25);color:#f0e6ff;
+    box-shadow:0 0 0 2px rgba(192,132,252,.5);animation:pop .35s ease-out;}
+  .stack-frame.func-is{border-color:var(--amber);background:rgba(251,191,36,.25);color:#fff3c4;
+    box-shadow:0 0 0 2px rgba(251,191,36,.5);animation:pop .35s ease-out;}
+  @keyframes pop{0%{transform:scale(.6);opacity:0;}60%{transform:scale(1.15);}100%{transform:scale(1);opacity:1;}}
+  .stack-arrow{color:#3f5a7d;font-size:.9em;font-weight:800;}
+  .stack-empty{color:#3d5474;font-size:.85em;font-family:ui-monospace,monospace;}
+
+  /* ===== 字符数组 ===== */
+  .arr-block{margin-bottom:.5em;}
+  .arr-block:last-child{margin-bottom:0;}
+  .arr-head{
+    font-size:.7em;color:#9db1cb;font-family:ui-monospace,monospace;
+    margin:.05em 0 .3em;line-height:1.5;
+  }
+  .arr-head b{color:var(--accent);}
+  .ch-grid{
+    display:grid;grid-template-columns:repeat(10,minmax(0,1fr));
+    gap:.24em;margin-bottom:.2em;
+  }
+  .ch-cell{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:.02em;padding:.1em .04em .12em;border-radius:.4em;
+    background:#0d1728;border:1px solid #1b293f;min-height:2.4em;
+    transition:all .28s;position:relative;overflow:hidden;
+  }
+  .ch-idx{font-size:var(--idx-font);color:#3f5a7d;line-height:1.1;}
+  .ch-val{font-size:var(--cell-font);font-weight:800;color:#c8d7ec;line-height:1.15;}
+  .ch-val.term{color:#f472b6;font-weight:800;font-size:.85em;}
+  .ch-val.unused{color:#334f75;font-weight:400;font-size:.85em;}
+  .ch-marks{display:flex;gap:.04em;margin-top:.02em;min-height:.55em;
+    align-items:center;justify-content:center;flex-wrap:wrap;}
+  .mk{font-size:.55em;font-weight:800;line-height:1.3;padding:0 .16em;border-radius:.2em;}
+  .mk-p{background:rgba(56,189,248,.5);color:#04121f;}
+  .mk-a{background:rgba(244,114,182,.5);color:#2b0716;}
+  .mk-b{background:rgba(251,191,36,.55);color:#1a1200;}
+  .ch-cell.is-p{border-color:rgba(56,189,248,.9);background:rgba(56,189,248,.16);}
+  .ch-cell.is-p .ch-val{color:var(--accent);}
+  .ch-cell.is-a{border-color:rgba(244,114,182,.9);background:rgba(244,114,182,.16);}
+  .ch-cell.is-a .ch-val{color:var(--pink);}
+  .ch-cell.is-b{border-color:rgba(251,191,36,.9);background:rgba(251,191,36,.16);}
+  .ch-cell.is-b .ch-val{color:var(--amber);}
+  .ch-cell.is-match{border-color:var(--gold);background:rgba(250,204,21,.28);
+    box-shadow:0 0 0 2px rgba(250,204,21,.55);}
+  .ch-cell.is-match .ch-val{color:var(--gold);}
+  .ch-cell.pulse{animation:cellPulse .55s ease-out;}
+  @keyframes cellPulse{0%{transform:scale(1);}45%{transform:scale(1.18);}100%{transform:scale(1);}}
+  .arr-empty{color:#3d5474;font-size:.85em;font-family:ui-monospace,monospace;padding:.15em 0;}
+
+  /* ===== 指针关系图 ===== */
+  .ptr-row{display:flex;align-items:center;gap:.35em;flex-wrap:wrap;padding:.2em 0;}
+  .ptr-node{
+    display:flex;flex-direction:column;align-items:center;gap:.02em;
+    padding:.14em .5em .18em;border-radius:.5em;
+    background:#0d1728;border:2px solid #1b293f;
+    font-family:ui-monospace,Consolas,monospace;transition:all .3s;
+  }
+  .ptr-node.is-p{border-color:rgba(56,189,248,.9);background:rgba(56,189,248,.16);}
+  .ptr-node.is-p .ptr-val{color:var(--accent);}
+  .ptr-node.is-a{border-color:rgba(244,114,182,.9);background:rgba(244,114,182,.16);}
+  .ptr-node.is-a .ptr-val{color:var(--pink);}
+  .ptr-node.is-b{border-color:rgba(251,191,36,.9);background:rgba(251,191,36,.16);}
+  .ptr-node.is-b .ptr-val{color:var(--amber);}
+  .ptr-node.is-target{border-color:rgba(148,163,184,.4);background:rgba(148,163,184,.10);}
+  .ptr-node.is-target .ptr-val{color:#cbd5e1;}
+  .ptr-node.is-target.gold{border-color:rgba(250,204,21,.9);background:rgba(250,204,21,.2);}
+  .ptr-node.is-target.gold .ptr-val{color:var(--gold);}
+  .ptr-node.is-dim{opacity:.45;}
+  .ptr-label{font-size:.72em;color:#c8d7ec;font-weight:800;}
+  .ptr-addr{font-size:.55em;color:#4c6689;}
+  .ptr-val{font-size:.9em;font-weight:800;}
+  .ptr-arrow{display:flex;flex-direction:column;align-items:center;font-size:1.2em;font-weight:800;
+    animation:arrowPulse 1.4s ease-in-out infinite;}
+  .ptr-arrow .addr{font-size:.4em;font-family:ui-monospace,monospace;}
+  .ptr-arrow.c-blue{color:var(--accent);}
+  .ptr-arrow.c-pink{color:var(--pink);}
+  .ptr-arrow.c-amber{color:var(--amber);}
+  @keyframes arrowPulse{0%,100%{opacity:.6;transform:translateX(0);}50%{opacity:1;transform:translateX(5px);}}
+  .ptr-map-empty{color:#3d5474;font-size:.85em;font-family:ui-monospace,monospace;}
+
+  /* ===== 输出面板 ===== */
+  #fp-out .fp-body{
+    background:#050c17;font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:var(--out-font);line-height:1.5;color:#86efac;
+    white-space:pre-wrap;word-break:break-all;font-weight:700;
+  }
+  .out-empty{color:#3d5474;font-size:.5em;font-weight:500;}
+  .out-note{color:#7d93b3;font-size:.42em;font-weight:400;display:block;margin-top:.4em;}
+  .out-exit{color:#7d93b3;font-size:.4em;font-weight:400;display:block;margin-top:.5em;}
+  .cursor{display:inline-block;color:#4ade80;font-weight:400;
+    animation:blink 1s step-end infinite;margin-left:1px;}
+  @keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+  /* ===== 说明面板 ===== */
+  #fp-explain .fp-body{font-size:var(--explain-font);line-height:1.5;color:#cbd5e1;}
+  .ex-line{display:inline-block;padding:.04em .5em;border-radius:.4em;
+    background:rgba(56,189,248,.22);color:var(--accent);font-weight:800;
+    font-size:.8em;margin-right:.4em;vertical-align:middle;}
+  .ex-line.gold{background:rgba(250,204,21,.24);color:var(--gold);}
+  .ex-line.mv{background:rgba(244,114,182,.22);color:var(--pink);}
+  #fp-explain strong{color:#eaf3ff;}
+  #fp-explain code{font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.18);border-radius:.3em;padding:0 .3em;color:#e2e8f0;}
+
+  /* ===== 平台面板 ===== */
+  #fp-platform .fp-body{font-size:clamp(11px,.75vw,16px);line-height:1.5;color:#c9d5e8;}
+  #fp-platform b{color:#fff;}
+  #fp-platform code{font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.16);border-radius:.3em;padding:0 .3em;color:#e2e8f0;}
+  .plat-tip{display:block;margin:.35em 0;padding:.3em .5em;border-radius:.4em;
+    background:rgba(45,212,191,.10);border-left:4px solid var(--teal);color:#bff5ec;}
+  .plat-warn{display:block;margin:.35em 0;padding:.3em .5em;border-radius:.4em;
+    background:rgba(251,191,36,.12);border-left:4px solid var(--amber);color:#ffe6b0;}
+
+  /* ===== 缩略图 ===== */
+  #fp-minimap .fp-body{padding:.2em .25em;background:rgba(5,12,23,.7);position:relative;}
+  #mmLines{position:relative;font-family:ui-monospace,Consolas,monospace;
+    font-size:5.5px;line-height:1.6;white-space:pre;color:#8fa8c8;}
+  .mm-line{display:block;overflow:hidden;white-space:pre;padding:0 2px;}
+  .mm-line.active{background:rgba(56,189,248,.42);color:#fff;}
+  .mm-line.aux{background:rgba(192,132,252,.32);}
+  #mmView{position:absolute;left:0;right:0;border:2px solid rgba(56,189,248,.75);
+    background:rgba(56,189,248,.14);pointer-events:none;border-radius:3px;
+    box-shadow:0 0 12px rgba(56,189,248,.5) inset;}
+
+  /* ===== 提示抽屉 ===== */
+  #promptDrawer{position:fixed;left:50%;top:70px;transform:translateX(-50%);
+    width:min(1400px,94vw);max-height:70vh;background:rgba(10,19,34,.96);
+    backdrop-filter:blur(14px);border:1px solid var(--border);
+    border-radius:14px;z-index:9000;display:none;flex-direction:column;
+    box-shadow:0 20px 60px rgba(0,0,0,.7);}
+  #promptDrawer.open{display:flex;}
+  #promptDrawer .ph{display:flex;align-items:center;padding:.55em 1em;
+    background:rgba(56,189,248,.14);border-bottom:1px solid rgba(56,189,248,.3);
+    font-size:18px;font-weight:800;color:#fff;border-radius:14px 14px 0 0;}
+  #promptDrawer .ph button{margin-left:auto;background:rgba(248,113,113,.25);
+    border:none;color:#fca5a5;width:2em;height:2em;border-radius:8px;
+    font-size:16px;cursor:pointer;font-weight:800;}
+  #promptInner{padding:.9em 1.2em;overflow:auto;
+    font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.55;
+    color:#a9bdd8;white-space:pre-wrap;}
+</style>
+</head>
+<body>
+
+<div id="codeLayer"><div id="codeScroll"></div></div>
+
+<div id="promptDrawer">
+  <div class="ph">📝 提示词 <button id="btnClosePrompt">×</button></div>
+  <div id="promptInner"></div>
+</div>
+
+<!-- 控制栏 -->
+<div class="fp" id="fp-controls" style="left:50%;top:10px;transform:translateX(-50%);">
+  <div class="fp-head" style="display:none;">控制</div>
+  <div class="fp-body" id="controlsBody">
+    <button class="btn ghost" id="btnPrompt">📝 提示词</button>
+    <button class="btn" id="btnReset">⟲ 重置</button>
+    <button class="btn" id="btnPrev">◀ 上一步</button>
+    <button class="btn primary" id="btnPlay">▶ 自动播放</button>
+    <button class="btn" id="btnNext">下一步 ▶</button>
+    <span class="speed">速度
+      <input type="range" id="speed" min="30" max="1500" step="10" value="350">
+      <b id="speedLabel">0.35s</b>
+    </span>
+    <span id="stepCounter">步骤 — / —</span>
+    <button class="btn ghost" id="btnFull">⛶ 全屏</button>
+    <button class="btn ghost" id="btnTogglePanels">▣ 面板</button>
+    <button class="btn ghost" id="btnToggleMM">▤ 缩略图</button>
+    <button class="btn ghost" id="btnLayout">⟲ 重置布局</button>
+    <button class="fp-close" id="btnCloseControls" style="position:static;margin:0;">×</button>
+  </div>
+</div>
+
+<!-- 变量表 -->
+<div class="fp" id="fp-vars" style="left:14px;top:82px;width:490px;height:390px;">
+  <div class="fp-head"><span>调用栈 · 变量表</span>
+    <button class="fp-mini" data-collapse="fp-vars">－</button>
+    <button class="fp-close" data-close="fp-vars">×</button>
+  </div>
+  <div class="fp-body">
+    <div class="stack-strip" id="stackStrip">
+      <span class="stack-tag">调用栈</span><span class="stack-empty">（空）</span>
+    </div>
+    <div id="varTable"></div>
+  </div>
+</div>
+
+<!-- 字符数组 -->
+<div class="fp" id="fp-arr" style="left:14px;top:482px;width:490px;height:300px;">
+  <div class="fp-head"><span>字符数组 a[100] / b[5]</span>
+    <button class="fp-mini" data-collapse="fp-arr">－</button>
+    <button class="fp-close" data-close="fp-arr">×</button>
+  </div>
+  <div class="fp-body" id="arrBody">
+    <div class="arr-empty">（数组尚未定义）</div>
+  </div>
+</div>
+
+<!-- 指针关系图 -->
+<div class="fp" id="fp-ptr" style="right:14px;top:82px;width:620px;height:250px;">
+  <div class="fp-head"><span>指针 p / a / b 与内存关系</span>
+    <button class="fp-mini" data-collapse="fp-ptr">－</button>
+    <button class="fp-close" data-close="fp-ptr">×</button>
+  </div>
+  <div class="fp-body" id="ptrBody">
+    <div class="ptr-map-empty">（数组尚未定义）</div>
+  </div>
+</div>
+
+<!-- 平台模型 -->
+<div class="fp" id="fp-platform" style="right:14px;top:342px;width:460px;height:250px;">
+  <div class="fp-head"><span>平台模型 · 核心算法</span>
+    <button class="fp-mini" data-collapse="fp-platform">－</button>
+    <button class="fp-close" data-close="fp-platform">×</button>
+  </div>
+  <div class="fp-body">
+    <b>32 位平台模型</b>：<code>sizeof(char)=1</code>　<code>sizeof(char*)=4</code>
+    <span class="plat-tip">现代 64 位平台上指针本身是 8 字节，但 <code>char *</code> 步长永远是 <b>1 字节</b>。</span>
+    <b>核心算法：子串计数（允许重叠）</b><br>
+    ① <code>numfun</code> 用指针 <code>p</code> 从 <code>a[0]</code> 逐格扫到 <code>a[7]</code>；<br>
+    ② 每个位置调用 <code>isfun(p, b)</code> 尝试匹配；<br>
+    ③ <code>isfun</code> 内 <code>while(*a==*b &amp;&amp; *a &amp;&amp; *b)</code> 逐对比较；<br>
+    ④ 匹配判据是 <b>子串指针走到 <code>'\0'</code></b>：<code>if(*b==0) return 1;</code>；<br>
+    ⑤ <code>p++</code> 每轮只 +1，所以重叠子串也能被统计。
+    <span class="plat-warn"><b>本例固定输入：</b>a = <code>"abababa"</code>，b = <code>"aba"</code>。<br>
+    匹配起始下标 <b>0、2、4</b>（重叠），共 <b>3</b> 次。</span>
+    <span class="plat-tip"><b>预期输出：</b>3 行 —— <code>Input mother string:</code> / <code>Input son string:</code> / <code>3</code>（数字后无换行），退出码 0。</span>
+  </div>
+</div>
+
+<!-- 缩略图 -->
+<div class="fp" id="fp-minimap" style="right:14px;top:602px;width:170px;height:400px;">
+  <div class="fp-head"><span>缩略图</span>
+    <button class="fp-mini" data-collapse="fp-minimap">－</button>
+    <button class="fp-close" data-close="fp-minimap">×</button>
+  </div>
+  <div class="fp-body" id="mmBody" style="position:relative;">
+    <div id="mmLines"></div>
+    <div id="mmView"></div>
+  </div>
+</div>
+
+<!-- 输出 -->
+<div class="fp" id="fp-out" style="left:14px;bottom:14px;width:600px;height:200px;">
+  <div class="fp-head"><span>程序运行结果（屏幕输出）</span>
+    <button class="fp-mini" data-collapse="fp-out">－</button>
+    <button class="fp-close" data-close="fp-out">×</button>
+  </div>
+  <div class="fp-body" id="outBody"></div>
+</div>
+
+<!-- 说明 -->
+<div class="fp" id="fp-explain" style="left:50%;bottom:14px;transform:translateX(-50%);width:min(1200px,52vw);height:190px;">
+  <div class="fp-head"><span>当前语句说明</span>
+    <button class="fp-mini" data-collapse="fp-explain">－</button>
+    <button class="fp-close" data-close="fp-explain">×</button>
+  </div>
+  <div class="fp-body" id="explainBody"></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ==========================================================
+   1. 代码行（26 行）
+   ========================================================== */
+var CODE = [
+  {n:1,  h:'<span class="tok-pp">#include</span> <span class="tok-str">&lt;stdio.h&gt;</span>                 <span class="tok-cmt">// 包含标准输入输出头文件</span>'},
+  {n:2,  h:'<span class="tok-kw">int</span> <span class="tok-fn">isfun</span>(<span class="tok-kw">char</span> <span class="tok-op">*</span>a, <span class="tok-kw">char</span> <span class="tok-op">*</span>b) {       <span class="tok-cmt">// 从当前位置匹配子串</span>'},
+  {n:3,  h:'    <span class="tok-kw">while</span>(<span class="tok-op">*</span>a <span class="tok-op">==</span> <span class="tok-op">*</span>b <span class="tok-op">&amp;&amp;</span> <span class="tok-op">*</span>a <span class="tok-op">&amp;&amp;</span> <span class="tok-op">*</span>b) {   <span class="tok-cmt">// 逐个字符比较</span>'},
+  {n:4,  h:'        a<span class="tok-op">++</span>; b<span class="tok-op">++</span>;                   <span class="tok-cmt">// 同步右移</span>'},
+  {n:5,  h:'    }'},
+  {n:6,  h:'    <span class="tok-kw">if</span>(<span class="tok-op">*</span>b <span class="tok-op">==</span> <span class="tok-num">0</span>) <span class="tok-kw">return</span> <span class="tok-num">1</span>;            <span class="tok-cmt">// 子串匹配完毕，返回1</span>'},
+  {n:7,  h:'    <span class="tok-kw">return</span> <span class="tok-num">0</span>;                       <span class="tok-cmt">// 匹配失败，返回0</span>'},
+  {n:8,  h:'}'},
+  {n:9,  h:'<span class="tok-kw">int</span> <span class="tok-fn">numfun</span>(<span class="tok-kw">char</span> a[], <span class="tok-kw">char</span> b[]) {    <span class="tok-cmt">// 统计子串出现次数</span>'},
+  {n:10, h:'    <span class="tok-kw">char</span> <span class="tok-op">*</span>p <span class="tok-op">=</span> a;                    <span class="tok-cmt">// 指针指向母串</span>'},
+  {n:11, h:'    <span class="tok-kw">int</span> num <span class="tok-op">=</span> <span class="tok-num">0</span>;                    <span class="tok-cmt">// 计数器</span>'},
+  {n:12, h:'    <span class="tok-kw">while</span>(<span class="tok-op">*</span>p) {                     <span class="tok-cmt">// 遍历母串</span>'},
+  {n:13, h:'        <span class="tok-kw">if</span>(<span class="tok-fn">isfun</span>(p, b)) num<span class="tok-op">++</span>;      <span class="tok-cmt">// 如果匹配成功，计数加1</span>'},
+  {n:14, h:'        p<span class="tok-op">++</span>;                         <span class="tok-cmt">// 母串指针右移</span>'},
+  {n:15, h:'    }'},
+  {n:16, h:'    <span class="tok-kw">return</span> num;                      <span class="tok-cmt">// 返回出现次数</span>'},
+  {n:17, h:'}'},
+  {n:18, h:'<span class="tok-kw">int</span> <span class="tok-fn">main</span>() {                         <span class="tok-cmt">// 主函数</span>'},
+  {n:19, h:'    <span class="tok-kw">char</span> a[<span class="tok-num">100</span>], b[<span class="tok-num">5</span>];              <span class="tok-cmt">// 定义母串和子串数组</span>'},
+  {n:20, h:'    <span class="tok-fn">printf</span>(<span class="tok-str">"Input mother string:\\n"</span>); <span class="tok-cmt">// 提示输入母串</span>'},
+  {n:21, h:'    <span class="tok-fn">gets</span>(a);                        <span class="tok-cmt">// 输入母串</span>'},
+  {n:22, h:'    <span class="tok-fn">printf</span>(<span class="tok-str">"Input son string:\\n"</span>);   <span class="tok-cmt">// 提示输入子串</span>'},
+  {n:23, h:'    <span class="tok-fn">gets</span>(b);                        <span class="tok-cmt">// 输入子串</span>'},
+  {n:24, h:'    <span class="tok-fn">printf</span>(<span class="tok-str">"%d"</span>, <span class="tok-fn">numfun</span>(a, b));      <span class="tok-cmt">// 输出出现次数</span>'},
+  {n:25, h:'    <span class="tok-kw">return</span> <span class="tok-num">0</span>;                       <span class="tok-cmt">// 返回0，程序结束</span>'},
+  {n:26, h:'}'}
+];
+
+/* ==========================================================
+   2. 常量
+   ========================================================== */
+var MOTHER = "abababa";
+var SON    = "aba";
+var A_SIZE = 100;
+var B_SIZE = 5;
+var A_SHOW = 20;
+var A_BASE = 0x1000;
+var B_BASE = 0x1064;
+var NUM_P_BASE = 0x2000;
+var NUM_NUM_BASE = 0x2004;
+var NUM_A_BASE = 0x2008;
+var NUM_B_BASE = 0x200C;
+var IS_A_BASE = 0x3000;
+var IS_B_BASE = 0x3004;
+
+function hx(v){
+  var s = v.toString(16).toUpperCase();
+  while (s.length < 4) s = '0' + s;
+  return '0x' + s;
+}
+function chRep(c){
+  if (c === '\0' || c === undefined || c === null) return '\\0';
+  if (c === ' ') return '␣';
+  return c;
+}
+function strOf(arr, size){
+  var s = '';
+  for (var i = 0; i < size; i++){
+    var c = arr[i];
+    if (c === '\0' || c === 0 || c === undefined) break;
+    s += c;
+  }
+  return s;
+}
+function esc(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ==========================================================
+   3. 构建步骤
+   ========================================================== */
+var STEPS = [];
+function buildSteps(){
+  STEPS = [];
+  var outLines = [];
+  var st = {
+    a: new Array(A_SIZE).fill('\0'),
+    b: new Array(B_SIZE).fill('\0'),
+    aDef: false, bDef: false,
+    pIdx: null, pDef: false,
+    num: 0, numDef: false,
+    iaAbs: null, ibIdx: null,
+    inIsfun: false,
+    func: '—',
+    stack: []
+  };
+
+  function snap(o){
+    var outStr = outLines.join('');
+    STEPS.push({
+      line: o.line,
+      auxLine: o.auxLine || null,
+      cls: o.cls || 'ans',
+      title: o.title || '',
+      desc: o.desc || '',
+      func: st.func,
+      stack: st.stack.slice(),
+      sn: {
+        a: st.a.slice(), b: st.b.slice(),
+        aDef: st.aDef, bDef: st.bDef,
+        pIdx: st.pIdx, pDef: st.pDef,
+        num: st.num, numDef: st.numDef,
+        iaAbs: st.iaAbs, ibIdx: st.ibIdx,
+        inIsfun: st.inIsfun
+      },
+      hl: o.hl || {},
+      vars: {
+        ctx: o.ctx || '—',
+        expr: o.expr || '—',
+        exprVal: o.exprVal || '—',
+        note: o.note || '—',
+        mother: st.aDef ? ('"' + strOf(st.a, A_SIZE) + '"') : '尚未定义',
+        son: st.bDef ? ('"' + strOf(st.b, B_SIZE) + '"') : '尚未定义',
+        p: pText(),
+        ia: iaText(),
+        ib: ibText(),
+        num: (st.stack.indexOf('numfun') >= 0 || st.stack.indexOf('isfun') >= 0)
+             ? (st.numDef ? String(st.num) : '未初始化')
+             : '尚未声明',
+        printfCount: outLines.filter(function(x){ return x === 'Input mother string:\n' || x === 'Input son string:\n'; }).length
+                     + (outLines.indexOf('3') >= 0 || outStr.indexOf('\n3') === outStr.length - 2 ? 1 : 0),
+        getsCount: (st.aDef && strOf(st.a, A_SIZE) !== '') ? 1 : 0,
+        outBuf: outStr === '' ? '（空）' : outStr.replace(/\n/g, '⏎')
+      },
+      out: outLines.slice()
+    });
+  }
+
+  function pText(){
+    if (!st.aDef) return '尚未声明';
+    if (st.stack.indexOf('numfun') < 0 && st.stack.indexOf('isfun') < 0) return '尚未声明';
+    if (!st.pDef || st.pIdx === null) return '未初始化';
+    return 'a + ' + st.pIdx + "  →  '" + chRep(st.a[st.pIdx]) + "'";
+  }
+  function iaText(){
+    if (!st.inIsfun) return '尚未声明';
+    if (st.iaAbs === null) return '未初始化';
+    return 'a + ' + st.iaAbs + "  →  '" + chRep(st.a[st.iaAbs]) + "'";
+  }
+  function ibText(){
+    if (!st.inIsfun) return '尚未声明';
+    if (st.ibIdx === null) return '未初始化';
+    return 'b + ' + st.ibIdx + "  →  '" + chRep(st.b[st.ibIdx]) + "'";
+  }
+
+  /* ============ 第 1 行 ============ */
+  snap({
+    line:1, func:'—', stack:[],
+    ctx:'预处理阶段 · 尚未进入 main',
+    expr:'#include <stdio.h>',
+    exprVal:'引入 printf / gets 的声明',
+    note:'预处理指令，不产生运行代码',
+    title:'<b>#include &lt;stdio.h&gt;</b>　预处理指令',
+    desc:'<code>#include</code> 是<b>预处理指令</b>，不是 C 语句。<br>· 它把 <code>stdio.h</code> 的内容插入到这一行；<br>· 本程序用到的 <code>printf</code>、<code>gets</code> 的声明都来自这个头文件。'
+  });
+
+  /* ============ 第 2 行 ============ */
+  snap({
+    line:2, func:'—', stack:[],
+    ctx:'函数定义 · 尚未被调用',
+    expr:'int isfun(char *a, char *b) { ... }',
+    exprVal:'函数 isfun 登记到代码段，入口地址 0x0800',
+    note:'函数体此刻不执行',
+    title:'<b>int isfun(char *a, char *b)</b>　→　函数 isfun 就位',
+    desc:'定义函数 <code>isfun</code>，判断从 <code>a</code> 开始的内容是否与 <code>b</code> 指向的子串相同。<br>· <b>返回 1</b>：子串的每个字符都匹配上了；<br>· <b>返回 0</b>：中途字符不同，或者母串先结束；<br><b>此刻函数体不会执行</b>——只有被调用时才跳进去。'
+  });
+
+  /* ============ 第 9 行 ============ */
+  snap({
+    line:9, func:'—', stack:[],
+    ctx:'函数定义 · 尚未被调用',
+    expr:'int numfun(char a[], char b[]) { ... }',
+    exprVal:'函数 numfun 登记到代码段，入口地址 0x0A00',
+    note:'函数体此刻不执行',
+    title:'<b>int numfun(char a[], char b[])</b>　→　函数 numfun 就位',
+    desc:'定义函数 <code>numfun</code>，统计子串 <code>b</code> 在母串 <code>a</code> 中出现了多少次。<br>· 形参写成 <code>char a[]</code>，实际收到的是<b>首地址</b>；<br>· 思路：让指针 <code>p</code> 从头到尾扫过母串的每一个位置，每个位置调用一次 <code>isfun(p, b)</code> 试着匹配；<br><b>此刻函数体不会执行</b>。'
+  });
+
+  /* ============ 第 18 行 ============ */
+  st.func = 'main'; st.stack = ['main'];
+  snap({
+    line:18, cls:'gold',
+    ctx:'main · 程序入口',
+    expr:'int main() {',
+    exprVal:'为 main 建立栈帧',
+    note:'main 栈帧建立',
+    title:'int main() {　程序从这里开始',
+    desc:'操作系统调用 <code>main</code>，程序正式开始执行。<br>接下来将依次演示：数组分配 → gets 读入 → 函数调用 → 指针遍历 → 子串匹配 → 计数返回 → 输出。'
+  });
+
+  /* ============ 第 19 行 ============ */
+  st.aDef = true; st.bDef = true;
+  snap({
+    line:19, cls:'mv',
+    ctx:'main · 定义两个字符数组',
+    expr:'char a[100], b[5];',
+    exprVal:'分配 a：100 字节，b：5 字节（内容未初始化）',
+    note:'a 用来装母串，b 用来装子串',
+    title:'<b>char a[100], b[5];</b>　→　分配两块数组空间',
+    desc:'在 main 的栈帧里分配两个字符数组：<br>· <code>a[100]</code>：准备装母串，最多 99 个字符 + <code>\\0</code>；<br>· <code>b[5]</code>：准备装子串，最多 4 个字符 + <code>\\0</code>；<br>· 两块内存此刻是<b>未初始化的</b>，要等 <code>gets</code> 把数据写进去。'
+  });
+
+  /* ============ 第 20 行 ============ */
+  outLines.push('Input mother string:\n');
+  snap({
+    line:20, cls:'gold',
+    ctx:'main · 打印提示语',
+    expr:'printf("Input mother string:\\n");',
+    exprVal:'屏幕输出：Input mother string: 并换行',
+    note:'提示用户输入母串',
+    title:'<b>printf("Input mother string:\\n");</b>',
+    desc:'输出提示语。<br>· 格式串末尾的 <code>\\n</code> 是<b>换行符</b>，光标会移到下一行；<br>· 屏幕上显示：<code>Input mother string:</code>。'
+  });
+
+  /* ============ 第 21 行 ============ */
+  for (var ka = 0; ka < MOTHER.length; ka++) st.a[ka] = MOTHER.charAt(ka);
+  st.a[MOTHER.length] = '\0';
+  snap({
+    line:21, cls:'gold',
+    ctx:'main · 读取母串',
+    expr:'gets(a);',
+    exprVal:'读入一行，写入 a[0..6]，并在 a[7] 补上 \'\\0\'',
+    note:'a = "abababa"，strlen(a) = 7',
+    title:'<b>gets(a);</b>　→　母串 a = <b>"abababa"</b>',
+    desc:'<code>gets</code> 从键盘读入一整行，把字符依次写入数组 <code>a</code>，最后自动补一个 <code>\\0</code>。<br>· 读入 <b>7</b> 个字符：<code>a b a b a b a</code>；<br>· 写入 <code>a[0]</code> 到 <code>a[6]</code>，然后在 <code>a[7]</code> 补 <code>\\0</code>；<br>· 现在 <code>strlen(a) = 7</code>。<span class="warn" style="color:#ffe6b0;display:block;margin-top:.4em;padding:.3em .5em;background:rgba(251,191,36,.12);border-left:3px solid #fbbf24;"><b>gets 已经被 C 语言弃用：</b>它无法知道数组有多长，输入太长就会直接越界写内存。现代代码应改用 <code>fgets(a, 100, stdin)</code>。</span>'
+  });
+
+  /* ============ 第 22 行 ============ */
+  outLines.push('Input son string:\n');
+  snap({
+    line:22, cls:'gold',
+    ctx:'main · 打印提示语',
+    expr:'printf("Input son string:\\n");',
+    exprVal:'屏幕输出：Input son string: 并换行',
+    note:'提示用户输入子串',
+    title:'<b>printf("Input son string:\\n");</b>',
+    desc:'输出第二条提示语，同样带 <code>\\n</code> 换行。<br>· 屏幕上又出现一行：<code>Input son string:</code>。'
+  });
+
+  /* ============ 第 23 行 ============ */
+  for (var kb = 0; kb < SON.length; kb++) st.b[kb] = SON.charAt(kb);
+  st.b[SON.length] = '\0';
+  snap({
+    line:23, cls:'gold',
+    ctx:'main · 读取子串',
+    expr:'gets(b);',
+    exprVal:'读入一行，写入 b[0..2]，并在 b[3] 补上 \'\\0\'',
+    note:'b = "aba"，strlen(b) = 3',
+    title:'<b>gets(b);</b>　→　子串 b = <b>"aba"</b>',
+    desc:'读入子串，写入数组 <code>b</code>。<br>· 读入 <b>3</b> 个字符：<code>a b a</code>；<br>· <code>b[3]</code> 补 <code>\\0</code>；<br>· 现在 <code>strlen(b) = 3</code>。<br><b>接下来就要统计 "aba" 在 "abababa" 中出现了几次。</b>'
+  });
+
+  /* ============ 第 24 行进入 numfun ============ */
+  st.func = 'numfun'; st.stack = ['main','numfun'];
+  snap({
+    line:24, cls:'ans',
+    ctx:'main → numfun · 函数调用',
+    expr:'printf("%d", numfun(a, b));',
+    exprVal:'先求值 numfun(a, b)，再把返回值交给 printf',
+    note:'进入 numfun，建立它的栈帧',
+    title:'<b>numfun(a, b)</b>　→　进入函数 <b>numfun</b>',
+    desc:'要执行 <code>printf</code>，必须先算出第二个参数 <code>numfun(a, b)</code> 的值。<br>· <code>a</code> 作为数组名，在实参位置<b>退化为 &amp;a[0]</b>；<br>· <code>b</code> 同理，退化为 <code>&amp;b[0]</code>；<br>· <b>形参 a / b 与 main 里的数组指向同一块内存</b>；<br>· 调用栈变为 <code>main → numfun</code>。'
+  });
+
+  /* ============ 第 10 行 ============ */
+  st.pIdx = 0; st.pDef = true;
+  snap({
+    line:10, cls:'mv',
+    ctx:'numfun · 指针 p 指向母串开头',
+    expr:'char *p = a;',
+    exprVal:'p = a + 0，指向 a[0] = \'a\'',
+    note:'p 是「扫描位置」指针，每轮 +1',
+    title:'<b>char *p = a;</b>　→　p 指向 a[0]',
+    desc:'指针 <code>p</code> 初始化为 <code>a</code>，即指向 <code>a[0]</code>。<br>· 它会从母串开头一路扫到末尾；<br>· 每到一个位置，就调用 <code>isfun(p, b)</code> 试着匹配一次；<br>· <b>p 每轮只前进 1</b>，所以重叠的子串也能被统计到。'
+  });
+
+  /* ============ 第 11 行 ============ */
+  st.num = 0; st.numDef = true;
+  snap({
+    line:11, cls:'mv',
+    ctx:'numfun · 初始化计数器',
+    expr:'int num = 0;',
+    exprVal:'num = 0',
+    note:'计数器清零，准备开始统计',
+    title:'<b>int num = 0;</b>　→　计数器清零',
+    desc:'在 numfun 的栈帧中分配计数器 <code>num</code>，初值为 <b>0</b>。<br>· 每匹配成功一次，就 <code>num++</code>；<br>· 循环结束后把它作为返回值交给调用者。'
+  });
+
+  /* ============ 主循环 ============ */
+  var expected = [1, 0, 1, 0, 1, 0, 0];   // k=0..6 的匹配结果
+
+  for (var k = 0; k <= MOTHER.length; k++){
+    st.pIdx = k; st.pDef = true;
+    var pc = (k < MOTHER.length) ? st.a[k] : '\0';
+    var isEnd = (pc === '\0');
+
+    /* 第 12 行 */
+    snap({
+      line:12, cls: isEnd ? 'gold' : 'ans',
+      auxLine: null,
+      ctx:'numfun · 外层 while 判断（p = a + ' + k + '）',
+      expr:'while(*p)',
+      exprVal:"*p = '" + chRep(pc) + "'　→　" + (isEnd ? '条件为假，退出循环' : '条件为真，进入循环体'),
+      note: isEnd ? '★ p 已经走到字符串末尾的 \\0，遍历结束' : '准备在 a[' + k + '] 位置尝试匹配子串',
+      title:'<b>while(*p)</b>　→　p = a + ' + k + '，*p = \'' + chRep(pc) + '\'' + (isEnd ? '　<b>（假，结束遍历）</b>' : '　（真）'),
+      desc: isEnd
+        ? '指针 <code>p</code> 现在指向 <code>a[' + k + ']</code>，也就是字符串结束符 <code>\\0</code>。<br>· <code>*p</code> 的值为 0，在 C 语言里就是<b>假</b>；<br>· 外层 <code>while</code> 循环到此结束，母串已经从头扫到尾；<br>· 一共检查了 <b>' + MOTHER.length + '</b> 个起始位置。'
+        : '检查 <code>*p</code> 是否为 0。<br>· 现在 <code>p = a + ' + k + '</code>，<code>*p = \'' + chRep(pc) + '\'</code>，非 0，条件为<b>真</b>；<br>· 进入循环体，下一步调用 <code>isfun(p, b)</code> 判断从这里开始能否匹配上 <code>"' + SON + '"</code>。'
+    });
+
+    if (isEnd) break;
+
+    /* 第 13 行进入 isfun */
+    st.func = 'isfun';
+    st.stack = ['main','numfun','isfun'];
+    st.inIsfun = true;
+    st.iaAbs = k; st.ibIdx = 0;
+    var callStart = k;
+
+    snap({
+      line:13, cls:'ans',
+      ctx:'numfun → isfun · 函数调用',
+      expr:'if(isfun(p, b)) num++;',
+      exprVal:'调用 isfun(a + ' + k + ', b)，从 a[' + k + '] 开始尝试匹配 "' + SON + '"',
+      note:'进入 isfun，建立它的栈帧',
+      title:'第 ' + (k+1) + ' 次尝试：<b>isfun(p, b)</b>　→　从 a[' + k + '] 开始匹配',
+      desc:'调用 <code>isfun</code>，把当前扫描位置 <code>p</code> 和子串 <code>b</code> 传进去。<br>· 形参 <code>a</code> 指向 <code>a[' + k + ']</code>；<br>· 形参 <code>b</code> 指向 <code>b[0]</code>；<br>· 调用栈变为 <code>main → numfun → isfun</code>（深度 3）。'
+    });
+
+    /* isfun 内部 while 循环 */
+    var k2 = 0;
+    while (true){
+      var caIdx = callStart + k2;
+      var ca = (caIdx < A_SIZE) ? st.a[caIdx] : '\0';
+      var cb = (k2 < B_SIZE) ? st.b[k2] : '\0';
+      var eq = (ca === cb);
+      var ta = (ca !== '\0');
+      var tb = (cb !== '\0');
+      var cond = eq && ta && tb;
+
+      st.iaAbs = caIdx; st.ibIdx = k2;
+
+      var cmpDesc;
+      if (!eq){
+        cmpDesc = "*a = '" + chRep(ca) + "'，*b = '" + chRep(cb) + "'，<b>两个字符不同</b> → 立刻退出循环";
+      } else if (!ta || !tb){
+        cmpDesc = "*a = *b = '\\0'，字符相同，但 <code>*a</code> 为 0 → <b>循环条件为假</b>，退出";
+      } else {
+        cmpDesc = "*a = '" + chRep(ca) + "'，*b = '" + chRep(cb) + "'，<b>相同且都非 0</b> → 继续比较下一对";
+      }
+
+      snap({
+        line:3, cls: cond ? 'ans' : 'gold',
+        ctx:'isfun · while 条件判断（第 ' + (k2+1) + ' 次比较）',
+        expr:'while(*a == *b && *a && *b)',
+        exprVal:"*a = '" + chRep(ca) + "'（a[" + caIdx + "]）　 *b = '" + chRep(cb) + "'（b[" + k2 + "]）　→　" + (cond ? '条件为真' : '条件为假'),
+        note: cond ? '字符相同且都非 \\0，继续向后比较' : (eq ? '遇到了 \\0，比较结束' : '字符不同，比较结束'),
+        title:'第 ' + (k2+1) + ' 次比较：<b>\'' + chRep(ca) + '\' vs \'' + chRep(cb) + '\'</b>　→　' + (cond ? '<b>相等</b>' : '<b>不相等</b>'),
+        desc: cmpDesc + '<br>· 三个条件必须<b>同时</b>成立才继续：<code>*a == *b</code>（字符相同）、<code>*a</code>（母串没结束）、<code>*b</code>（子串没结束）；<br>· 少任何一个条件都会停下——这是防止<b>越界读取</b>的关键。'
+      });
+
+      if (!cond) break;
+
+      k2++;
+      st.iaAbs = callStart + k2;
+      st.ibIdx = k2;
+
+      snap({
+        line:4, cls:'mv',
+        ctx:'isfun · 两个指针同步右移',
+        expr:'a++; b++;',
+        exprVal:'a → a[' + st.iaAbs + ']，b → b[' + st.ibIdx + ']',
+        note:'两个指针同步前进一格，准备比较下一对字符',
+        title:'<b>a++; b++;</b>　→　比较第 ' + (k2+1) + ' 对字符',
+        desc:'两个指针<b>同步</b>向后移动一格。<br>· <code>a</code> 现在指向 <code>a[' + st.iaAbs + ']</code>；<br>· <code>b</code> 现在指向 <code>b[' + st.ibIdx + ']</code>；<br>· 注意这里是<b>局部指针在动</b>，母串和子串本身的内容<b>一点都没变</b>。'
+      });
+    }
+
+    /* 第 6 行 */
+    var bNow = st.b[st.ibIdx];
+    var matched = (bNow === '\0');
+
+    snap({
+      line:6, cls: matched ? 'gold' : 'ans',
+      ctx:'isfun · 判断子串是否已经匹配完',
+      expr:'if(*b == 0) return 1;',
+      exprVal: matched
+        ? "*b = b[" + st.ibIdx + "] = '\\0'　→　条件为真，返回 1"
+        : "*b = b[" + st.ibIdx + "] = '" + chRep(bNow) + "'　→　条件为假",
+      note: matched ? '★ 子串 3 个字符全部匹配成功，返回 1' : '子串还没匹配完就中断了',
+      title:'<b>if(*b == 0)</b>　→　' + (matched ? '<b>匹配成功！</b>' : '条件为<b>假</b>'),
+      desc: matched
+        ? '<code>b</code> 已经走到了子串的结束符，说明 <code>"' + SON + '"</code> 的每一个字符都和母串对应位置的字符相同。<br>· 判断依据：<b>子串指针是否走到 \\0</b>，而不是母串指针；<br>· 返回 <b>1</b> 表示「从这里开始能匹配上」；<br>· 母串后面还有没有字符<b>不重要</b>。'
+        : '比较循环中断时，<code>b</code> 还没有走到子串的 <code>\\0</code>，说明子串<b>没有完整匹配上</b>。<br>· 现在 <code>*b = \'' + chRep(bNow) + '\'</code>，不是 <code>\\0</code>；<br>· 所以 <code>return 1</code> 不执行，程序继续往下走到 <code>return 0</code>。'
+    });
+
+    if (matched){
+      /* isfun 返回 1，弹栈 */
+      st.inIsfun = false;
+      st.func = 'numfun';
+      st.stack = ['main','numfun'];
+      st.iaAbs = null; st.ibIdx = null;
+
+      st.num++;
+      snap({
+        line:13, cls:'gold',
+        auxLine: null,
+        ctx:'numfun · 匹配成功，计数加 1',
+        expr:'if(isfun(p, b)) num++;',
+        exprVal:'isfun 返回 1 → num 从 ' + (st.num-1) + ' 变为 ' + st.num,
+        note:'★ 在 a[' + k + '] 处找到第 ' + st.num + ' 个 "' + SON + '"',
+        title:'<b>num++</b>　→　计数器 num = <b>' + st.num + '</b>',
+        desc:'<code>isfun</code> 返回 <b>1</b>，<code>if</code> 条件成立，执行 <code>num++</code>。<br>· 在 <code>a[' + k + ']</code> 位置成功匹配到了第 <b>' + st.num + '</b> 个 <code>"' + SON + '"</code>；<br>· 下标 ' + k + ' ~ ' + (k + SON.length - 1) + '，图中已用金色标出。',
+        hl: { matchFrom: k, matchTo: k + SON.length - 1 }
+      });
+    } else {
+      /* 第 7 行 */
+      snap({
+        line:7, cls:'gold',
+        ctx:'isfun · 返回匹配失败',
+        expr:'return 0;',
+        exprVal:'返回 0（匹配失败）',
+        note:'在 a[' + k + '] 位置匹配失败',
+        title:'<b>return 0;</b>　→　匹配失败',
+        desc:'<code>isfun</code> 返回 <b>0</b>，表示「从 <code>a[' + k + ']</code> 开始匹配不上」。<br>· 返回后，<code>numfun</code> 中的 <code>if</code> 条件为假，<code>num</code> <b>不变</b>。'
+      });
+      st.inIsfun = false;
+      st.func = 'numfun';
+      st.stack = ['main','numfun'];
+      st.iaAbs = null; st.ibIdx = null;
+    }
+
+    /* 第 14 行 */
+    st.pIdx = k + 1;
+    snap({
+      line:14, cls:'mv',
+      ctx:'numfun · 母串指针右移',
+      expr:'p++;',
+      exprVal: (k + 1 <= MOTHER.length)
+        ? ('p = a + ' + (k + 1) + '，指向 \'' + chRep(st.a[k+1]) + '\'')
+        : ('p = a + ' + (k + 1)),
+      note: (k + 1 <= MOTHER.length)
+        ? ('准备检查 a[' + (k + 1) + '] 位置')
+        : 'p 已指向字符串末尾的 \\0，外层循环即将结束',
+      title:'<b>p++;</b>　→　p = a + ' + (k + 1),
+      desc:'母串扫描指针向后移动一格。<br>· 注意是 <b>+1</b> 而不是跳到匹配结束之后——所以<b>重叠</b>的子串也能被统计到；<br>· 比如 <code>"' + MOTHER + '"</code> 中下标 0 和下标 2 的两个 <code>"' + SON + '"</code> 是重叠的，本算法两个都会数。'
+    });
+  }
+
+  /* 第 16 行 */
+  snap({
+    line:16, cls:'gold',
+    ctx:'numfun · 返回统计结果',
+    expr:'return num;',
+    exprVal:'返回 ' + st.num,
+    note:'★ numfun 返回 ' + st.num + '，交给 printf',
+    title:'<b>return num;</b>　→　返回 <b>' + st.num + '</b>',
+    desc:'母串已经全部扫描完毕，函数 <code>numfun</code> 返回计数结果。<br><b>★ 统计结果：' + st.num + ' 次</b>　匹配起始下标：<b>0、2、4</b>（共 ' + st.num + ' 处，彼此重叠）。'
+  });
+
+  /* 返回 main */
+  st.func = 'main';
+  st.stack = ['main'];
+
+  snap({
+    line:24, cls:'ans',
+    ctx:'main · 接收返回值',
+    expr:'printf("%d", numfun(a, b));',
+    exprVal:'numfun 返回 ' + st.num + '，即将作为 %d 的参数输出',
+    note:'numfun 的栈帧被销毁，p、num 随之消失',
+    title:'<b>numfun(a, b)</b>　→　返回 <b>' + st.num + '</b>',
+    desc:'<code>numfun</code> 执行完毕，返回 <b>' + st.num + '</b> 给 <code>main</code>。<br>· numfun 的栈帧被销毁，局部变量 <code>p</code>、<code>num</code> 全部消失；<br>· 但 <code>a</code>、<code>b</code> 是 main 的局部数组，内容仍然完好。'
+  });
+
+  outLines.push(String(st.num));
+  snap({
+    line:24, cls:'gold',
+    ctx:'main · 输出统计结果',
+    expr:'printf("%d", numfun(a, b));',
+    exprVal:'屏幕输出：' + st.num + '（无换行）',
+    note:'★ 屏幕上出现数字 ' + st.num,
+    title:'<b>printf("%d", ' + st.num + ');</b>　→　屏幕出现 <b>' + st.num + '</b>',
+    desc:'<code>printf</code> 把整数 <code>' + st.num + '</code> 按 <code>%d</code> 格式输出。<br>· 格式串 <code>"%d"</code> 里<b>没有</b> <code>\\n</code>，所以输出完不换行；<br>· 屏幕上显示：<code>' + st.num + '</code>。'
+  });
+
+  /* 第 25 行 */
+  snap({
+    line:25, cls:'ans',
+    ctx:'main · return 0',
+    expr:'return 0;',
+    exprVal:'返回 0 给操作系统，程序正常结束',
+    note:'退出码 0',
+    title:'<b>return 0;</b>　→　程序正常结束',
+    desc:'main 返回 0，表示程序正常结束。返回值不打印到屏幕。'
+  });
+
+  /* 第 26 行 */
+  snap({
+    line:26, cls:'ans',
+    ctx:'程序结束',
+    expr:'}',
+    exprVal:'main 栈帧销毁，程序退出',
+    note:'最终屏幕输出：Input mother string: / Input son string: / ' + st.num,
+    title:'程序结束',
+    desc:'<b>★ 程序最终运行结果：</b><br><code>Input mother string:</code><br><code>Input son string:</code><br><code>' + st.num + '</code>（数字后无换行）<br><br><b>本程序要点总结：</b><br>① <b>数组传参传地址</b>：<code>numfun(a, b)</code> 中 a、b 退化为首地址；<br>② <b>双层指针分工</b>：<code>p</code> 滑动扫母串，<code>isfun</code> 里的 <code>a</code>、<code>b</code> 同步比较；<br>③ <b>匹配判据是子串指针走到 \\0</b>：<code>if(*b == 0) return 1;</code>；<br>④ <b>while 条件里的 *a &amp;&amp; *b 是防越界的关键</b>；<br>⑤ <b>p 每次只 +1</b>：重叠子串也能被统计；<br>⑥ <b>return 1 / return 0 的语义</b>；<br>⑦ <b>num 是 numfun 的局部变量</b>；<br>⑧ <b>%d 输出整数，格式串无 \\n 所以不换行</b>；<br>⑨ <b>gets 不安全</b>：已被 C11 删除，实际工程应改用 <code>fgets</code>。'
+  });
+}
+
+buildSteps();
+
+/* ==========================================================
+   4. 渲染
+   ========================================================== */
+function renderCode(){
+  var sc = document.getElementById('codeScroll');
+  sc.innerHTML = '';
+  CODE.forEach(function(cl){
+    var d = document.createElement('div');
+    d.className = 'code-line';
+    d.dataset.line = cl.n;
+    d.innerHTML = '<span class="ln">' + cl.n + '</span><span class="src">' + cl.h + '</span>';
+    sc.appendChild(d);
+  });
+}
+function renderMinimap(){
+  var mm = document.getElementById('mmLines');
+  mm.innerHTML = '';
+  CODE.forEach(function(cl){
+    var d = document.createElement('div');
+    d.className = 'mm-line';
+    d.dataset.line = cl.n;
+    d.innerHTML = cl.h;
+    mm.appendChild(d);
+  });
+}
+
+var VAR_ROWS = [
+  {k:'ctx',    n:'当前执行位置',          c:'k-ctx'},
+  {k:'expr',   n:'正在执行的语句',        c:'k-val'},
+  {k:'exprVal',n:'语句结果',              c:'k-val'},
+  {k:'note',   n:'关键状态提示',          c:'k-sw'},
+  {k:'mother', n:'母串 a',                c:'k-mother'},
+  {k:'son',    n:'子串 b',                c:'k-son'},
+  {k:'p',      n:'指针 p（numfun）',      c:'k-p'},
+  {k:'ia',     n:'形参 a（isfun）',       c:'k-a'},
+  {k:'ib',     n:'形参 b（isfun）',       c:'k-b'},
+  {k:'num',    n:'计数器 num',            c:'k-num'},
+  {k:'printfCount', n:'printf 调用次数',  c:'k-info'},
+  {k:'getsCount',   n:'gets 调用次数',    c:'k-info'},
+  {k:'outBuf', n:'屏幕输出缓冲',          c:'k-out'}
+];
+
+function buildVarTable(){
+  var el = document.getElementById('varTable');
+  var h = '';
+  VAR_ROWS.forEach(function(r){
+    h += '<div class="vrow ' + r.c + '" data-key="' + r.k + '">' +
+           '<span class="vname">' + r.n + '</span>' +
+           '<span class="vval">—</span>' +
+         '</div>';
+  });
+  el.innerHTML = h;
+}
+
+function updateVars(step){
+  function set(key, val){
+    var row = document.querySelector('.vrow[data-key="' + key + '"]');
+    if (!row) return;
+    var v = row.querySelector('.vval');
+    var sv = String(val);
+    if (v.textContent !== sv){
+      v.textContent = sv;
+      v.style.transition = 'none';
+      v.style.transform = 'scale(1.1)';
+      requestAnimationFrame(function(){
+        v.style.transition = 'transform .3s';
+        v.style.transform = 'scale(1)';
+      });
+    }
+  }
+  if (!step){
+    VAR_ROWS.forEach(function(r){ set(r.k, '—'); });
+    return;
+  }
+  set('ctx', '第 ' + step.line + ' 行');
+  set('expr', (step.title || '').replace(/<[^>]+>/g, ''));
+  set('exprVal', (step.vars.exprVal || '').replace(/<[^>]+>/g, ''));
+  set('note', (step.vars.note || '').replace(/<[^>]+>/g, ''));
+  set('mother', step.vars.mother);
+  set('son', step.vars.son);
+  set('p', step.vars.p);
+  set('ia', step.vars.ia);
+  set('ib', step.vars.ib);
+  set('num', step.vars.num);
+  set('printfCount', step.vars.printfCount);
+  set('getsCount', step.vars.getsCount);
+  set('outBuf', step.vars.outBuf);
+}
+
+function updateStack(step){
+  var stack = step ? step.stack : [];
+  var el = document.getElementById('stackStrip');
+  var h = '<span class="stack-tag">调用栈</span>';
+  if (!stack.length){
+    h += '<span class="stack-empty">（空）</span>';
+  } else {
+    stack.forEach(function(name, i){
+      if (i > 0) h += '<span class="stack-arrow">→</span>';
+      var isTop = (i === stack.length - 1);
+      var cls = 'stack-frame';
+      if (isTop && name === 'isfun') cls += ' func-is';
+      else if (isTop && name === 'numfun') cls += ' func-num';
+      else if (isTop) cls += ' active';
+      h += '<span class="' + cls + '">' + name + '</span>';
+    });
+  }
+  el.innerHTML = h;
+}
+
+function cellHTML(ch, i, flags){
+  var cls = 'ch-cell';
+  if (flags.p) cls += ' is-p';
+  if (flags.a) cls += ' is-a';
+  if (flags.b) cls += ' is-b';
+  if (flags.match) cls += ' is-match pulse';
+
+  var vCls = 'ch-val';
+  if (ch === '\0') vCls += ' term';
+  else if (flags.unused) vCls += ' unused';
+
+  var marks = '';
+  if (flags.p) marks += '<span class="mk mk-p">p</span>';
+  if (flags.a) marks += '<span class="mk mk-a">a</span>';
+  if (flags.b) marks += '<span class="mk mk-b">b</span>';
+
+  return '<div class="' + cls + '">' +
+           '<div class="ch-idx">' + i + '</div>' +
+           '<div class="' + vCls + '">' + chRep(ch) + '</div>' +
+           '<div class="ch-marks">' + marks + '</div>' +
+         '</div>';
+}
+
+function updateArrPanel(step){
+  var el = document.getElementById('arrBody');
+  if (!step || !step.sn.aDef){
+    el.innerHTML = '<div class="arr-empty">（数组尚未定义）</div>';
+    return;
+  }
+  var sn = step.sn;
+  var hl = step.hl || {};
+  var h = '';
+
+  /* 母串 a */
+  h += '<div class="arr-block">';
+  var as = strOf(sn.a, A_SIZE);
+  h += '<div class="arr-head">母串 <b>char a[100]</b> · 仅显示前 ' + A_SHOW +
+       ' 字节　│　内容 "<b>' + esc(as) + '</b>"　│　长度 <b>' + as.length + '</b></div>';
+  h += '<div class="ch-grid">';
+  for (var i = 0; i < A_SHOW; i++){
+    h += cellHTML(sn.a[i], i, {
+      p: (sn.pDef && sn.pIdx === i && (step.stack.indexOf('numfun') >= 0 || step.stack.indexOf('isfun') >= 0)),
+      a: (sn.inIsfun && sn.iaAbs === i),
+      match: (hl.matchFrom !== undefined && i >= hl.matchFrom && i <= hl.matchTo),
+      unused: (i > as.length)
+    });
+  }
+  h += '</div></div>';
+
+  /* 子串 b */
+  h += '<div class="arr-block">';
+  var bs = strOf(sn.b, B_SIZE);
+  h += '<div class="arr-head">子串 <b>char b[5]</b>　│　内容 "<b>' + esc(bs) + '</b>"　│　长度 <b>' + bs.length + '</b></div>';
+  h += '<div class="ch-grid">';
+  for (var j = 0; j < B_SIZE; j++){
+    h += cellHTML(sn.b[j], j, {
+      b: (sn.inIsfun && sn.ibIdx === j),
+      unused: (j > bs.length)
+    });
+  }
+  h += '</div></div>';
+
+  el.innerHTML = h;
+}
+
+function ptrRowHTML(label, where, val, tgtLabel, tgtChar, arrowCls, nodeCls, gold){
+  return '<div class="ptr-row">' +
+           '<div class="ptr-node ' + nodeCls + '">' +
+             '<div class="ptr-label">' + label + '</div>' +
+             '<div class="ptr-addr">' + where + '</div>' +
+             '<div class="ptr-val">' + val + '</div>' +
+           '</div>' +
+           '<div class="ptr-arrow ' + arrowCls + '">──►' +
+             '<div class="addr">' + tgtLabel + '</div>' +
+           '</div>' +
+           '<div class="ptr-node is-target' + (gold ? ' gold' : '') + '">' +
+             '<div class="ptr-label">' + tgtLabel + '</div>' +
+             '<div class="ptr-val">\'' + tgtChar + '\'</div>' +
+           '</div>' +
+         '</div>';
+}
+
+function updatePtrPanel(step){
+  var el = document.getElementById('ptrBody');
+  if (!step || !step.sn.aDef){
+    el.innerHTML = '<div class="ptr-map-empty">（数组尚未定义）</div>';
+    return;
+  }
+  var sn = step.sn;
+  var h = '<span class="ptr-map-label" style="font-size:.7em;color:#7d93b3;font-family:ui-monospace,monospace;">指针 p / a / b 与内存的关系</span>';
+  var any = false;
+
+  if (step.stack.indexOf('numfun') >= 0){
+    if (!sn.pDef || sn.pIdx === null){
+      h += '<div class="ptr-row"><div class="ptr-node is-dim is-p">' +
+           '<div class="ptr-label">p</div><div class="ptr-addr">numfun 栈帧 · char*</div>' +
+           '<div class="ptr-val">未初始化</div></div></div>';
+    } else {
+      h += ptrRowHTML('p', 'numfun 栈帧 · char*',
+                      'a + ' + sn.pIdx, 'a[' + sn.pIdx + ']', chRep(sn.a[sn.pIdx]),
+                      'c-blue', 'is-p', false);
+    }
+    any = true;
+  }
+  if (sn.inIsfun){
+    h += ptrRowHTML('a', 'isfun 栈帧 · char*',
+                    'a + ' + sn.iaAbs, 'a[' + sn.iaAbs + ']', chRep(sn.a[sn.iaAbs]),
+                    'c-pink', 'is-a', false);
+    h += ptrRowHTML('b', 'isfun 栈帧 · char*',
+                    'b + ' + sn.ibIdx, 'b[' + sn.ibIdx + ']', chRep(sn.b[sn.ibIdx]),
+                    'c-amber', 'is-b', false);
+    any = true;
+  }
+  if (!any){
+    h += '<div class="ptr-map-empty">（numfun 尚未被调用，指针还未登场）</div>';
+  }
+  el.innerHTML = h;
+}
+
+function centerActiveLine(){
+  var el = document.querySelector('.code-line.active');
+  if (!el) return;
+  var sc = document.getElementById('codeScroll');
+  var er = el.getBoundingClientRect();
+  var cr = sc.getBoundingClientRect();
+  var delta = (er.top + er.height/2) - (cr.top + cr.height/2);
+  if (Math.abs(delta) > 4){
+    sc.scrollTop = Math.max(0, sc.scrollTop + delta);
+  }
+}
+
+function updateCode(step){
+  var lines = document.querySelectorAll('.code-line');
+  var mmls = document.querySelectorAll('.mm-line');
+  var activeLine = step ? step.line : null;
+  var auxLine = step ? step.auxLine : null;
+
+  lines.forEach(function(el){
+    var n = parseInt(el.dataset.line, 10);
+    el.classList.remove('active','aux-num','aux-is');
+    if (activeLine === n) el.classList.add('active');
+    else if (auxLine === n) el.classList.add('aux-num');
+  });
+  mmls.forEach(function(el){
+    var n = parseInt(el.dataset.line, 10);
+    el.classList.remove('active','aux');
+    if (activeLine === n) el.classList.add('active');
+    else if (auxLine === n) el.classList.add('aux');
+  });
+  centerActiveLine();
+}
+
+function makeCursor(){
+  var c = document.createElement('span');
+  c.className = 'cursor';
+  c.textContent = '▊';
+  return c;
+}
+
+function updateOutput(step){
+  var el = document.getElementById('outBody');
+  var lines = step ? step.out : [];
+  if (!lines.length){
+    el.innerHTML = '<div class="out-empty">（程序还没有产生任何输出）</div>' +
+      '<div class="out-note">第 20、22 行的 printf 会先打印提示语，第 24 行才打印结果。</div>';
+    return;
+  }
+  el.innerHTML = '';
+  lines.forEach(function(t){
+    var d = document.createElement('div');
+    d.style.whiteSpace = 'pre';
+    d.style.color = '#86efac';
+    d.style.fontWeight = '700';
+    d.textContent = t;
+    el.appendChild(d);
+  });
+  var last = el.lastElementChild;
+  if (last) last.appendChild(makeCursor());
+  el.scrollTop = el.scrollHeight;
+}
+
+function updateExplain(step){
+  var el = document.getElementById('explainBody');
+  if (!step){
+    el.innerHTML = '<em>点击「自动播放」或「下一步」，开始逐条执行程序。<br><br>' +
+      '<b>本程序演示：统计子串在母串中出现的次数（允许重叠）</b><br>' +
+      '· 第 19 行：<code>char a[100], b[5];</code>　准备两块数组；<br>' +
+      '· 第 21、23 行：<code>gets</code> 读入母串 <code>"abababa"</code> 和子串 <code>"aba"</code>；<br>' +
+      '· 第 10~14 行：<code>numfun</code> 用指针 <code>p</code> 从 a[0] 扫到 a[6]；<br>' +
+      '· 第 3~7 行：<code>isfun</code> 用两个指针同步比较，子串指针走到 <code>\\0</code> 就算匹配成功；<br>' +
+      '· 第 24 行：<code>printf("%d", ...)</code> 输出最终次数。<br><br>' +
+      '<b>运行结果：</b>屏幕输出 <code>3</code>（数字后无换行）。<br>' +
+      '共 ' + STEPS.length + ' 个执行步骤。</em>';
+    return;
+  }
+  el.innerHTML = '<span class="ex-line ' + (step.cls || 'ans') + '">第 ' + step.line + ' 行</span>' +
+    '<strong>' + step.title + '</strong> —— ' + step.desc;
+}
+
+var cur = -1;
+var playing = false;
+var timer = null;
+var speed = 350;
+
+function render(){
+  var step = (cur >= 0 && cur < STEPS.length) ? STEPS[cur] : null;
+  updateCode(step);
+  updateVars(step);
+  updateStack(step);
+  updateArrPanel(step);
+  updatePtrPanel(step);
+  updateOutput(step);
+  updateExplain(step);
+
+  var sc = document.getElementById('stepCounter');
+  if (step) sc.textContent = '步骤 ' + (cur+1) + ' / ' + STEPS.length;
+  else sc.textContent = '步骤 — / ' + STEPS.length;
+
+  document.getElementById('btnPrev').disabled = (cur <= -1);
+  document.getElementById('btnNext').disabled = (cur >= STEPS.length - 1);
+
+  requestAnimationFrame(function(){ centerActiveLine(); syncMinimap(); });
+}
+
+/* ==========================================================
+   5. 缩略图同步
+   ========================================================== */
+function syncMinimap(){
+  var mmView = document.getElementById('mmView');
+  var mmLines = document.getElementById('mmLines');
+  var sc = document.getElementById('codeScroll');
+  if (!mmView || !mmLines || !sc) return;
+  var total = sc.scrollHeight;
+  var view = sc.clientHeight;
+  if (total <= 0) return;
+  var mmH = mmLines.offsetHeight;
+  if (mmH <= 0) return;
+  var ratio = mmH / total;
+  mmView.style.top = (sc.scrollTop * ratio) + 'px';
+  mmView.style.height = Math.max(10, view * ratio) + 'px';
+}
+
+/* ==========================================================
+   6. 播放控制
+   ========================================================== */
+function updatePlayBtn(){
+  var b = document.getElementById('btnPlay');
+  b.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  b.classList.toggle('playing', playing);
+}
+function tick(){
+  if (cur >= STEPS.length - 1){ pause(); return; }
+  cur++;
+  render();
+  if (cur >= STEPS.length - 1) pause();
+}
+function play(){
+  if (playing) return;
+  if (cur >= STEPS.length - 1){ cur = -1; render(); }
+  playing = true; updatePlayBtn();
+  clearInterval(timer);
+  timer = setInterval(tick, speed);
+  tick();
+}
+function pause(){
+  playing = false;
+  clearInterval(timer); timer = null;
+  updatePlayBtn();
+}
+function nextStep(){ pause(); if (cur < STEPS.length - 1){ cur++; render(); } }
+function prevStep(){ pause(); if (cur > -1){ cur--; render(); } }
+function resetAll(){
+  pause(); cur = -1;
+  document.getElementById('codeScroll').scrollTop = 0;
+  render();
+}
+
+/* ==========================================================
+   7. 面板：拖动 / 缩放 / 置顶 / 折叠 / 关闭
+   ========================================================== */
+var zTop = 100;
+function bringToFront(el){
+  zTop++;
+  el.style.zIndex = zTop;
+  document.querySelectorAll('.fp').forEach(function(p){ p.classList.remove('is-active'); });
+  el.classList.add('is-active');
+}
+
+function makeDraggable(el, handle){
+  handle = handle || el;
+  var sx, sy, sl, st, dragging = false;
+  function onDown(e){
+    if (e.target.closest('.fp-close') || e.target.closest('.fp-mini') ||
+        e.target.closest('.resize-handle') || e.target.tagName === 'BUTTON' ||
+        e.target.tagName === 'INPUT') return;
+    dragging = true;
+    var ev = e.touches ? e.touches[0] : e;
+    sx = ev.clientX; sy = ev.clientY;
+    var r = el.getBoundingClientRect();
+    if (getComputedStyle(el).transform !== 'none'){
+      el.style.transform = 'none';
+      el.style.left = r.left + 'px';
+      el.style.top = r.top + 'px';
+    }
+    sl = r.left; st = r.top;
+    bringToFront(el);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.addEventListener('touchmove', onMove, {passive:false});
+    document.addEventListener('touchend', onUp);
+    e.preventDefault();
+  }
+  function onMove(e){
+    if (!dragging) return;
+    var ev = e.touches ? e.touches[0] : e;
+    el.style.left = (sl + ev.clientX - sx) + 'px';
+    el.style.top = (st + ev.clientY - sy) + 'px';
+    e.preventDefault();
+  }
+  function onUp(){
+    dragging = false;
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onUp);
+  }
+  handle.addEventListener('mousedown', onDown);
+  handle.addEventListener('touchstart', onDown, {passive:false});
+}
+
+function makeResizable(el){
+  var h = document.createElement('div');
+  h.className = 'resize-handle';
+  el.appendChild(h);
+  var sx, sy, sw, sh, resizing = false;
+  function onDown(e){
+    resizing = true;
+    var ev = e.touches ? e.touches[0] : e;
+    sx = ev.clientX; sy = ev.clientY;
+    var r = el.getBoundingClientRect();
+    sw = r.width; sh = r.height;
+    if (getComputedStyle(el).transform !== 'none'){
+      el.style.transform = 'none';
+      el.style.left = r.left + 'px';
+      el.style.top = r.top + 'px';
+    }
+    el.style.width = sw + 'px';
+    el.style.height = sh + 'px';
+    bringToFront(el);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    document.addEventListener('touchmove', onMove, {passive:false});
+    document.addEventListener('touchend', onUp);
+    e.preventDefault(); e.stopPropagation();
+  }
+  function onMove(e){
+    if (!resizing) return;
+    var ev = e.touches ? e.touches[0] : e;
+    el.style.width = Math.max(20, sw + ev.clientX - sx) + 'px';
+    el.style.height = Math.max(20, sh + ev.clientY - sy) + 'px';
+    syncMinimap();
+    e.preventDefault();
+  }
+  function onUp(){
+    resizing = false;
+    document.removeEventListener('mousemove', onMove);
+    document.removeEventListener('mouseup', onUp);
+    document.removeEventListener('touchmove', onMove);
+    document.removeEventListener('touchend', onUp);
+  }
+  h.addEventListener('mousedown', onDown);
+  h.addEventListener('touchstart', onDown, {passive:false});
+}
+
+var DEFAULT_LAYOUT = {
+  'fp-controls': {left:'50%', top:'10px', transform:'translateX(-50%)', width:'auto', height:'auto', right:'auto', bottom:'auto'},
+  'fp-vars':     {left:'14px', top:'82px', transform:'none', width:'490px', height:'390px', right:'auto', bottom:'auto'},
+  'fp-arr':      {left:'14px', top:'482px', transform:'none', width:'490px', height:'300px', right:'auto', bottom:'auto'},
+  'fp-ptr':      {left:'auto', top:'82px', transform:'none', width:'620px', height:'250px', right:'14px', bottom:'auto'},
+  'fp-platform': {left:'auto', top:'342px', transform:'none', width:'460px', height:'250px', right:'14px', bottom:'auto'},
+  'fp-minimap':  {left:'auto', top:'602px', transform:'none', width:'170px', height:'400px', right:'14px', bottom:'auto'},
+  'fp-out':      {left:'14px', top:'auto', transform:'none', width:'600px', height:'200px', right:'auto', bottom:'14px'},
+  'fp-explain':  {left:'50%', top:'auto', transform:'translateX(-50%)', width:'min(1200px,52vw)', height:'190px', right:'auto', bottom:'14px'}
+};
+
+function applyLayout(cfg){
+  Object.keys(cfg).forEach(function(id){
+    var el = document.getElementById(id);
+    if (!el) return;
+    var c = cfg[id];
+    el.style.left = c.left || 'auto';
+    el.style.top = c.top || 'auto';
+    el.style.right = c.right || 'auto';
+    el.style.bottom = c.bottom || 'auto';
+    el.style.transform = c.transform || 'none';
+    el.style.width = c.width || 'auto';
+    el.style.height = c.height || 'auto';
+    el.style.display = '';
+    el.classList.remove('collapsed');
+  });
+}
+function resetLayout(){
+  applyLayout(DEFAULT_LAYOUT);
+  document.querySelectorAll('.fp').forEach(function(p){ p.style.zIndex = 100; });
+  zTop = 100;
+}
+
+function initPanels(){
+  document.querySelectorAll('.fp').forEach(function(fp){
+    var head = fp.querySelector('.fp-head');
+    if (head && fp.id !== 'fp-controls' && head.style.display !== 'none'){
+      makeDraggable(fp, head);
+    }
+    if (fp.id === 'fp-controls'){
+      makeDraggable(fp, document.getElementById('controlsBody'));
+    }
+    makeResizable(fp);
+    fp.addEventListener('mousedown', function(){ bringToFront(fp); });
+    fp.addEventListener('touchstart', function(){ bringToFront(fp); }, {passive:true});
+
+    var mini = fp.querySelector('.fp-mini');
+    if (mini){
+      mini.addEventListener('click', function(e){
+        e.stopPropagation();
+        fp.classList.toggle('collapsed');
+        mini.textContent = fp.classList.contains('collapsed') ? '□' : '－';
+        syncMinimap();
+      });
+    }
+    var close = fp.querySelector('.fp-close');
+    if (close && fp.id !== 'fp-controls'){
+      close.addEventListener('click', function(e){
+        e.stopPropagation();
+        fp.style.display = 'none';
+      });
+    }
+  });
+}
+
+/* ==========================================================
+   8. UI 绑定
+   ========================================================== */
+function bindUI(){
+  document.getElementById('btnPlay').addEventListener('click', function(){ if (playing) pause(); else play(); });
+  document.getElementById('btnNext').addEventListener('click', nextStep);
+  document.getElementById('btnPrev').addEventListener('click', prevStep);
+  document.getElementById('btnReset').addEventListener('click', resetAll);
+  document.getElementById('btnLayout').addEventListener('click', resetLayout);
+
+  var sp = document.getElementById('speed');
+  sp.addEventListener('input', function(){
+    speed = Number(this.value);
+    document.getElementById('speedLabel').textContent = (speed/1000).toFixed(2) + 's';
+    if (playing){ clearInterval(timer); timer = setInterval(tick, speed); }
+  });
+
+  document.getElementById('btnFull').addEventListener('click', function(){
+    if (!document.fullscreenElement){
+      if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+    } else {
+      if (document.exitFullscreen) document.exitFullscreen();
+    }
+  });
+  document.getElementById('btnTogglePanels').addEventListener('click', function(){
+    var els = document.querySelectorAll('.fp:not(#fp-controls):not(#fp-minimap)');
+    var any = false;
+    els.forEach(function(e){ if (e.style.display !== 'none') any = true; });
+    els.forEach(function(e){ e.style.display = any ? 'none' : ''; });
+  });
+  document.getElementById('btnToggleMM').addEventListener('click', function(){
+    var mm = document.getElementById('fp-minimap');
+    mm.style.display = (mm.style.display === 'none') ? '' : 'none';
+  });
+  document.getElementById('btnCloseControls').addEventListener('click', function(){
+    document.getElementById('fp-controls').style.display = 'none';
+  });
+
+  document.getElementById('btnPrompt').addEventListener('click', function(){
+    var d = document.getElementById('promptDrawer');
+    d.classList.toggle('open');
+    this.textContent = d.classList.contains('open') ? '📝 收起提示词' : '📝 提示词';
+  });
+  document.getElementById('btnClosePrompt').addEventListener('click', function(){
+    document.getElementById('promptDrawer').classList.remove('open');
+  });
+
+  document.getElementById('codeScroll').addEventListener('scroll', function(){
+    requestAnimationFrame(syncMinimap);
+  }, {passive:true});
+  window.addEventListener('resize', function(){
+    requestAnimationFrame(syncMinimap);
+  });
+
+  document.getElementById('mmBody').addEventListener('click', function(e){
+    var rect = document.getElementById('mmLines').getBoundingClientRect();
+    var y = e.clientY - rect.top;
+    var mmH = document.getElementById('mmLines').offsetHeight;
+    if (mmH <= 0) return;
+    var ratio = y / mmH;
+    var sc = document.getElementById('codeScroll');
+    sc.scrollTop = ratio * sc.scrollHeight - sc.clientHeight/2;
+  });
+
+  document.addEventListener('keydown', function(e){
+    var tag = (e.target && e.target.tagName) || '';
+    if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (e.code === 'Space'){ e.preventDefault(); if (playing) pause(); else play(); }
+    else if (e.code === 'ArrowRight'){ e.preventDefault(); nextStep(); }
+    else if (e.code === 'ArrowLeft'){ e.preventDefault(); prevStep(); }
+    else if (e.code === 'KeyR'){ resetAll(); }
+    else if (e.code === 'KeyF'){
+      if (!document.fullscreenElement){
+        if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+      }
+    }
+    else if (e.code === 'KeyM'){
+      var mm = document.getElementById('fp-minimap');
+      mm.style.display = (mm.style.display === 'none') ? '' : 'none';
+    }
+    else if (e.code === 'KeyH'){
+      var els = document.querySelectorAll('.fp:not(#fp-controls):not(#fp-minimap)');
+      var any = false;
+      els.forEach(function(x){ if (x.style.display !== 'none') any = true; });
+      els.forEach(function(x){ x.style.display = any ? 'none' : ''; });
+      document.getElementById('fp-controls').style.display = '';
+    }
+  });
+
+  document.getElementById('promptInner').textContent =
+    '【任务】把下面的 C 程序做成逐步执行模拟的 HTML。\n\n' +
+    '#include <stdio.h>\n' +
+    'int isfun(char *a, char *b) {\n' +
+    '    while(*a == *b && *a && *b) { a++; b++; }\n' +
+    '    if(*b == 0) return 1;\n' +
+    '    return 0;\n' +
+    '}\n' +
+    'int numfun(char a[], char b[]) {\n' +
+    '    char *p = a;\n' +
+    '    int num = 0;\n' +
+    '    while(*p) { if(isfun(p, b)) num++; p++; }\n' +
+    '    return num;\n' +
+    '}\n' +
+    'int main() {\n' +
+    '    char a[100], b[5];\n' +
+    '    printf("Input mother string:\\n"); gets(a);\n' +
+    '    printf("Input son string:\\n");    gets(b);\n' +
+    '    printf("%d", numfun(a, b));\n' +
+    '    return 0;\n' +
+    '}\n\n' +
+    '【固定输入】a = "abababa"（7 字符），b = "aba"（3 字符）。\n' +
+    '【预期输出】3 行：Input mother string: / Input son string: / 3（数字后无换行）。\n' +
+    '【关键事实】\n' +
+    '· p++ 每轮只 +1，所以重叠子串也统计（k=0,2,4 三处匹配成功）。\n' +
+    '· 匹配判据是 *b == 0（子串指针走到 \\0），不是 *a。\n' +
+    '· while 条件里的 *a && *b 防止越界。\n' +
+    '· 调用栈最深 3 层：main → numfun → isfun。\n' +
+    '· gets 已被 C11 删除，实际应用 fgets。';
+}
+
+/* ==========================================================
+   9. 启动
+   ========================================================== */
+renderCode();
+renderMinimap();
+buildVarTable();
+initPanels();
+bindUI();
+document.getElementById('speedLabel').textContent = (speed/1000).toFixed(2) + 's';
+render();
+
+if (document.fonts && document.fonts.ready){
+  document.fonts.ready.then(function(){ requestAnimationFrame(syncMinimap); });
+}
+setTimeout(function(){ requestAnimationFrame(syncMinimap); }, 250);
+
+})();
+</script>
+</body>
+</html>

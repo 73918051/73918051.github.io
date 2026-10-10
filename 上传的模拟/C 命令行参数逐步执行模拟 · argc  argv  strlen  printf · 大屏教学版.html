@@ -1,0 +1,1628 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 命令行参数逐步执行模拟 · 大屏教学版</title>
+<style>
+:root{
+  --bg:#0b1220; --text:#dce8f8; --muted:#7d93b3;
+  --accent:#38bdf8; --green:#4ade80; --amber:#fbbf24;
+  --pink:#f472b6; --purple:#c084fc; --teal:#2dd4bf;
+  --orange:#fb923c; --gold:#facc15; --red:#ef4444;
+
+  --code-font: clamp(80px, 5vw, 120px);
+  --out-font:  clamp(72px, 4.5vw, 110px);
+  --var-font:  clamp(40px, 2.4vw, 60px);
+  --explain-font: clamp(48px, 2.8vw, 72px);
+  --btn-font: clamp(40px, 2.2vw, 60px);
+  --panel-font: clamp(40px, 2.4vw, 60px);
+  --mini-font: 11px;
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;overflow:hidden;}
+body{
+  background:#0b1220; color:var(--text);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+}
+
+/* ===== 全屏代码层 ===== */
+.code-layer{
+  position:fixed; inset:0; overflow:auto;
+  background:#0b1220; z-index:1;
+  scrollbar-width:thin; scrollbar-color:#334155 #0b1220;
+}
+.code-layer::-webkit-scrollbar{width:16px;height:16px;}
+.code-layer::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+.code-inner{ padding: 24px 0 70vh 0; min-width: max-content; }
+
+.code-line{
+  display:flex; align-items:flex-start; gap: 1.2rem;
+  padding: .08em 3rem .08em 0;
+  white-space: pre;
+  font-family: ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size: var(--code-font);
+  line-height: 1.5;
+  border-left: 16px solid transparent;
+  --tone:#38bdf8;
+  --tone-bg:rgba(56,189,248,.22);
+  transition: background .22s, border-color .22s;
+}
+.code-line .ln{
+  flex: 0 0 auto; width: 3.4ch; text-align: right;
+  color:#3f5a7d; font-size: .6em; user-select:none;
+  padding-top: .55em; font-variant-numeric: tabular-nums;
+}
+.code-line .src{ flex: 0 0 auto; }
+.code-line.active{
+  background: linear-gradient(90deg, var(--tone-bg), rgba(0,0,0,0));
+  border-left-color: var(--tone);
+  box-shadow: inset 0 0 0 3px var(--tone-bg);
+}
+.code-line.active .ln{ color: var(--tone); font-weight:700; }
+.code-line.active .src{ color:#ffffff; }
+
+.pre{color:#c084fc;font-weight:700;}
+.kw{color:#f472b6;font-weight:700;}
+.ty{color:#2dd4bf;font-weight:700;}
+.str{color:#4ade80;}
+.cmt{color:#64748b;font-style:italic;}
+.fn{color:#38bdf8;font-weight:600;}
+.num{color:#fbbf24;font-weight:700;}
+.op{color:#fb923c;font-weight:800;}
+.mac{color:#4ade80;font-weight:800;}
+
+/* ===== 悬浮面板 ===== */
+.panel{
+  position:fixed;
+  background: rgba(11,18,32,.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 2px solid rgba(56,189,248,.32);
+  border-radius: 18px;
+  display:flex; flex-direction:column;
+  overflow:hidden;
+  box-shadow: 0 24px 70px rgba(0,0,0,.65);
+  z-index:50;
+  transition: border-color .18s, box-shadow .18s;
+}
+.panel.active{
+  border-color:#38bdf8;
+  box-shadow: 0 0 0 4px rgba(56,189,248,.28), 0 28px 80px rgba(0,0,0,.75);
+}
+.p-head{
+  flex:0 0 auto;
+  display:flex; align-items:center; gap:14px;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, rgba(56,189,248,.18), rgba(56,189,248,.05));
+  border-bottom:1px solid rgba(56,189,248,.22);
+  cursor: move; user-select:none; touch-action:none;
+  font-size: var(--panel-font); font-weight:700;
+  color:#bae6fd; white-space:nowrap;
+}
+.p-title{ overflow:hidden; text-overflow:ellipsis; }
+.p-close{
+  margin-left:auto; flex: 0 0 auto;
+  width:56px;height:56px;
+  border-radius:12px;
+  border:2px solid rgba(239,68,68,.55);
+  background:rgba(239,68,68,.16);
+  color:#fca5a5; font-size:40px; line-height:1;
+  cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  transition: background .15s;
+}
+.p-close:hover{ background:rgba(239,68,68,.4); color:#fff; }
+.p-body{
+  flex:1 1 auto; min-height:0; overflow:auto;
+  padding: 12px 16px;
+  scrollbar-width:thin; scrollbar-color:#334155 transparent;
+}
+.p-body::-webkit-scrollbar{width:12px;height:12px;}
+.p-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+.p-resize{
+  position:absolute; right:0; bottom:0;
+  width:52px; height:52px;
+  cursor: nwse-resize; touch-action:none;
+  background: linear-gradient(135deg, transparent 48%, rgba(56,189,248,.75) 48%);
+  border-bottom-right-radius:16px;
+}
+
+/* ===== 顶部控制栏 ===== */
+#p-top .p-body{
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  padding: 10px 16px;
+}
+button.ctl{
+  font:inherit; font-size: var(--btn-font);
+  min-height: 72px; padding: 0 22px;
+  border-radius: 14px;
+  border:2px solid rgba(56,189,248,.4);
+  background: rgba(24,39,65,.9);
+  color: var(--text); cursor:pointer;
+  white-space:nowrap;
+  transition: background .15s, transform .1s, border-color .15s;
+}
+button.ctl:hover:not(:disabled){ background: rgba(33,51,82,.95); border-color:#38bdf8; }
+button.ctl:active:not(:disabled){ transform: translateY(2px); }
+button.ctl:disabled{ opacity:.32; cursor:not-allowed; }
+button.ctl.primary{
+  background: linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#7dd3fc; color:#04121f; font-weight:800;
+}
+button.ctl.primary.playing{
+  background: linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24; color:#1a1200;
+}
+.speed-wrap{
+  display:flex; align-items:center; gap:14px;
+  font-size: var(--btn-font); color:#93b3d6;
+}
+.speed-wrap input[type=range]{
+  width: 260px; height: 44px;
+  accent-color: var(--accent); cursor:pointer;
+}
+.speed-wrap b{
+  color: var(--accent); font-variant-numeric: tabular-nums;
+  min-width: 4.5ch; display:inline-block;
+}
+
+/* ===== 当前语句说明 ===== */
+#p-explain .p-body{
+  font-size: var(--explain-font);
+  line-height: 1.6; color:#c3d5ec;
+}
+#p-explain .ex-line{
+  display:inline-block; margin-right: 16px;
+  padding: 4px 18px; border-radius: 12px;
+  background: rgba(56,189,248,.2);
+  color: var(--accent); font-weight:800;
+  font-size:.72em; vertical-align: middle;
+}
+#p-explain strong{ color:#ffffff; }
+#p-explain code{
+  font-family: ui-monospace,Consolas,monospace;
+  background: rgba(148,163,184,.18);
+  border-radius: 8px; padding: 0 10px; color:#e2e8f0;
+}
+#p-explain .tip, #p-explain .warn, #p-explain .win, #p-explain .danger{
+  display:block; margin-top: 12px; padding: 12px 18px;
+  border-radius: 12px; font-size:.82em; line-height:1.55;
+}
+#p-explain .tip{ background:rgba(45,212,191,.12); border-left: 8px solid var(--teal); color:#bff5ec; }
+#p-explain .warn{ background:rgba(251,191,36,.13); border-left: 8px solid var(--amber); color:#ffe6b0; }
+#p-explain .win{ background:rgba(250,204,21,.15); border-left: 8px solid var(--gold); color:#fff3c4; font-weight:700; }
+#p-explain .danger{ background:rgba(239,68,68,.15); border-left: 8px solid var(--red); color:#fecaca; }
+
+/* ===== 命令行参数可视化 ===== */
+.ll-sec-title{
+  font-size: .72em; color:#94a3b8;
+  font-family: ui-monospace,Consolas,monospace;
+  margin: 4px 0 10px;
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+}
+.dot{display:inline-block; width:.75em; height:.75em; border-radius:4px; flex:0 0 auto;}
+.dot-h{background:#38bdf8;}
+
+.fc-track{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding-bottom:12px; }
+.fc-cell{
+  min-width:8em; padding: 12px 18px; border-radius: 14px;
+  background: rgba(13,23,40,.95);
+  border:3px solid #24405f; text-align:center;
+  font-family: ui-monospace,Consolas,monospace;
+  transition: box-shadow .3s, border-color .3s, transform .3s, background .3s;
+}
+.fc-cell .fc-ch{ font-size:1.05em; color:#7dd3fc; font-weight:800; line-height:1.3; }
+.fc-cell .fc-code{ font-size:.62em; color:#5f7796; line-height:1.3; margin-top:4px; }
+
+.fc-cell.cur{
+  border-color:#facc15;
+  box-shadow: 0 0 0 5px rgba(250,204,21,.45), 0 0 30px rgba(250,204,21,.4);
+  transform: translateY(-6px);
+  background: rgba(26,22,7,.95);
+}
+.fc-cell.cur .fc-ch{ color:#fde68a; }
+.fc-cell.cur .fc-code{ color:#a16207; }
+
+.fc-cell.read{ border-color:#2f5a44; background: rgba(11,26,20,.95); }
+.fc-cell.read .fc-ch{ color:#4ade80; }
+.fc-cell.read .fc-code{ color:#3f7a5a; }
+
+.fc-cell.prog-name .fc-ch{ color:#c084fc; }
+.fc-cell.prog-name.read .fc-ch{ color:#86efac; }
+
+.fc-null{ border-style:dashed !important; }
+.fc-null .fc-ch{ color:#94a3b8 !important; }
+.fc-null.cur{
+  border-color:#fb923c !important;
+  box-shadow: 0 0 0 5px rgba(251,146,60,.5), 0 0 30px rgba(251,146,60,.45) !important;
+  transform: translateY(-6px) !important;
+  background: rgba(26,16,7,.95) !important;
+}
+.fc-null.cur .fc-ch{ color:#fdba74 !important; }
+
+.fc-note{
+  font-size: .72em; color:#7d93b3;
+  font-family: ui-monospace,Consolas,monospace;
+  margin-top: 8px; line-height: 1.65;
+}
+.fc-note b{ color:#7dd3fc; }
+
+/* ===== 变量表 ===== */
+.var-row{
+  display:flex; justify-content:space-between; align-items:center; gap:20px;
+  padding: 10px 18px; margin-bottom: 8px;
+  border-radius: 12px;
+  background: rgba(13,23,40,.8);
+  border:2px solid #1b293f;
+  border-left-width: 10px;
+  font-size: var(--var-font);
+  line-height:1.3;
+  transition: background .25s, border-color .25s;
+}
+.var-row.k-ctx{ border-left-color:#4ade80; }
+.var-row.k-argc{ border-left-color:#c084fc; }
+.var-row.k-i{ border-left-color:#38bdf8; }
+.var-row.k-len{ border-left-color:#fbbf24; }
+.var-row.k-argv0{ border-left-color:#c084fc; }
+.var-row.k-argv1{ border-left-color:#4ade80; }
+.var-row.k-argv2{ border-left-color:#4ade80; }
+.var-row.k-str{ border-left-color:#fb923c; }
+.var-row.k-ret{ border-left-color:#facc15; }
+.var-row.changed{ background: rgba(56,189,248,.16); border-color:#38bdf8; }
+.var-name{ color:#8fa8c8; font-size:.68em; white-space:nowrap; }
+.var-value{
+  font-family: ui-monospace,Consolas,monospace;
+  font-weight:900; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+  text-align:right;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.var-value.dim{ color:#5f7796; font-weight:500; }
+.var-row.k-ctx .var-value{ color:#4ade80; }
+.var-row.k-argc .var-value{ color:#c084fc; }
+.var-row.k-i .var-value{ color:#38bdf8; }
+.var-row.k-len .var-value{ color:#fbbf24; }
+.var-row.k-argv0 .var-value{ color:#c084fc; }
+.var-row.k-argv1 .var-value{ color:#4ade80; }
+.var-row.k-argv2 .var-value{ color:#4ade80; }
+.var-row.k-str .var-value{ color:#fb923c; }
+.var-row.k-ret .var-value{ color:#facc15; }
+@keyframes flashval{
+  0%{ transform: scale(1); }
+  35%{ transform: scale(1.22); color:#fff; text-shadow: 0 0 22px currentColor; }
+  100%{ transform: scale(1); }
+}
+.var-value.flash{ animation: flashval .55s ease-out; }
+
+/* ===== 控制台 ===== */
+#p-console .p-body{
+  background:#050c17;
+  border-radius: 12px;
+  margin: 12px 16px;
+  padding: 16px 20px;
+  font-family: ui-monospace,Consolas,"Courier New",monospace;
+  font-size: var(--out-font);
+  line-height:1.55;
+  color:#86efac;
+  white-space: pre;
+}
+.out-line{ margin:0; white-space:pre; }
+.out-norm{ color:#86efac; }
+.out-note{ color:#94a3b8; font-style:italic; }
+.out-input{ color:#7dd3fc; }
+.out-count{ color:#fbbf24; }
+.out-final{ color:#facc15; font-weight:900; }
+.out-wait{ color:#3d5474; }
+.cursor{ display:inline-block; color:#4ade80; animation: blink 1s step-end infinite; }
+@keyframes blink{ 0%,100%{opacity:1;} 50%{opacity:0;} }
+
+/* ===== 求值链 ===== */
+.chain-item{
+  font-family: ui-monospace,Consolas,monospace;
+  font-size: var(--var-font);
+  line-height:1.4;
+  padding: 8px 16px; margin-bottom: 6px;
+  border-radius: 10px;
+  background: rgba(13,23,40,.75);
+  border-left: 8px solid rgba(56,189,248,.55);
+  color:#9fd8f5;
+  white-space:nowrap;
+}
+.chain-item.last{
+  border-left-color: var(--gold);
+  background: rgba(250,204,21,.16);
+  color:#fff3c4; font-weight:900;
+  box-shadow: 0 0 0 3px rgba(250,204,21,.28);
+}
+.chain-empty{ color:#3d5474; font-size: var(--var-font); padding: 12px; }
+
+/* ===== 平台模型说明 ===== */
+.model-body{ font-size: var(--var-font); line-height:1.55; color:#b8cbe4; }
+.model-body b{ color:#facc15; }
+.model-body code{
+  font-family: ui-monospace,Consolas,monospace;
+  background: rgba(148,163,184,.15);
+  border-radius: 8px; padding: 0 8px; color:#ffe9a8;
+}
+.model-body .k{ color:#f472b6; font-weight:800; }
+.model-body .g{ color:#4ade80; font-weight:800; }
+.model-body .r{ color:#fca5a5; font-weight:800; }
+.model-body .y{ color:#facc15; font-weight:800; }
+.model-body .p{ color:#c084fc; font-weight:800; }
+
+/* ===== 缩略图 ===== */
+#p-mini .p-body{ padding: 6px 4px; }
+.mm-line{
+  display:flex; gap:4px;
+  white-space: pre; overflow: hidden;
+  font-family: ui-monospace,Consolas,monospace;
+  font-size: var(--mini-font);
+  line-height: 1.45; color:#7d93b3;
+  padding: 0 2px;
+  border-left: 3px solid transparent;
+}
+.mm-line .mmln{ color:#3f5a7d; width: 2.2ch; text-align:right; flex:0 0 auto; }
+.mm-line.active{ background: rgba(56,189,248,.28); border-left-color:#38bdf8; }
+.mm-line.active .mmln{ color:#38bdf8; font-weight:800; }
+.mm-line .src{ overflow:hidden; text-overflow: clip; }
+#mmViewport{
+  position:absolute; left:0; right:0;
+  background: rgba(56,189,248,.18);
+  border-top: 2px solid rgba(56,189,248,.85);
+  border-bottom: 2px solid rgba(56,189,248,.85);
+  pointer-events:none;
+}
+#mmBodyWrap{ position:relative; }
+
+/* ===== 提示词 ===== */
+#p-prompt .p-body{
+  font-family: ui-monospace,Consolas,monospace;
+  font-size: clamp(24px,1.4vw,34px);
+  line-height:1.6; color:#a9bdd8;
+  white-space: pre-wrap;
+}
+
+@media (max-width:1100px){
+  :root{
+    --code-font: clamp(34px,4.4vw,54px);
+    --out-font: clamp(30px,3.6vw,46px);
+    --var-font: clamp(22px,2.2vw,32px);
+    --explain-font: clamp(24px,2.4vw,34px);
+    --btn-font: clamp(20px,2vw,30px);
+    --panel-font: clamp(22px,2.2vw,32px);
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="code-layer" id="codeLayer">
+  <div class="code-inner" id="codeInner"></div>
+</div>
+
+<section class="panel" id="p-top">
+  <header class="p-head">
+    <span class="p-title">C 命令行参数 · 逐步执行</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body">
+    <button class="ctl" id="btnReset">⟲ 重置</button>
+    <button class="ctl" id="btnPrev">◀ 上一步</button>
+    <button class="ctl primary" id="btnPlay">▶ 播放</button>
+    <button class="ctl" id="btnNext">下一步 ▶</button>
+    <span class="speed-wrap">
+      速度
+      <input type="range" id="speed" min="40" max="1600" step="20" value="500">
+      <b id="speedLabel">0.50s</b>
+    </span>
+    <button class="ctl" id="btnFull">⛶ 全屏</button>
+    <button class="ctl" id="btnPanels">👁 面板</button>
+    <button class="ctl" id="btnMini">🗺 缩略图</button>
+    <button class="ctl" id="btnLayout">↺ 重置布局</button>
+    <button class="ctl" id="btnPrompt">📝 提示词</button>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-explain">
+  <header class="p-head">
+    <span class="p-title">当前语句说明</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="explainBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-file">
+  <header class="p-head">
+    <span class="p-title">命令行参数可视化（argv）</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="fileBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-var">
+  <header class="p-head">
+    <span class="p-title">变量表</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="varBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-console">
+  <header class="p-head">
+    <span class="p-title">程序运行输出（模拟器旁注）</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="consoleBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-eval">
+  <header class="p-head">
+    <span class="p-title">表达式求值链</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="evalBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-model">
+  <header class="p-head">
+    <span class="p-title">平台模型与关键考点</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body model-body">
+    <b>平台：</b>64 位，小端序；<code>char=1</code>、<code>int=4</code>、指针<code>=8</code>。<br>
+    <span class="p">★ argc 含程序名本身</span>：<code>argc</code> = argument count = 参数总个数；<br>
+    　用户只输入 2 个参数（hello、world），<code>argc</code> 却是 <b>3</b>。<br>
+    <span class="p">★ argv 结构</span>：<code>char *argv[]</code> 是字符串指针数组；<br>
+    　<code>argv[0]</code> = 程序自己的名字（"prog.exe"）；<br>
+    　<code>argv[1..argc-1]</code> = 用户参数；<br>
+    　<code>argv[argc] = NULL</code> 是标准规定的结束哨兵。<br>
+    <span class="k">★ char *argv[] ≡ char **argv</span>：函数参数里数组名退化为指针。<br>
+    <span class="k">★ 两个循环起跑线不同</span>：<br>
+    　第一个 <code>for(i=0; ...)</code> → 打印全部（含程序名），共 3 次；<br>
+    　第二个 <code>for(i=1; ...)</code> → 统计用户参数（跳过程序名），共 2 次。<br>
+    　若第二个写成 <code>i=0</code>，<code>len</code> 会多出 8，变成 18。<br>
+    <span class="k">★ for 循环四步顺序</span>：初始化 → 判断 → 循环体 → 自增 → 回到判断。<br>
+    <span class="k">★ 循环退出后计数器多 1</span>：两个循环退出时 <code>i = 3</code>。<br>
+    <span class="k">★ strlen 不含 \0</span>：<code>strlen("hello") = 5</code>，内存占用是 6 字节。<br>
+    <span class="r">★ 绝不能用 sizeof 代替 strlen</span>：<code>argv[i]</code> 是 <code>char *</code> 指针，<br>
+    　<code>sizeof(argv[i])</code> 只返回指针大小（4 或 8），不是字符串长度。<br>
+    <span class="k">★ len += x 复合赋值</span>：等价于 <code>len = len + x</code>。<br>
+    <span class="k">★ 累加器必须先清零</span>：<code>len = 0</code> 是硬性要求。<br>
+    <span class="y">★ 第 9 行 printf 末尾缺 \n</span>：<code>len=10</code> 输出后光标不换行（小瑕疵）。<br>
+    <span class="y">★ 第 6 行格式串里有空格</span>：<code>%s</code> 与 <code>\n</code> 之间。<br>
+    <span class="r">★ 循环边界必须是 i &lt; argc</span>：不能写 <code>i &lt;= argc</code>，<br>
+    　否则会打印 <code>argv[argc] = NULL</code>，用 <code>%s</code> 打印 NULL 是未定义行为（多数系统崩溃）。<br>
+    <span class="k">★ %d / %s 与类型必须配对</span>：<code>%d</code> ← int，<code>%s</code> ← char*。<br>
+    <span class="warn">i 未初始化</span>：<code>int i, len = 0;</code> 本例安全（两个 for 先赋初值），<br>
+    　严格写法应是 <code>int i = 0, len = 0;</code>。<br>
+    <span class="g">复杂度</span>：时间 <b>O(argc × 平均参数长度)</b>，空间 <b>O(1)</b>。
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-mini">
+  <header class="p-head">
+    <span class="p-title">缩略图</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body">
+    <div id="mmBodyWrap">
+      <div id="mmBody"></div>
+      <div id="mmViewport"></div>
+    </div>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<section class="panel" id="p-prompt" style="display:none;">
+  <header class="p-head">
+    <span class="p-title">提示词</span>
+    <button class="p-close" title="关闭">×</button>
+  </header>
+  <div class="p-body" id="promptBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   一、源代码（11 行）
+   ============================================================ */
+var SRC = [
+[1 ,'<span class="pre">#include</span> <span class="str">&lt;stdio.h&gt;</span>                 <span class="cmt">// 包含标准输入输出头文件</span>'],
+[2 ,'<span class="pre">#include</span> <span class="str">&lt;string.h&gt;</span>                <span class="cmt">// 包含字符串头文件</span>'],
+[3 ,'<span class="ty">int</span> <span class="fn">main</span>(<span class="ty">int</span> argc, <span class="ty">char</span> <span class="op">*</span>argv[]) {   <span class="cmt">// 带命令行参数的主函数</span>'],
+[4 ,'    <span class="ty">int</span> i, len <span class="op">=</span> <span class="num">0</span>;                  <span class="cmt">// 定义变量</span>'],
+[5 ,'    <span class="kw">for</span>(i<span class="op">=</span><span class="num">0</span>; i<span class="op">&lt;</span>argc; i<span class="op">++</span>)             <span class="cmt">// 遍历参数</span>'],
+[6 ,'        <span class="fn">printf</span>(<span class="str">"Argument %d is:%s \\n"</span>, i, argv[i]);'],
+[7 ,'    <span class="kw">for</span>(i<span class="op">=</span><span class="num">1</span>; i<span class="op">&lt;</span>argc; i<span class="op">++</span>)             <span class="cmt">// 从第2个开始统计长度</span>'],
+[8 ,'        len <span class="op">+=</span> <span class="fn">strlen</span>(argv[i]);'],
+[9 ,'    <span class="fn">printf</span>(<span class="str">"len=%d"</span>, len);'],
+[10,'    <span class="kw">return</span> <span class="num">0</span>;'],
+[11,'}']
+];
+
+var codeInner = document.getElementById('codeInner');
+var html = '';
+for (var i = 0; i < SRC.length; i++) {
+  html += '<div class="code-line" data-line="' + SRC[i][0] + '">' +
+            '<span class="ln">' + SRC[i][0] + '</span>' +
+            '<span class="src">' + SRC[i][1] + '</span>' +
+          '</div>';
+}
+codeInner.innerHTML = html;
+
+var mmBody = document.getElementById('mmBody');
+var mmHtml = '';
+for (var m = 0; m < SRC.length; m++) {
+  mmHtml += '<div class="mm-line" data-line="' + SRC[m][0] + '">' +
+              '<span class="mmln">' + SRC[m][0] + '</span>' +
+              '<span class="src">' + SRC[m][1] + '</span>' +
+            '</div>';
+}
+mmBody.innerHTML = mmHtml;
+
+/* ============================================================
+   二、模拟数据
+   ============================================================ */
+var ARGC = 3;
+var ARGV = ['prog.exe', 'hello', 'world'];
+var ARGV_STRLEN = [8, 5, 5];
+
+var TONES = {
+  blue:   ['#38bdf8', 'rgba(56,189,248,.22)'],
+  gold:   ['#facc15', 'rgba(250,204,21,.22)'],
+  pink:   ['#f472b6', 'rgba(244,114,182,.24)'],
+  purple: ['#c084fc', 'rgba(192,132,252,.22)'],
+  green:  ['#4ade80', 'rgba(74,222,128,.22)'],
+  orange: ['#fb923c', 'rgba(251,146,60,.22)'],
+  red:    ['#ef4444', 'rgba(239,68,68,.28)'],
+  cyan:   ['#2dd4bf', 'rgba(45,212,191,.22)']
+};
+
+/* ============================================================
+   三、步骤构建
+   ============================================================ */
+function buildSteps() {
+  var steps = [];
+  var CHAIN = [];
+
+  var S = {
+    func: '（未开始）',
+    argc: '—',
+    i: '—',
+    len: '—',
+    argvShow: false,
+    argv: ['', '', ''],
+    argvCur: -1,
+    strLenNow: '—',
+    ret: '—',
+    out: [],
+    done: false
+  };
+
+  function clone(o){ return JSON.parse(JSON.stringify(o)); }
+  function pushOut(t,c){ S.out.push({ t:t, c:c||'out-norm' }); }
+  function chainPush(t){ CHAIN.push({ t:t }); }
+  function snap(o){
+    S.chain = CHAIN.slice();
+    steps.push({
+      line: o.line, tone: o.tone || 'blue',
+      title: o.title || '', desc: o.desc || '',
+      s: clone(S)
+    });
+  }
+
+  /* ---- 1. 进入 main ---- */
+  S.func = 'main';
+  S.argc = '3';
+  S.argvShow = true;
+  S.argv = ARGV.slice();
+  pushOut('[启动] 程序被调用：prog.exe hello world', 'out-note');
+  pushOut('[启动] argc = 3，argv = {"prog.exe", "hello", "world", NULL}', 'out-note');
+  chainPush('进入 main，argc = 3，argv 已就绪');
+  snap({
+    line: 3, tone:'gold',
+    title: '进入 <b>main</b>，命令行参数已经就绪',
+    desc: '程序从 <code>main</code> 开始执行。这次的主函数带了<b>两个参数</b>，' +
+          '它们是操作系统在启动程序时「喂」进来的：<br>' +
+          '· <code>int argc</code> —— <b>argument count</b>，命令行参数的<b>个数</b>；<br>' +
+          '· <code>char *argv[]</code> —— <b>argument vector</b>，' +
+          '一个<b>字符串指针数组</b>，每个元素指向一个参数字符串。' +
+          '<span class="tip"><b>本例假设的调用命令：</b><br>' +
+          '<code>prog.exe hello world</code><br><br>' +
+          '于是：<br>' +
+          '· <code>argc = 3</code>（共 3 个参数）；<br>' +
+          '· <code>argv[0] = "prog.exe"</code> —— <b>程序自己的名字</b>；<br>' +
+          '· <code>argv[1] = "hello"</code>；<br>' +
+          '· <code>argv[2] = "world"</code>；<br>' +
+          '· <code>argv[3] = NULL</code> —— 标准规定的<b>结束哨兵</b>。</span>' +
+          '<span class="warn"><b>⚠ <code>argc</code> 把程序名也算进去了！</b><br>' +
+          '很多人以为 <code>argc</code> 是「用户输入的参数个数」，' +
+          '其实它是<b>含程序名在内</b>的总个数。<br>' +
+          '本例用户只输入了 2 个参数（hello、world），' +
+          '但 <code>argc = 3</code>。<br>' +
+          '这就是为什么第二个循环<b>从 <code>i = 1</code> 开始</b>——' +
+          '要跳过 <code>argv[0]</code> 这个程序名，只统计真正的用户参数。</span>' +
+          '<span class="tip"><b>两种等价写法：</b><br>' +
+          '<code>char *argv[]</code> 等价于 <code>char **argv</code>。<br>' +
+          '前者强调「数组」，后者强调「指向指针的指针」。<br>' +
+          '在函数参数里，数组名会退化成指针，所以两者完全一样。</span>'
+  });
+
+  /* ---- 2. 声明 i, len = 0 ---- */
+  S.i = '（未初始化）';
+  S.len = '0';
+  chainPush('int i, len = 0;  → i 未初始化，len = 0');
+  snap({
+    line: 4, tone:'cyan',
+    title: '声明 <b>int i, len = 0;</b>',
+    desc: '定义两个整型变量：<code>i</code> 和 <code>len</code>。<br>' +
+          '· <code>i</code>：<b>循环计数器</b>，后面两个 <code>for</code> 循环都用它；<br>' +
+          '· <code>len</code>：<b>累加器</b>，用来装「所有用户参数字符串的总长度」；<br>' +
+          '· <b>只有 <code>len</code> 被初始化成 0</b>——' +
+          '而 <code>i</code> 没有初始化，此刻它的值是<b>不确定的垃圾值</b>。' +
+          '<span class="tip"><b>为什么 <code>len</code> 必须初始化为 0？</b><br>' +
+          '因为后面要用 <code>len += strlen(argv[i])</code> 做<b>累加</b>。<br>' +
+          '如果 <code>len</code> 像 <code>i</code> 一样是垃圾值，' +
+          '那 <code>0 + 5 + 5</code> 就变成了 <code>垃圾值 + 5 + 5</code>，结果完全错误。<br>' +
+          '「<b>累加器必须先清零</b>」是写循环的基本纪律。</span>' +
+          '<span class="warn"><b>⚠ 那 <code>i</code> 不初始化安全吗？</b><br>' +
+          '本例是安全的，因为两个 <code>for</code> 循环的开头都是 <code>i=0</code> / <code>i=1</code>，' +
+          '在<b>使用 <code>i</code> 之前就先给它赋了值</b>。<br>' +
+          '但严格来说，<code>int i;</code> 之后、赋值之前读到 <code>i</code> 是未定义行为。' +
+          '更稳妥的写法是 <code>int i = 0, len = 0;</code>。</span>'
+  });
+
+  /* ---- 3. 第一个 for：i=0 判断 ---- */
+  S.i = '0';
+  chainPush('第一个 for：i = 0，判断 0 < 3 → 真');
+  snap({
+    line: 5, tone:'red',
+    title: '第一个 <b>for</b>：<b>i = 0</b>，判断 <b>0 &lt; 3</b> → 真',
+    desc: '<code>for(i=0; i&lt;argc; i++)</code> 的执行顺序是：' +
+          '<b>① 初始化 → ② 判断 → ③ 循环体 → ④ 自增 → 回到 ②</b>。<br>' +
+          '本轮做的是前两步：<br>' +
+          '· <b>① 初始化</b>：<code>i = 0</code>；<br>' +
+          '· <b>② 判断</b>：<code>i &lt; argc</code> → <code>0 &lt; 3</code> → <b>真</b>；<br>' +
+          '· 条件成立 → <b>进入循环体</b>，准备执行第 6 行的 <code>printf</code>。' +
+          '<span class="tip"><b>这个循环的目的是：把每一个参数都打印出来。</b><br>' +
+          '注意它<b>从 <code>i = 0</code> 开始</b>，也就是说' +
+          '<b>连程序名 <code>argv[0]</code> 也要打印</b>。<br>' +
+          '这符合作者的意图：让用户看到完整的参数列表。</span>' +
+          '<span class="warn"><b>⚠ 循环边界为什么是 <code>i &lt; argc</code> 而不是 <code>i &lt;= argc</code>？</b><br>' +
+          '因为合法下标是 <code>0</code> 到 <code>argc - 1</code>。<br>' +
+          '<code>argv[argc]</code> 虽然是合法的（它是 <code>NULL</code>），' +
+          '但用 <code>%s</code> 打印 <code>NULL</code> 是<b>未定义行为</b>，多数系统会直接崩溃。<br>' +
+          '所以必须写 <code>i &lt; argc</code>。</span>'
+  });
+
+  /* ---- 4. 第一次 printf ---- */
+  S.argvCur = 0;
+  pushOut('Argument 0 is:prog.exe ', 'out-norm');
+  chainPush('printf → Argument 0 is:prog.exe ');
+  snap({
+    line: 6, tone:'pink',
+    title: '第 1 次 <b>printf</b>：输出 <b>Argument 0 is:prog.exe</b>',
+    desc: '把 <code>argv[0]</code> 打印出来。<br>' +
+          '· <b>格式串</b>：<code>"Argument %d is:%s \\n"</code>；<br>' +
+          '· <b>参数</b>：<code>i</code> = <b>0</b>，<code>argv[i]</code> = <code>argv[0]</code> = ' +
+          '<code>"prog.exe"</code>；<br>' +
+          '· 替换后：<code>%d</code> → <code>0</code>，<code>%s</code> → <code>prog.exe</code>；<br>' +
+          '· <b>屏幕输出</b>：<code>Argument 0 is:prog.exe </code>（末尾有一个空格 + 换行）。' +
+          '<span class="tip"><b>注意格式串里的那个空格：</b><br>' +
+          '原文是 <code>"Argument %d is:%s \\n"</code>——' +
+          '<code>%s</code> 和 <code>\\n</code> 之间<b>有一个空格</b>。<br>' +
+          '所以每行输出的末尾都会多一个空格，然后才换行。<br>' +
+          '这是很常见的现象（为了排版好看），不算错误，但眼睛看不见。</span>' +
+          '<span class="tip"><b><code>%d</code> 和 <code>%s</code> 的对应关系：</b><br>' +
+          '<code>printf</code> 按<b>从左到右</b>的顺序，' +
+          '把后面的参数一个个填进格式串的占位符：<br>' +
+          '· 第 1 个 <code>%d</code> ← <code>i</code>（int）；<br>' +
+          '· 第 1 个 <code>%s</code> ← <code>argv[i]</code>（char*）。<br>' +
+          '<b>顺序错了、类型错了，都会输出乱码甚至崩溃。</b></span>' +
+          '<span class="warn"><b>⚠ 为什么 <code>argv[0]</code> 是 "prog.exe"？</b><br>' +
+          '这个字符串<b>由操作系统决定</b>，通常是可执行文件的路径或名字。<br>' +
+          '在 Windows 上可能是 <code>C:\\test\\prog.exe</code>，' +
+          '在 Linux 上可能是 <code>./prog</code>。<br>' +
+          '本例为简洁，假设就是 <code>prog.exe</code>。</span>'
+  });
+
+  /* ---- 5. i++ → 1 ---- */
+  S.i = '1';
+  S.argvCur = 1;
+  chainPush('第一个 for：i++ → i = 1，判断 1 < 3 → 真');
+  snap({
+    line: 5, tone:'red',
+    title: '第一个 <b>for</b>：<b>i++</b> → <b>i = 1</b>，判断 <b>1 &lt; 3</b> → 真',
+    desc: '一次循环体执行完，回到 <code>for</code> 语句。<br>' +
+          '· <b>④ 自增</b>：<code>i++</code> → <code>i</code> 从 <b>0</b> 变成 <b>1</b>；<br>' +
+          '· <b>② 判断</b>：<code>i &lt; argc</code> → <code>1 &lt; 3</code> → <b>真</b>；<br>' +
+          '· 条件成立 → 再次进入循环体。' +
+          '<span class="tip"><b><code>i++</code> 是后置自增：</b><br>' +
+          '先取 <code>i</code> 的原值参与表达式，再把 <code>i</code> 加 1。<br>' +
+          '但这里 <code>i++</code> 是<b>独立的第三表达式</b>，' +
+          '没有别的运算参与，所以等价于 <code>i = i + 1</code>。<br>' +
+          '如果是 <code>++i</code>，效果也一样。</span>'
+  });
+
+  /* ---- 6. 第二次 printf ---- */
+  pushOut('Argument 1 is:hello ', 'out-norm');
+  chainPush('printf → Argument 1 is:hello ');
+  snap({
+    line: 6, tone:'pink',
+    title: '第 2 次 <b>printf</b>：输出 <b>Argument 1 is:hello</b>',
+    desc: '把 <code>argv[1]</code> 打印出来。<br>' +
+          '· <code>i</code> = <b>1</b>，<code>argv[1]</code> = <code>"hello"</code>；<br>' +
+          '· 替换后：<code>%d</code> → <code>1</code>，<code>%s</code> → <code>hello</code>；<br>' +
+          '· <b>屏幕输出</b>：<code>Argument 1 is:hello </code>（末尾空格 + 换行）。' +
+          '<span class="tip"><b>注意：这里输出的是<b>第 1 个用户参数</b>。</b><br>' +
+          '在终端里，用户输入的是 <code>hello world</code>，' +
+          '所以 <code>argv[1]</code> 就是 <code>hello</code>。</span>'
+  });
+
+  /* ---- 7. i++ → 2 ---- */
+  S.i = '2';
+  S.argvCur = 2;
+  chainPush('第一个 for：i++ → i = 2，判断 2 < 3 → 真');
+  snap({
+    line: 5, tone:'red',
+    title: '第一个 <b>for</b>：<b>i++</b> → <b>i = 2</b>，判断 <b>2 &lt; 3</b> → 真',
+    desc: '继续循环。<br>' +
+          '· <b>④ 自增</b>：<code>i</code> 从 <b>1</b> 变成 <b>2</b>；<br>' +
+          '· <b>② 判断</b>：<code>2 &lt; 3</code> → <b>真</b>；<br>' +
+          '· 再次进入循环体，执行第 6 行。' +
+          '<span class="tip"><b>这是最后一次进入循环体。</b><br>' +
+          '因为 <code>argc = 3</code>，合法的 <code>i</code> 只能是 0、1、2。</span>'
+  });
+
+  /* ---- 8. 第三次 printf ---- */
+  pushOut('Argument 2 is:world ', 'out-norm');
+  chainPush('printf → Argument 2 is:world ');
+  snap({
+    line: 6, tone:'pink',
+    title: '第 3 次 <b>printf</b>：输出 <b>Argument 2 is:world</b>',
+    desc: '把 <code>argv[2]</code> 打印出来。<br>' +
+          '· <code>i</code> = <b>2</b>，<code>argv[2]</code> = <code>"world"</code>；<br>' +
+          '· <b>屏幕输出</b>：<code>Argument 2 is:world </code>（末尾空格 + 换行）。' +
+          '<span class="tip"><b>至此，所有参数都打印完了。</b><br>' +
+          '屏幕上一共出现了 3 行：<br>' +
+          '<code>Argument 0 is:prog.exe </code><br>' +
+          '<code>Argument 1 is:hello </code><br>' +
+          '<code>Argument 2 is:world </code></span>'
+  });
+
+  /* ---- 9. i++ → 3 退出第一个循环 ---- */
+  S.i = '3';
+  S.argvCur = -1;
+  chainPush('第一个 for：i++ → i = 3，判断 3 < 3 为假，退出（共 3 次）');
+  snap({
+    line: 5, tone:'del',
+    title: '第一个 <b>for</b>：<b>i++</b> → <b>i = 3</b>，判断 <b>3 &lt; 3</b> → <b>假</b> → 退出循环',
+    desc: '循环结束。<br>' +
+          '· <b>④ 自增</b>：<code>i</code> 从 <b>2</b> 变成 <b>3</b>；<br>' +
+          '· <b>② 判断</b>：<code>3 &lt; 3</code> → <b>假</b>；<br>' +
+          '· 条件不成立 → <b>不进入</b>循环体，直接跳到第 6 行之后；<br>' +
+          '· 第一个循环共执行了 <b>3</b> 次循环体（<code>i</code> = 0、1、2）。' +
+          '<span class="tip"><b>循环次数的规律：</b><br>' +
+          '从 <code>0</code> 到 <code>argc - 1</code>，共 <code>argc</code> 次。<br>' +
+          '本例 <code>argc = 3</code>，所以循环 3 次。<br>' +
+          '循环结束后 <code>i</code> 的值是 <b>3</b>（等于 <code>argc</code>）——' +
+          '这是 <code>for</code> 循环的常见现象：<b>退出后计数器会比最后用到的值多 1</b>。</span>' +
+          '<span class="warn"><b>⚠ <code>i</code> 后面还会被重新赋值！</b><br>' +
+          '虽然现在 <code>i = 3</code>，但第二个 <code>for</code> 循环开头是 <code>i = 1</code>，' +
+          '会把它覆盖掉。<br>' +
+          '所以<b>不需要</b>在这里手动把 <code>i</code> 清回 0 或 1。</span>'
+  });
+
+  /* ---- 10. 第二个 for：i=1 判断 ---- */
+  S.i = '1';
+  S.argvCur = 1;
+  S.strLenNow = '—';
+  chainPush('第二个 for：i = 1，判断 1 < 3 → 真（跳过 argv[0]）');
+  snap({
+    line: 7, tone:'red',
+    title: '第二个 <b>for</b>：<b>i = 1</b>，判断 <b>1 &lt; 3</b> → 真',
+    desc: '开始第二个循环，目的是<b>统计所有用户参数的总长度</b>。<br>' +
+          '· <b>① 初始化</b>：<code>i = 1</code>；<br>' +
+          '· <b>② 判断</b>：<code>1 &lt; 3</code> → <b>真</b>；<br>' +
+          '· 进入循环体，执行第 8 行。' +
+          '<span class="tip"><b>★ 关键：为什么这里 <code>i = 1</code> 而不是 <code>i = 0</code>？</b><br>' +
+          '因为 <code>argv[0]</code> 是<b>程序自己的名字</b>，' +
+          '它<b>不是用户输入的参数</b>。<br>' +
+          '统计「用户参数总长度」时，必须把程序名排除在外——' +
+          '所以从 <b><code>i = 1</code></b> 开始。<br>' +
+          '如果写成 <code>i = 0</code>，结果就会多出 8（<code>strlen("prog.exe")</code>），' +
+          '<code>len</code> 会变成 18 而不是 10。</span>' +
+          '<span class="tip"><b>两个循环的对比：</b><br>' +
+          '· 第一个循环 <code>i = 0</code> → <b>打印全部</b>（含程序名），共 3 次；<br>' +
+          '· 第二个循环 <code>i = 1</code> → <b>统计用户参数</b>（不含程序名），共 2 次。<br>' +
+          '这是本程序最容易看错的地方。</span>'
+  });
+
+  /* ---- 11. len += strlen(argv[1]) ---- */
+  S.argvCur = 1;
+  S.strLenNow = 'strlen("hello") = 5';
+  S.len = '5';
+  pushOut('[统计] len += strlen("hello") = 5　→　len = 5', 'out-count');
+  chainPush('len += strlen("hello") = 5 → len = 5');
+  snap({
+    line: 8, tone:'orange',
+    title: '<b>len += strlen(argv[1])</b>　→　<code>len = 0 + 5 = 5</code>',
+    desc: '把 <code>argv[1]</code> 的长度累加到 <code>len</code>。<br>' +
+          '· <code>strlen(argv[1])</code> = <code>strlen("hello")</code> = <b>5</b>；<br>' +
+          '· <code>len += 5</code> 等价于 <code>len = len + 5</code>；<br>' +
+          '· <code>len</code> 从 <b>0</b> 变成 <b>5</b>。' +
+          '<span class="tip"><b><code>strlen</code> 的作用：</b><br>' +
+          '返回字符串<b>从起始地址到第一个 <code>\\0</code> 之前的字符个数</b>，' +
+          '<b>不包含</b> <code>\\0</code> 本身。<br>' +
+          '· <code>"hello"</code> 在内存里是 <code>h e l l o \\0</code>，' +
+          '共 6 个字节，但 <code>strlen</code> 返回 <b>5</b>；<br>' +
+          '· 如果想知道「占多少字节」，应该是 <code>strlen(s) + 1</code> = 6。' +
+          '（注意：<code>sizeof</code> 在这里不行，' +
+          '因为 <code>argv[1]</code> 是<b>指针</b>，<code>sizeof</code> 只会得到指针大小 4 或 8。）</span>' +
+          '<span class="tip"><b><code>len += x</code> 是复合赋值运算符：</b><br>' +
+          '它是 <code>len = len + x</code> 的简写，' +
+          '只对 <code>len</code> 求值一次（当 <code>len</code> 是复杂表达式时有性能优势）。<br>' +
+          '类似的还有 <code>-=</code>、<code>*=</code>、<code>/=</code>、<code>%=</code>。</span>'
+  });
+
+  /* ---- 12. i++ → 2 ---- */
+  S.i = '2';
+  S.argvCur = 2;
+  chainPush('第二个 for：i++ → i = 2，判断 2 < 3 → 真');
+  snap({
+    line: 7, tone:'red',
+    title: '第二个 <b>for</b>：<b>i++</b> → <b>i = 2</b>，判断 <b>2 &lt; 3</b> → 真',
+    desc: '继续第二个循环。<br>' +
+          '· <b>④ 自增</b>：<code>i</code> 从 <b>1</b> 变成 <b>2</b>；<br>' +
+          '· <b>② 判断</b>：<code>2 &lt; 3</code> → <b>真</b>；<br>' +
+          '· 进入循环体，处理最后一个参数。' +
+          '<span class="tip"><b><code>len</code> 目前是 5，保持不变。</b><br>' +
+          '循环的<b>自增和判断</b>不会碰 <code>len</code>，' +
+          '只有第 8 行的累加语句才会改它。</span>'
+  });
+
+  /* ---- 13. len += strlen(argv[2]) ---- */
+  S.argvCur = 2;
+  S.strLenNow = 'strlen("world") = 5';
+  S.len = '10';
+  pushOut('[统计] len += strlen("world") = 5　→　len = 10', 'out-count');
+  chainPush('len += strlen("world") = 5 → len = 10');
+  snap({
+    line: 8, tone:'orange',
+    title: '<b>len += strlen(argv[2])</b>　→　<code>len = 5 + 5 = 10</code>',
+    desc: '把 <code>argv[2]</code> 的长度累加到 <code>len</code>。<br>' +
+          '· <code>strlen(argv[2])</code> = <code>strlen("world")</code> = <b>5</b>；<br>' +
+          '· <code>len</code> 从 <b>5</b> 变成 <b>10</b>；<br>' +
+          '· 至此两个用户参数的长度都加完了。' +
+          '<span class="tip"><b>累加过程回顾：</b><br>' +
+          '· 初始 <code>len = 0</code>；<br>' +
+          '· 第 1 轮：<code>len = 0 + strlen("hello") = 0 + 5 = 5</code>；<br>' +
+          '· 第 2 轮：<code>len = 5 + strlen("world") = 5 + 5 = 10</code>。<br>' +
+          '<b>最终 <code>len = 10</code></b>，也就是 "hello" + "world" 的总字符数。</span>' +
+          '<span class="warn"><b>⚠ 注意这个 <code>len</code> 的含义：</b><br>' +
+          '它是<b>所有参数字符串长度之和</b>，<b>不包含</b>分隔用的空格、' +
+          '也<b>不包含</b>各自的 <code>\\0</code>。<br>' +
+          '如果把 <code>argc</code> 个参数真正拼成一个字符串，' +
+          '实际占用的字节数会是 <code>len + argc</code>（每个 <code>\\0</code> 一个字节）——' +
+          '不过本程序没有做拼接，只是统计而已。</span>'
+  });
+
+  /* ---- 14. i++ → 3 退出第二个循环 ---- */
+  S.i = '3';
+  S.argvCur = -1;
+  chainPush('第二个 for：i++ → i = 3，判断 3 < 3 为假，退出（共 2 次）');
+  snap({
+    line: 7, tone:'del',
+    title: '第二个 <b>for</b>：<b>i++</b> → <b>i = 3</b>，判断 <b>3 &lt; 3</b> → <b>假</b> → 退出循环',
+    desc: '第二个循环也结束了。<br>' +
+          '· <code>i</code> 从 <b>2</b> 变成 <b>3</b>；<br>' +
+          '· <code>3 &lt; 3</code> 为假 → 不再进入循环体；<br>' +
+          '· 第二个循环共执行了 <b>2</b> 次循环体（<code>i</code> = 1、2）；<br>' +
+          '· <code>len</code> 最终定格在 <b>10</b>。' +
+          '<span class="tip"><b>循环次数小结：</b><br>' +
+          '· 第一个循环：<code>i</code> 从 0 到 2 → <b>3</b> 次；<br>' +
+          '· 第二个循环：<code>i</code> 从 1 到 2 → <b>2</b> 次。<br>' +
+          '差的那一次，就是被跳过的程序名 <code>argv[0]</code>。</span>'
+  });
+
+  /* ---- 15. printf("len=%d") ---- */
+  pushOut('[输出] printf("len=%d", len) → 屏幕显示：len=10（注意：末尾没有换行）', 'out-final');
+  chainPush('printf("len=%d", len) → len=10（无换行）');
+  snap({
+    line: 9, tone:'gold',
+    title: '<b>printf("len=%d", len)</b>　→　屏幕输出 <b>len=10</b>',
+    desc: '把累加结果打印到屏幕。<br>' +
+          '· <b>格式串</b>：<code>"len=%d"</code>；<br>' +
+          '· <b>参数</b>：<code>len</code> = <b>10</b>；<br>' +
+          '· 替换后：<code>%d</code> → <code>10</code>；<br>' +
+          '· <b>屏幕输出</b>：<code>len=10</code>。' +
+          '<span class="warn"><b>⚠ 注意：这一行的格式串里<b>没有 <code>\\n</code></b>！</b><br>' +
+          '前三次 <code>printf</code> 的格式串末尾都有 <code>\\n</code>，' +
+          '所以每次输出后光标都会换行；<br>' +
+          '而这一行的格式串是 <code>"len=%d"</code>，<b>没有换行符</b>——' +
+          '所以 <code>len=10</code> 打印完后，<b>光标停在它后面，不换行</b>。<br>' +
+          '这就是为什么最终结果里 <code>len=10</code> 后面会紧跟着 shell 提示符，' +
+          '看起来像是"粘"在了一行上。<br>' +
+          '<b>这是个常见的排版瑕疵，不影响结果正确性，但正式程序建议在末尾补上 <code>\\n</code>。</b></span>' +
+          '<span class="tip"><b>为什么这里用 <code>%d</code> 而不是 <code>%s</code>？</b><br>' +
+          '<code>len</code> 是 <code>int</code> 类型，必须用 <code>%d</code>；<br>' +
+          '<code>argv[i]</code> 是 <code>char *</code> 类型，必须用 <code>%s</code>。<br>' +
+          '<b>格式符和参数类型必须一一对应</b>，否则输出乱码或崩溃。</span>'
+  });
+
+  /* ---- 16. return 0 ---- */
+  S.ret = '0';
+  pushOut('[返回] main 返回 0，程序正常结束', 'out-note');
+  chainPush('return 0');
+  snap({
+    line: 10, tone:'gold',
+    title: '<b>return 0</b>　→　返回 <b>0</b>',
+    desc: '把 0 返回给操作系统，表示程序<b>正常结束</b>。<br>' +
+          '· 如果返回非 0 值，通常表示程序出错；<br>' +
+          '· 很多脚本 / 批处理会检查这个返回值来决定下一步怎么做。' +
+          '<span class="tip"><b>这个程序没有出错的可能吗？</b><br>' +
+          '几乎没有——它不打开文件、不分配内存、不做除法，' +
+          '只是遍历参数、算长度、打印。<br>' +
+          '唯一可能的"意外"是 <code>argv</code> 为 <code>NULL</code>（极罕见），' +
+          '或者 <code>argc</code> 异常。<br>' +
+          '所以固定返回 0 是合理的。</span>'
+  });
+
+  /* ---- 17. main 结束 ---- */
+  S.done = true;
+  chainPush('main 结束');
+  snap({
+    line: 11, tone:'gold',
+    title: 'main 函数结束　→　<b>程序运行完毕</b>',
+    desc: '执行到最后一行 <code>}</code>，程序结束。<br>' +
+          '· 局部变量 <code>i</code>、<code>len</code> 随栈帧一起销毁；<br>' +
+          '· 没有打开任何文件，<b>没有资源泄漏</b>；<br>' +
+          '· 操作系统回收进程占用的内存。' +
+          '<span class="win"><b>★ 运行结果（终端屏幕）</b><br>' +
+          '<code>Argument 0 is:prog.exe </code><br>' +
+          '<code>Argument 1 is:hello </code><br>' +
+          '<code>Argument 2 is:world </code><br>' +
+          '<code>len=10</code>（末尾无换行）<br><br>' +
+          '<b>程序做了什么：</b><br>' +
+          '① 先把 3 个参数逐个打印出来（含程序名）；<br>' +
+          '② 再从 <code>argv[1]</code> 开始，把每个用户参数的长度累加：' +
+          '<code>0 + 5 + 5 = 10</code>；<br>' +
+          '③ 最后打印 <code>len=10</code>。<br><br>' +
+          '<b>统计：</b><br>' +
+          '· <code>argc</code> = <b>3</b>；<code>argv[0..2]</code> = ' +
+          '<code>"prog.exe" / "hello" / "world"</code>；<br>' +
+          '· 第一个循环执行 <b>3</b> 次，<code>printf</code> 调用 <b>3</b> 次；<br>' +
+          '· 第二个循环执行 <b>2</b> 次，<code>strlen</code> 调用 <b>2</b> 次；<br>' +
+          '· <code>strlen("hello") = 5</code>，<code>strlen("world") = 5</code>；<br>' +
+          '· <code>len</code> 轨迹：<b>0 → 5 → 10</b>；<br>' +
+          '· <code>i</code> 轨迹：第一个循环 <b>0 → 1 → 2 → 3</b>（退出），' +
+          '第二个循环 <b>1 → 2 → 3</b>（退出）；<br>' +
+          '· 屏幕共输出 <b>3</b> 行参数 + <b>1</b> 行结果；<br>' +
+          '· <b>时间复杂度 O(argc × 平均参数长度)</b>，' +
+          '<b>空间复杂度 O(1)</b>。</span>' +
+          '<span class="tip"><b>对比：这个程序与「逐字符遍历字符串」的效率差异</b><br>' +
+          '· 第一个循环里 <code>printf("%s")</code> 要遍历每个参数字符串直到 <code>\\0</code>；<br>' +
+          '· 第二个循环里 <code>strlen</code> 也要遍历每个参数字符串直到 <code>\\0</code>；<br>' +
+          '· 所以每个参数被<b>扫描了两遍</b>。<br>' +
+          '如果参数非常长，可以<b>边打印边累加</b>，合并成一个循环，' +
+          '减少一半的扫描开销——这是常见的优化思路。</span>' +
+          '<span class="warn"><b>⚠ 两个容易踩的坑：</b><br>' +
+          '① 忘记跳过 <code>argv[0]</code>：写成 <code>for(i=0; i&lt;argc; i++) len += strlen(argv[i]);</code> ' +
+          '会把程序名也算进去，<code>len</code> 变成 18；<br>' +
+          '② 用 <code>sizeof(argv[i])</code> 代替 <code>strlen(argv[i])</code>：' +
+          '因为 <code>argv[i]</code> 是<b>指针</b>，<code>sizeof</code> 只会返回 4（32 位）或 8（64 位），' +
+          '而不是字符串实际长度。<br>' +
+          '<b>求字符串长度，永远用 <code>strlen</code>，不要用 <code>sizeof</code>。</b></span>'
+  });
+
+  return steps;
+}
+
+var STEPS = buildSteps();
+
+/* ============================================================
+   四、提示词
+   ============================================================ */
+var PROMPT_TEXT =
+'【任务】把 C 命令行参数程序做成「逐步执行模拟」单文件 HTML。\n\n' +
+'【C 程序】11 行：main(argc, argv) → 第一个 for(i=0) 打印全部\n' +
+'  → 第二个 for(i=1) 累加 len += strlen → printf("len=%d") → return 0。\n\n' +
+'【模拟数据】\n' +
+'  调用命令：prog.exe hello world\n' +
+'  argc = 3；argv[0]="prog.exe"，argv[1]="hello"，argv[2]="world"，argv[3]=NULL；\n' +
+'  strlen("hello") = 5，strlen("world") = 5；\n' +
+'  第一个循环 3 次；第二个循环 2 次；len 轨迹 0 → 5 → 10；\n' +
+'  屏幕输出 3 行 Argument + 1 行 len=10（无换行）；main 返回 0。\n\n' +
+'【关键考点】\n' +
+'  1) argc 含程序名本身；\n' +
+'  2) argv 结构 + NULL 哨兵；\n' +
+'  3) char *argv[] ≡ char **argv；\n' +
+'  4) 两个循环起跑线不同：i=0 含程序名，i=1 跳过；\n' +
+'  5) for 循环四步顺序：初始化 → 判断 → 循环体 → 自增；\n' +
+'  6) 循环退出后计数器多 1；\n' +
+'  7) strlen 不含 \\0；\n' +
+'  8) 绝不能用 sizeof 代替 strlen；\n' +
+'  9) len += x 复合赋值；\n' +
+'  10) 累加器必须先清零；\n' +
+'  11) 第 9 行 printf 末尾缺 \\n；\n' +
+'  12) 第 6 行格式串里有空格；\n' +
+'  13) 循环边界必须是 i < argc；\n' +
+'  14) %d / %s 与类型配对；\n' +
+'  15) i 未初始化的风险；\n' +
+'  16) 时间 O(argc × 平均参数长度)，空间 O(1)。\n';
+
+document.getElementById('promptBody').textContent = PROMPT_TEXT;
+
+/* ============================================================
+   五、面板系统
+   ============================================================ */
+var panels = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+var zTop = 50;
+
+function activate(panel){
+  zTop += 1;
+  panel.style.zIndex = zTop;
+  panels.forEach(function(p){ p.classList.remove('active'); });
+  panel.classList.add('active');
+}
+
+panels.forEach(function(panel){
+  var head = panel.querySelector('.p-head');
+  var handle = panel.querySelector('.p-resize');
+
+  function begin(e, mode){
+    if (e.target.closest('.p-close')) return;
+    activate(panel);
+    var r = panel.getBoundingClientRect();
+    panel._drag = {
+      mode: mode,
+      sx: e.clientX, sy: e.clientY,
+      ox: r.left, oy: r.top,
+      w: r.width, h: r.height
+    };
+    e.preventDefault();
+    try { head.setPointerCapture(e.pointerId); } catch(err){}
+  }
+
+  head.addEventListener('pointerdown', function(e){ begin(e, 'move'); });
+  handle.addEventListener('pointerdown', function(e){ begin(e, 'size'); });
+
+  panel.addEventListener('pointerdown', function(){
+    activate(panel);
+  }, true);
+});
+
+document.addEventListener('pointermove', function(e){
+  panels.forEach(function(panel){
+    if (panel._drag) {
+      var d = panel._drag;
+      var dx = e.clientX - d.sx;
+      var dy = e.clientY - d.sy;
+      if (d.mode === 'move'){
+        panel.style.left = (d.ox + dx) + 'px';
+        panel.style.top  = (d.oy + dy) + 'px';
+      } else {
+        panel.style.width  = Math.max(60, d.w + dx) + 'px';
+        panel.style.height = Math.max(60, d.h + dy) + 'px';
+      }
+    }
+  });
+});
+document.addEventListener('pointerup', function(){
+  panels.forEach(function(panel){ panel._drag = null; });
+});
+
+document.querySelectorAll('.p-close').forEach(function(btn){
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var p = btn.closest('.panel');
+    if (p) p.style.display = 'none';
+  });
+});
+
+var DEFAULTS = {
+  'p-top':     function(W,H){ return {l:16, t:12, w:Math.min(1600, W-32), h:104}; },
+  'p-explain': function(W,H){ return {l:16, t:128, w:Math.min(1300, W-340), h:250}; },
+  'p-file':    function(W,H){ return {l:16, t:392, w:Math.min(1300, W-340), h:220}; },
+  'p-var':     function(W,H){ return {l:16, t:626, w:Math.min(620, W-32), h:Math.max(200, H-638)}; },
+  'p-console': function(W,H){ return {l:Math.min(652, W-680), t:626, w:Math.min(680, W-32-Math.min(652, W-680)), h:Math.max(200, H-638)}; },
+  'p-eval':    function(W,H){ return {l:Math.max(400, W-740), t:128, w:460, h:420}; },
+  'p-model':   function(W,H){ return {l:Math.max(400, W-740), t:560, w:460, h:Math.max(200, H-572)}; },
+  'p-mini':    function(W,H){ return {l:Math.max(240, W-175), t:128, w:155, h:Math.min(720, Math.max(200, H-160))}; },
+  'p-prompt':  function(W,H){ return {l:120, t:160, w:Math.min(1200, W-240), h:Math.min(700, H-320)}; }
+};
+
+function resetLayout(){
+  var W = window.innerWidth, H = window.innerHeight;
+  panels.forEach(function(panel){
+    var id = panel.id;
+    var fn = DEFAULTS[id];
+    if (!fn) return;
+    var d = fn(W, H);
+    panel.style.left = d.l + 'px';
+    panel.style.top = d.t + 'px';
+    panel.style.width = d.w + 'px';
+    panel.style.height = d.h + 'px';
+    panel._drag = null;
+  });
+  zTop = 50;
+  panels.forEach(function(panel, idx){
+    panel.style.zIndex = 50 + idx;
+  });
+  document.getElementById('p-prompt').style.display = 'none';
+}
+
+/* ============================================================
+   六、渲染逻辑
+   ============================================================ */
+var codeLayer = document.getElementById('codeLayer');
+var codeLines = Array.prototype.slice.call(codeInner.querySelectorAll('.code-line'));
+var mmLines   = Array.prototype.slice.call(mmBody.querySelectorAll('.mm-line'));
+var mmViewport = document.getElementById('mmViewport');
+var varBody   = document.getElementById('varBody');
+var fileBody  = document.getElementById('fileBody');
+var consoleBody = document.getElementById('consoleBody');
+var explainBody = document.getElementById('explainBody');
+var evalBody  = document.getElementById('evalBody');
+
+var VAR_ROWS = [
+  { key:'func',      name:'当前函数',                    kind:'k-ctx'   },
+  { key:'argc',      name:'argc（参数个数，含程序名）',  kind:'k-argc'  },
+  { key:'i',         name:'i（循环计数器）',             kind:'k-i'     },
+  { key:'len',       name:'len（长度累加器）',           kind:'k-len'   },
+  { key:'argv0',     name:'argv[0]（程序名）',           kind:'k-argv0' },
+  { key:'argv1',     name:'argv[1]（用户参数1）',        kind:'k-argv1' },
+  { key:'argv2',     name:'argv[2]（用户参数2）',        kind:'k-argv2' },
+  { key:'strLenNow', name:'本次 strlen(argv[i])',       kind:'k-str'   },
+  { key:'ret',       name:'返回值',                     kind:'k-ret'   }
+];
+
+function varText(key, s){
+  if (!s) return '—';
+  switch (key){
+    case 'func':      return s.func;
+    case 'argc':      return s.argc;
+    case 'i':         return s.i;
+    case 'len':       return s.len;
+    case 'argv0':     return (s.argvShow && s.argv[0]) ? '"' + s.argv[0] + '"' : '—';
+    case 'argv1':     return (s.argvShow && s.argv[1]) ? '"' + s.argv[1] + '"' : '—';
+    case 'argv2':     return (s.argvShow && s.argv[2]) ? '"' + s.argv[2] + '"' : '—';
+    case 'strLenNow': return s.strLenNow;
+    case 'ret':       return s.ret;
+  }
+  return '—';
+}
+
+function buildVarTable(){
+  var h = '';
+  for (var w = 0; w < VAR_ROWS.length; w++){
+    var r = VAR_ROWS[w];
+    h += '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+           '<span class="var-name">' + r.name + '</span>' +
+           '<span class="var-value dim">—</span>' +
+         '</div>';
+  }
+  varBody.innerHTML = h;
+}
+
+function updateVars(step, prev){
+  var s = step ? step.s : null;
+  for (var w = 0; w < VAR_ROWS.length; w++){
+    var r = VAR_ROWS[w];
+    var row = varBody.querySelector('.var-row[data-key="' + r.key + '"]');
+    if (!row) continue;
+    var valEl = row.querySelector('.var-value');
+    var val = varText(r.key, s);
+    var old = prev ? varText(r.key, prev.s) : '—';
+
+    if (valEl.textContent !== val) {
+      valEl.textContent = val;
+      valEl.title = val;
+      if (val === '—') valEl.classList.add('dim');
+      else valEl.classList.remove('dim');
+      valEl.classList.remove('flash');
+      void valEl.offsetWidth;
+      valEl.classList.add('flash');
+      if (prev && old !== val){
+        row.classList.add('changed');
+        (function(rr){
+          window.setTimeout(function(){ rr.classList.remove('changed'); }, 750);
+        })(row);
+      }
+    }
+  }
+}
+
+function esc(str){
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function renderArgv(s){
+  var h = '';
+  h += '<div class="ll-sec-title"><span class="dot dot-h"></span>' +
+       '命令行参数可视化　<span style="color:#7dd3fc">argv</span>' +
+       '　<span style="color:#5f7796">（main 的第二个参数，字符串指针数组）</span></div>';
+
+  if (!s || !s.argvShow){
+    h += '<div class="fc-note">程序尚未进入 main，命令行参数暂不可见…</div>';
+    return h;
+  }
+
+  h += '<div class="fc-track">';
+  for (var i = 0; i < s.argv.length; i++){
+    var cls = 'fc-cell';
+    if (i === 0) cls += ' prog-name';
+    if (i === s.argvCur) cls += ' cur';
+    else if (s.argvCur > i) cls += ' read';
+    h += '<div class="' + cls + '">' +
+           '<div class="fc-ch">' + esc(s.argv[i]) + '</div>' +
+           '<div class="fc-code">argv[' + i + ']</div>' +
+         '</div>';
+  }
+  h += '<div class="fc-cell fc-null' + (s.argvCur >= s.argv.length ? ' cur' : '') + '">' +
+         '<div class="fc-ch">NULL</div>' +
+         '<div class="fc-code">argv[' + s.argv.length + ']</div>' +
+       '</div>';
+  h += '</div>';
+
+  var note = 'argc = <b>' + s.argc + '</b>　│　' +
+             '当前 i = <b>' + s.i + '</b>　│　' +
+             '绿色 = 已处理过的参数　│　金色 = 当前正在访问的参数　│　' +
+             '紫色 = 程序名（第二个循环会跳过它）　│　' +
+             '虚线 = 标准哨兵 <b>argv[argc] = NULL</b>';
+  h += '<div class="fc-note">' + note + '</div>';
+
+  return h;
+}
+
+function renderConsole(s){
+  consoleBody.innerHTML = '';
+  if (!s){
+    var d0 = document.createElement('div');
+    d0.className = 'out-line out-wait';
+    d0.textContent = '（等待程序开始运行）';
+    consoleBody.appendChild(d0);
+    return;
+  }
+  for (var i = 0; i < s.out.length; i++){
+    var d = document.createElement('div');
+    d.className = 'out-line ' + s.out[i].c;
+    d.textContent = s.out[i].t;
+    consoleBody.appendChild(d);
+  }
+  if (!s.done){
+    var dw = document.createElement('div');
+    dw.className = 'out-line out-wait';
+    dw.innerHTML = '&nbsp;<span class="cursor">▊</span>';
+    consoleBody.appendChild(dw);
+  } else {
+    var sep = document.createElement('div');
+    sep.className = 'out-line out-note';
+    sep.textContent = '────────  程序运行结果（终端屏幕）  ────────';
+    consoleBody.appendChild(sep);
+
+    var lines = [
+      'Argument 0 is:prog.exe ',
+      'Argument 1 is:hello ',
+      'Argument 2 is:world ',
+      'len=10'
+    ];
+    for (var k = 0; k < lines.length; k++){
+      var ln = document.createElement('div');
+      ln.className = 'out-line ' + (k === lines.length - 1 ? 'out-final' : 'out-norm');
+      ln.textContent = lines[k];
+      consoleBody.appendChild(ln);
+    }
+
+    var sep2 = document.createElement('div');
+    sep2.className = 'out-line out-note';
+    sep2.textContent = '──────────────────────────────────────────';
+    consoleBody.appendChild(sep2);
+  }
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+function renderEval(s){
+  if (!s || !s.chain || !s.chain.length){
+    evalBody.innerHTML = '<div class="chain-empty">（本步没有可展示的求值动作）</div>';
+    return;
+  }
+  var h = '';
+  for (var i = 0; i < s.chain.length; i++){
+    var isLast = (i === s.chain.length - 1);
+    h += '<div class="chain-item' + (isLast ? ' last' : '') + '">' +
+         esc(s.chain[i].t) + '</div>';
+  }
+  evalBody.innerHTML = h;
+  evalBody.scrollTop = evalBody.scrollHeight;
+}
+
+function updateCode(step){
+  var activeLine = step ? step.line : null;
+  var tone = step ? (step.tone || 'blue') : 'blue';
+  var t = TONES[tone] || TONES.blue;
+
+  for (var w = 0; w < codeLines.length; w++){
+    var el = codeLines[w];
+    var n = Number(el.getAttribute('data-line'));
+    if (activeLine !== null && n === activeLine){
+      el.classList.add('active');
+      el.style.setProperty('--tone', t[0]);
+      el.style.setProperty('--tone-bg', t[1]);
+    } else {
+      el.classList.remove('active');
+    }
+  }
+  for (var q = 0; q < mmLines.length; q++){
+    var me = mmLines[q];
+    if (activeLine !== null && Number(me.getAttribute('data-line')) === activeLine){
+      me.classList.add('active');
+    } else {
+      me.classList.remove('active');
+    }
+  }
+  centerActiveLine();
+}
+
+function centerActiveLine(){
+  var el = codeInner.querySelector('.code-line.active');
+  if (!el) return;
+  var target = el.offsetTop - codeLayer.clientHeight / 2 + el.offsetHeight / 2;
+  if (target < 0) target = 0;
+  var max = codeInner.scrollHeight - codeLayer.clientHeight;
+  if (target > max) target = max;
+  codeLayer.scrollTo({ top: target, behavior: 'smooth' });
+}
+
+function updateMiniViewport(){
+  var totalH = codeInner.scrollHeight;
+  if (!totalH) return;
+  var viewH = codeLayer.clientHeight;
+  var ratio = mmBody.scrollHeight / totalH;
+  mmViewport.style.top = (codeLayer.scrollTop * ratio) + 'px';
+  mmViewport.style.height = Math.max(12, viewH * ratio) + 'px';
+}
+
+codeLayer.addEventListener('scroll', updateMiniViewport);
+window.addEventListener('resize', updateMiniViewport);
+
+mmBody.addEventListener('click', function(e){
+  var rect = mmBody.getBoundingClientRect();
+  var y = e.clientY - rect.top + mmBody.scrollTop;
+  var ratio = codeInner.scrollHeight / mmBody.scrollHeight;
+  codeLayer.scrollTo({
+    top: y * ratio - codeLayer.clientHeight / 2,
+    behavior: 'smooth'
+  });
+});
+
+/* ============================================================
+   七、总渲染
+   ============================================================ */
+var current = -1;
+var playing = false;
+var timer = null;
+var speed = 500;
+
+function render(){
+  var step = (current >= 0) ? STEPS[current] : null;
+  var prev = (current > 0) ? STEPS[current - 1] : null;
+
+  updateCode(step);
+  updateVars(step, prev);
+  fileBody.innerHTML = renderArgv(step ? step.s : null);
+  renderConsole(step ? step.s : null);
+  renderEval(step ? step.s : null);
+
+  if (step){
+    explainBody.innerHTML =
+      '<span class="ex-line">第 ' + step.line + ' 行</span>' +
+      '<strong>' + step.title + '</strong> —— ' + step.desc;
+  } else {
+    explainBody.innerHTML =
+      '<em>点击「播放」或「下一步」，开始逐句执行这个命令行参数处理程序。<br><br>' +
+      '<b>本程序演示：用 argc / argv 接收命令行参数，' +
+      '先全部打印，再统计用户参数的总长度。</b><br>' +
+      '· <code>main(int argc, char *argv[])</code> 接收参数；<br>' +
+      '· 第一个 <code>for</code>（<code>i</code> 从 0 开始）：打印全部参数，' +
+      '含程序名 <code>argv[0]</code>；<br>' +
+      '· 第二个 <code>for</code>（<code>i</code> 从 1 开始）：' +
+      '跳过程序名，<code>len += strlen(argv[i])</code> 累加长度；<br>' +
+      '· <code>printf("len=%d", len)</code> 输出总长度；<br>' +
+      '· <code>return 0</code> 结束。<br><br>' +
+      '本例数据（假设调用 <code>prog.exe hello world</code>）：<br>' +
+      '· <code>argc = 3</code>（含程序名）<br>' +
+      '· <code>argv[0] = "prog.exe"</code>、<code>argv[1] = "hello"</code>、' +
+      '<code>argv[2] = "world"</code><br>' +
+      '· <code>strlen("hello") = 5</code>、<code>strlen("world") = 5</code><br>' +
+      '· <code>len</code> 累加：<b>0 → 5 → 10</b><br>' +
+      '· 屏幕最终输出 3 行 Argument + 1 行 <code>len=10</code><br>' +
+      '共 ' + STEPS.length + ' 个执行步骤。<br>' +
+      '<b>左侧代码会自动滚动到当前行；右侧会实时显示 i 的变化和 len 的累加过程。</b></em>';
+  }
+
+  var topTitle = document.querySelector('#p-top .p-title');
+  if (topTitle){
+    topTitle.textContent = 'C 命令行参数 · 步骤 ' +
+      (current >= 0 ? (current + 1) : '—') + ' / ' + STEPS.length;
+  }
+
+  document.getElementById('btnPrev').disabled = (current < 0);
+  document.getElementById('btnNext').disabled = (current >= STEPS.length - 1);
+
+  window.requestAnimationFrame(updateMiniViewport);
+}
+
+/* ============================================================
+   八、播放控制
+   ============================================================ */
+var btnPlay = document.getElementById('btnPlay');
+var btnPrev = document.getElementById('btnPrev');
+var btnNext = document.getElementById('btnNext');
+var btnReset = document.getElementById('btnReset');
+var btnFull = document.getElementById('btnFull');
+var btnPanels = document.getElementById('btnPanels');
+var btnMini = document.getElementById('btnMini');
+var btnLayout = document.getElementById('btnLayout');
+var btnPrompt = document.getElementById('btnPrompt');
+var speedInput = document.getElementById('speed');
+var speedLabel = document.getElementById('speedLabel');
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 播放';
+  if (playing) btnPlay.classList.add('playing');
+  else btnPlay.classList.remove('playing');
+}
+
+function tick(){
+  if (current >= STEPS.length - 1){ pause(); return; }
+  current += 1;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){
+  pause();
+  if (current < STEPS.length - 1){ current += 1; render(); }
+}
+
+function prevStep(){
+  pause();
+  if (current > -1){ current -= 1; render(); }
+}
+
+function resetAll(){
+  pause();
+  current = -1;
+  codeLayer.scrollTop = 0;
+  render();
+}
+
+btnPlay.addEventListener('click', function(){ if (playing) pause(); else play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+btnFull.addEventListener('click', function(){
+  if (!document.fullscreenElement){
+    document.documentElement.requestFullscreen().catch(function(){});
+  } else {
+    document.exitFullscreen().catch(function(){});
+  }
+});
+
+btnLayout.addEventListener('click', function(){
+  resetLayout();
+  render();
+});
+
+var panelsHidden = false;
+btnPanels.addEventListener('click', function(){
+  panelsHidden = !panelsHidden;
+  panels.forEach(function(p){
+    if (p.id === 'p-prompt') return;
+    p.style.display = panelsHidden ? 'none' : 'flex';
+  });
+});
+
+var miniVisible = true;
+btnMini.addEventListener('click', function(){
+  var p = document.getElementById('p-mini');
+  miniVisible = !miniVisible;
+  p.style.display = miniVisible ? 'flex' : 'none';
+});
+
+btnPrompt.addEventListener('click', function(){
+  var p = document.getElementById('p-prompt');
+  if (p.style.display === 'none' || !p.style.display){
+    p.style.display = 'flex';
+    activate(p);
+  } else {
+    p.style.display = 'none';
+  }
+});
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if (playing){
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+document.addEventListener('keydown', function(e){
+  var tag = e.target && e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+
+  if (e.code === 'Space'){
+    e.preventDefault();
+    if (playing) pause(); else play();
+  } else if (e.code === 'ArrowRight'){
+    e.preventDefault(); nextStep();
+  } else if (e.code === 'ArrowLeft'){
+    e.preventDefault(); prevStep();
+  } else if (e.code === 'KeyR'){
+    e.preventDefault(); resetAll();
+  } else if (e.code === 'KeyF'){
+    e.preventDefault();
+    if (!document.fullscreenElement){
+      document.documentElement.requestFullscreen().catch(function(){});
+    } else {
+      document.exitFullscreen().catch(function(){});
+    }
+  } else if (e.code === 'KeyM'){
+    e.preventDefault();
+    var p = document.getElementById('p-mini');
+    miniVisible = !miniVisible;
+    p.style.display = miniVisible ? 'flex' : 'none';
+  } else if (e.code === 'KeyH'){
+    e.preventDefault();
+    panelsHidden = !panelsHidden;
+    panels.forEach(function(p){
+      if (p.id === 'p-prompt') return;
+      p.style.display = panelsHidden ? 'none' : 'flex';
+    });
+  }
+});
+
+resetLayout();
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+render();
+window.addEventListener('load', function(){
+  window.requestAnimationFrame(updateMiniViewport);
+});
+window.setTimeout(updateMiniViewport, 200);
+
+})();
+</script>
+</body>
+</html>

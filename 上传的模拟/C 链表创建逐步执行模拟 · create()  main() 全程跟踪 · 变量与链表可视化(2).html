@@ -1,0 +1,1882 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 链表创建逐步执行模拟 · create() / main() 全程跟踪 · 变量与链表可视化</title>
+<style>
+:root{
+  --bg:#070e1a; --panel-bg:rgba(13,22,38,.86);
+  --border:#1e2f49; --border-hi:#38bdf8; --text:#dce8f8;
+  --accent:#38bdf8; --green:#4ade80; --amber:#fbbf24;
+  --pink:#f472b6; --purple:#c084fc; --teal:#2dd4bf;
+  --gold:#facc15; --rose:#fb7185; --orange:#fb923c;
+
+  --fs:1;
+  /* ★ 大屏：1920 下代码 ~90px */
+  --code-font:    calc(clamp(20px, 4.6vw, 100px) * var(--fs));
+  --ln-font:      calc(clamp(14px, 3vw, 64px) * var(--fs));
+  --log-font:     calc(clamp(16px, 2.3vw, 56px) * var(--fs));
+  --var-font:     calc(clamp(13px, 1vw, 26px) * var(--fs));
+  --exp-font:     calc(clamp(13px, 1vw, 26px) * var(--fs));
+  --explain-font: calc(clamp(15px, 1.2vw, 30px) * var(--fs));
+  --btn-font:     calc(clamp(13px, 1vw, 24px) * var(--fs));
+  --title-font:   calc(clamp(13px, 1vw, 24px) * var(--fs));
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;padding:0;}
+body{
+  background:#070e1a;color:var(--text);
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  overflow:hidden;
+}
+button{font-family:inherit;}
+
+/* ===== 全屏代码区 ===== */
+#codeArea{
+  position:fixed;inset:0;
+  background:radial-gradient(1200px 700px at 10% -10%,#132340 0%,#070e1a 62%);
+  overflow:auto;scrollbar-width:thin;scrollbar-color:#334155 transparent;
+  z-index:0;
+}
+#codeArea::-webkit-scrollbar{width:14px;height:14px;}
+#codeArea::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:12px;}
+
+.code-scroll{
+  padding:20px 0 46vh 0;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  line-height:1.55;
+}
+
+.code-line{
+  display:flex;align-items:flex-start;gap:.7em;
+  padding:.06em 1.2em .06em .5em;
+  border-left:7px solid transparent;
+  white-space:pre;transition:background .25s,border-color .25s;
+}
+.code-line .ln{
+  flex:0 0 auto;width:3ch;text-align:right;color:#3f5a7d;
+  user-select:none;font-variant-numeric:tabular-nums;
+  font-size:.58em;line-height:2.7;
+}
+.code-line .src{flex:0 0 auto;}
+.code-line.active{
+  background:linear-gradient(90deg,rgba(56,189,248,.30),rgba(56,189,248,0));
+  border-left-color:var(--accent);
+  box-shadow:inset 0 0 0 2px rgba(56,189,248,.25);
+}
+.code-line.active .ln{color:var(--accent);font-weight:700;}
+.code-line.active .src{color:#fff;}
+
+.code-line.gold-hi.active{background:linear-gradient(90deg,rgba(250,204,21,.38),rgba(250,204,21,0));border-left-color:var(--gold);}
+.code-line.gold-hi.active .ln{color:var(--gold);}
+.code-line.rose-hi.active{background:linear-gradient(90deg,rgba(251,113,133,.42),rgba(251,113,133,0));border-left-color:var(--rose);}
+.code-line.rose-hi.active .ln{color:var(--rose);}
+.code-line.mv-hi.active{background:linear-gradient(90deg,rgba(244,114,182,.38),rgba(244,114,182,0));border-left-color:var(--pink);}
+.code-line.mv-hi.active .ln{color:var(--pink);}
+.code-line.out-hi.active{background:linear-gradient(90deg,rgba(45,212,191,.38),rgba(45,212,191,0));border-left-color:var(--teal);}
+.code-line.out-hi.active .ln{color:var(--teal);}
+.code-line.green-hi.active{background:linear-gradient(90deg,rgba(74,222,128,.38),rgba(74,222,128,0));border-left-color:var(--green);}
+.code-line.green-hi.active .ln{color:var(--green);}
+
+.kw{color:var(--pink);font-weight:600;}
+.ty{color:var(--teal);font-weight:600;}
+.str{color:var(--green);}
+.cmt{color:#5b6f8c;font-style:italic;}
+.fn{color:var(--accent);}
+.num{color:var(--amber);}
+.op{color:var(--orange);font-weight:700;}
+
+/* ===== 悬浮面板 ===== */
+.panel{
+  position:fixed;
+  background:var(--panel-bg);
+  backdrop-filter:blur(10px) saturate(1.2);
+  -webkit-backdrop-filter:blur(10px) saturate(1.2);
+  border:1px solid var(--border);
+  border-radius:10px;
+  box-shadow:0 12px 34px rgba(0,0,0,.55);
+  display:flex;flex-direction:column;
+  min-width:0;min-height:0;
+  z-index:10;overflow:hidden;
+  transition:border-color .18s,box-shadow .18s;
+}
+.panel:hover{border-color:#33507d;}
+.panel.front{border-color:var(--border-hi);box-shadow:0 16px 46px rgba(0,0,0,.7),0 0 0 1px rgba(56,189,248,.35);}
+.panel.closed{display:none;}
+
+.p-head{
+  flex:0 0 auto;display:flex;align-items:center;gap:.4em;
+  padding:.3em .5em .3em .65em;
+  background:linear-gradient(180deg,rgba(30,47,73,.95),rgba(20,33,53,.95));
+  border-bottom:1px solid var(--border);
+  cursor:move;user-select:none;font-size:var(--title-font);
+  color:#a9c4e4;white-space:nowrap;
+}
+.p-head .p-title{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;font-weight:600;}
+.p-close{
+  flex:0 0 auto;width:1.85em;height:1.85em;line-height:1;
+  border-radius:6px;border:1px solid #33415c;
+  background:#1a2740;color:#b9cbe4;font-size:.95em;
+  cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;
+}
+.p-close:hover{background:#7f1d1d;border-color:#ef4444;color:#fff;}
+
+.p-body{
+  flex:1 1 auto;min-height:0;overflow:auto;
+  padding:.5em .65em;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+  font-size:var(--var-font);
+}
+.p-body::-webkit-scrollbar{width:10px;height:10px;}
+.p-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+
+.p-resize{
+  position:absolute;right:0;bottom:0;width:18px;height:18px;
+  cursor:nwse-resize;z-index:5;
+  background:linear-gradient(135deg,transparent 46%,#3b567f 46%,#3b567f 56%,transparent 56%,transparent 68%,#3b567f 68%,#3b567f 78%,transparent 78%);
+}
+
+/* 控制栏 */
+#pCtrl .p-body{display:flex;align-items:center;gap:.45em;flex-wrap:wrap;padding:.45em .6em;}
+.btn{
+  font-size:var(--btn-font);padding:.42em .8em;border-radius:8px;
+  border:1px solid var(--border);background:#182741;color:var(--text);
+  cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,transform .08s;
+}
+.btn:hover{background:#213352;border-color:#33507d;}
+.btn:active{transform:translateY(1px);}
+.btn:disabled{opacity:.32;cursor:not-allowed;}
+.btn.primary{background:linear-gradient(180deg,#0ea5e9,#0284c7);border-color:#38bdf8;color:#04121f;font-weight:700;}
+.btn.primary.playing{background:linear-gradient(180deg,#f59e0b,#d97706);border-color:#fbbf24;color:#1a1200;}
+.btn.ghost{background:#101c30;color:#8fa8c8;}
+
+/* 信息条 */
+#pInfo .p-body{display:flex;align-items:center;gap:.5em;flex-wrap:wrap;padding:.42em .6em;}
+.tag{
+  font-size:.85em;padding:.14em .5em;border-radius:5px;
+  background:rgba(148,163,184,.16);color:#9db1cb;
+  font-family:ui-monospace,Consolas,monospace;
+}
+.val{font-family:ui-monospace,Consolas,monospace;font-weight:700;color:var(--teal);}
+.val.fn{color:var(--accent);}
+.val.gold{color:var(--gold);}
+.val.rose{color:var(--rose);}
+.sep{color:#2c3f5e;}
+
+/* struct 布局 */
+.struct-row{display:flex;gap:6px;}
+.sf{
+  border:1px solid #1b293f;border-radius:8px;padding:.5em .5em;
+  background:#0a1322;text-align:center;
+  font-family:ui-monospace,Consolas,monospace;
+  opacity:.32;transition:all .3s;min-width:0;overflow:hidden;
+}
+.sf.on{opacity:1;}
+.sf.is-active{box-shadow:0 0 0 2px #fff,0 0 16px rgba(56,189,248,.7);transform:scale(1.05);z-index:2;}
+.sf-name{display:block;font-size:1em;font-weight:700;line-height:1.2;}
+.sf-info{display:block;font-size:.7em;color:#5f7796;margin-top:.2em;white-space:nowrap;}
+.sf-name-c{flex:8;border-color:rgba(56,189,248,.55);} .sf-name-c .sf-name{color:#7dd3fc;}
+.sf-class{flex:4;border-color:rgba(45,212,191,.55);} .sf-class .sf-name{color:#5eead4;}
+.sf-score{flex:16;border-color:rgba(250,204,21,.55);} .sf-score .sf-name{color:#facc15;}
+.sf-next{flex:8;border-color:rgba(192,132,252,.55);} .sf-next .sf-name{color:#d8b4fe;}
+.struct-size{
+  font-family:ui-monospace,Consolas,monospace;
+  font-size:.95em;color:#5f7796;padding:.55em .1em .1em;
+}
+.struct-size.done{color:var(--gold);font-weight:700;}
+
+/* 链表可视化 */
+.ll-track{display:flex;align-items:center;gap:.15em;flex-wrap:nowrap;padding-bottom:.4em;overflow-x:auto;}
+.ll-node{display:flex;flex-direction:column;align-items:center;flex:0 0 auto;}
+.ll-badges{display:flex;gap:.15em;height:1.15rem;align-items:center;margin-bottom:.15em;}
+.badge{
+  font-size:.6rem;font-weight:800;padding:.05em .35em;border-radius:.3em;
+  font-family:ui-monospace,Consolas,monospace;line-height:1.3;
+}
+.b-h{background:rgba(56,189,248,.32);color:#7dd3fc;box-shadow:0 0 0 1px rgba(56,189,248,.65);}
+.b-t{background:rgba(250,204,21,.32);color:#fde68a;box-shadow:0 0 0 1px rgba(250,204,21,.65);}
+.b-p{background:rgba(244,114,182,.32);color:#f9a8d4;box-shadow:0 0 0 1px rgba(244,114,182,.65);}
+.b-q{background:rgba(45,212,191,.32);color:#5eead4;box-shadow:0 0 0 1px rgba(45,212,191,.65);}
+
+.ll-box{
+  width:11em;border-radius:.5em;overflow:hidden;
+  background:#0d1728;border:1px solid #24405f;
+  font-family:ui-monospace,Consolas,monospace;
+  transition:box-shadow .3s,border-color .3s,transform .3s;
+}
+.ll-node.is-active .ll-box{
+  border-color:#f472b6;
+  box-shadow:0 0 0 2px rgba(244,114,182,.5),0 0 18px rgba(244,114,182,.4);
+  transform:translateY(-2px);
+}
+.ll-addr{background:#16233a;color:#7d93b3;font-size:.6rem;padding:.15em .35em;text-align:center;}
+.ll-row{
+  display:flex;justify-content:space-between;gap:.3em;
+  padding:.14em .4em;font-size:.68rem;border-top:1px solid #16233a;
+}
+.ll-row .llk{color:#5f7796;}
+.ll-row .llv{color:#7dd3fc;font-weight:700;text-align:right;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:7em;}
+.ll-row .llv.unset{color:#3d5474;font-weight:500;}
+.ll-row.ll-next .llv{color:var(--purple);}
+.ll-arrow{flex:0 0 auto;color:#38bdf8;font-size:1.3rem;font-weight:700;padding:0 .15em;padding-top:1.1em;user-select:none;}
+.ll-null{
+  flex:0 0 auto;font-family:ui-monospace,Consolas,monospace;
+  font-size:.72rem;color:#94a3b8;border:1px dashed #334155;
+  border-radius:.4em;padding:.5em .6em;margin-top:1.1em;
+}
+
+/* 变量表 */
+.var-table{display:flex;flex-direction:column;gap:.12em;}
+.var-row{
+  display:flex;justify-content:space-between;align-items:center;gap:.5em;
+  padding:.2em .55em;border-radius:.45em;
+  background:#0d1728;border:1px solid #1b293f;
+  font-size:.75rem;transition:background .3s,border-color .3s;
+}
+.var-row.k-ctx{background:#122844;border-color:#26456b;}
+.var-row.k-val{border-left:3px solid rgba(56,189,248,.85);}
+.var-row.k-sw{border-left:3px solid rgba(45,212,191,.9);}
+.var-row.k-gold{border-left:3px solid rgba(250,204,21,.9);}
+.var-row.k-str{border-left:3px solid rgba(74,222,128,.9);}
+.var-row.k-p{border-left:3px solid rgba(244,114,182,.9);}
+.var-row.k-q{border-left:3px solid rgba(250,204,21,.9);}
+.var-row.k-a{border-left:3px solid rgba(192,132,252,.9);}
+.var-row.k-out{border-left:3px solid rgba(250,204,21,.9);}
+.var-row.changed{border-color:rgba(56,189,248,.85);background:rgba(56,189,248,.12);}
+.var-name{color:#7d93b3;white-space:nowrap;font-size:.68rem;flex:0 0 auto;}
+.var-value{
+  font-family:ui-monospace,Consolas,monospace;font-weight:700;
+  color:var(--accent);font-variant-numeric:tabular-nums;
+  white-space:nowrap;text-align:right;
+  flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
+}
+.var-value.dim{color:#5f7796;font-weight:500;}
+.var-row.k-ctx   .var-value{color:var(--green);}
+.var-row.k-val   .var-value{color:var(--accent);}
+.var-row.k-sw    .var-value{color:var(--teal);}
+.var-row.k-gold  .var-value{color:var(--gold);}
+.var-row.k-str   .var-value{color:var(--green);}
+.var-row.k-p     .var-value{color:var(--pink);}
+.var-row.k-q     .var-value{color:var(--gold);}
+.var-row.k-a     .var-value{color:var(--purple);}
+.var-row.k-out   .var-value{color:var(--gold);}
+@keyframes flash{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.15);color:#fff;text-shadow:0 0 12px var(--accent);}
+  100%{transform:scale(1);}
+}
+.var-value.flash{animation:flash .5s ease-out;}
+
+/* 求值链 */
+#pExpand .p-body{
+  background:#050c17;font-family:ui-monospace,Consolas,monospace;
+  font-size:var(--exp-font);line-height:1.85;
+}
+.exp-line{color:#9fd8ff;white-space:pre-wrap;transition:color .3s;}
+.exp-line.exp-warn{color:#fcd34d;}
+.exp-line.exp-final{color:var(--gold);font-weight:700;text-shadow:0 0 12px rgba(250,204,21,.5);}
+.exp-empty{color:#3d5474;font-size:.9em;}
+
+/* 平台模型 */
+#pModel .p-body{font-size:var(--var-font);line-height:1.8;color:#b8c9e0;}
+#pModel .k{color:var(--gold);font-weight:700;}
+#pModel .g{color:var(--green);font-weight:700;}
+#pModel .r{color:var(--rose);font-weight:700;}
+#pModel .c{color:var(--accent);font-weight:700;}
+#pModel .p{color:var(--purple);font-weight:700;}
+#pModel ul{margin:.4em 0;padding-left:1.2em;}
+#pModel li{margin:.22em 0;}
+
+/* 控制台 */
+#pConsole .p-body{
+  background:#050c17;
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--log-font);line-height:1.75;
+  color:#86efac;white-space:pre;word-break:normal;
+}
+.out-line{margin:0;white-space:pre;min-height:1.35em;line-height:1.75;tab-size:8;}
+.out-norm{color:#86efac;}
+.out-input{color:#7dd3fc;}
+.out-head{color:#fbbf24;font-weight:700;}
+.out-data{color:#a5f3fc;}
+.out-final{color:#facc15;font-weight:700;}
+.out-wait{color:#3d5474;}
+.cursor{display:inline-block;color:#4ade80;font-weight:400;
+  animation:blink 1s step-end infinite;margin-left:1px;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+/* 解说 */
+#pExplain .p-body{font-size:var(--explain-font);line-height:1.75;color:#b8c9e0;}
+.ex-line{
+  display:inline-block;margin-right:.5em;padding:.06em .55em;
+  border-radius:6px;background:rgba(56,189,248,.18);
+  color:var(--accent);font-weight:700;font-size:.8em;vertical-align:middle;
+}
+.ex-line.gold{background:rgba(250,204,21,.26);color:var(--gold);}
+.ex-line.mv{background:rgba(244,114,182,.24);color:var(--pink);}
+.ex-line.rose{background:rgba(251,113,133,.28);color:var(--rose);}
+.ex-line.green{background:rgba(74,222,128,.24);color:var(--green);}
+.ex-line.out{background:rgba(45,212,191,.24);color:var(--teal);}
+.ex-line.fn{background:rgba(192,132,252,.26);color:var(--purple);}
+#pExplain strong{color:#eaf3ff;}
+#pExplain code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(148,163,184,.16);border-radius:4px;
+  padding:0 .3em;color:#e2e8f0;
+}
+.tip,.warn,.win,.pur-box{display:block;margin-top:.55em;padding:.5em .7em;border-radius:7px;}
+.tip{background:rgba(45,212,191,.12);border-left:4px solid var(--teal);color:#bff5ec;}
+.warn{background:rgba(251,191,36,.14);border-left:4px solid var(--amber);color:#ffe6b0;}
+.win{background:rgba(250,204,21,.16);border-left:4px solid var(--gold);color:#fff3c4;font-weight:600;}
+.pur-box{background:rgba(192,132,252,.16);border-left:4px solid var(--purple);color:#e9d5ff;}
+
+/* 缩略图 */
+#pMini{width:190px;}
+#pMini .p-body{padding:0;overflow:hidden;position:relative;}
+.mini-content{
+  position:relative;font-family:ui-monospace,Consolas,monospace;
+  line-height:1;overflow:hidden;
+}
+.mini-line{
+  white-space:pre;overflow:hidden;
+  padding-left:3px;color:#7d93b3;
+  border-left:2px solid transparent;
+  display:flex;align-items:center;
+}
+.mini-line.cur{background:rgba(56,189,248,.55);border-left-color:#38bdf8;}
+.mini-viewport{
+  position:absolute;left:0;width:100%;
+  border:1px solid rgba(250,204,21,.85);
+  background:rgba(250,204,21,.10);
+  box-shadow:0 0 10px rgba(250,204,21,.45);
+  pointer-events:none;border-radius:2px;
+}
+.mini-line .cmt{color:#5b6f8c;}
+.mini-line .fn{color:#7dd3fc;}
+.mini-line .kw{color:#f9a8d4;}
+.mini-line .num{color:#fbbf24;}
+.mini-line .ty{color:#5eead4;}
+.mini-line .str{color:#86efac;}
+
+@media (max-width:900px){
+  :root{
+    --code-font:calc(clamp(15px,4vw,30px) * var(--fs));
+    --log-font:calc(clamp(13px,3.4vw,24px) * var(--fs));
+    --var-font:calc(clamp(11px,2.6vw,17px) * var(--fs));
+    --exp-font:calc(clamp(11px,2.6vw,17px) * var(--fs));
+    --explain-font:calc(clamp(12px,2.8vw,19px) * var(--fs));
+    --btn-font:calc(clamp(11px,2.4vw,16px) * var(--fs));
+    --title-font:calc(clamp(11px,2.6vw,17px) * var(--fs));
+  }
+}
+</style>
+</head>
+<body>
+
+<!-- 全屏代码区 -->
+<div id="codeArea"><div class="code-scroll" id="codeScroll"></div></div>
+
+<!-- 控制栏 -->
+<section class="panel front" id="pCtrl">
+  <div class="p-head">
+    <span class="p-title">C 链表创建逐步执行模拟</span>
+    <button class="p-close" title="关闭">×</button>
+  </div>
+  <div class="p-body">
+    <button class="btn primary" id="btnPlay">▶ 自动播放</button>
+    <button class="btn" id="btnPrev">◀ 上一步</button>
+    <button class="btn" id="btnNext">下一步 ▶</button>
+    <button class="btn" id="btnReset">⟲ 重置</button>
+    <button class="btn ghost" id="btnFontDown">A－</button>
+    <button class="btn ghost" id="btnFontUp">A＋</button>
+    <button class="btn ghost" id="btnLayout">重置布局</button>
+    <button class="btn ghost" id="btnAllPanels">隐藏面板</button>
+    <span class="sep">│</span>
+    <label class="tag" style="display:flex;align-items:center;gap:.4em;">
+      速度 <input type="range" id="speed" min="60" max="2000" step="20" value="600" style="width:5em;">
+    </label>
+    <span class="tag" id="stepCounter">步骤 — / —</span>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 当前状态 -->
+<section class="panel" id="pInfo">
+  <div class="p-head"><span class="p-title">当前状态</span><button class="p-close">×</button></div>
+  <div class="p-body">
+    <span class="tag">当前函数</span><span class="val fn" id="funcVal">—</span>
+    <span class="sep">│</span>
+    <span class="tag">循环 i</span><span class="val" id="iVal">—</span>
+    <span class="sep">│</span>
+    <span class="tag">已建结点</span><span class="val" id="nodeVal">—</span>
+    <span class="sep">│</span>
+    <span class="tag">链表长度</span><span class="val gold" id="lenVal">—</span>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- struct 布局 -->
+<section class="panel" id="pStruct">
+  <div class="p-head"><span class="p-title">struct LNode 类型布局</span><button class="p-close">×</button></div>
+  <div class="p-body">
+    <div class="struct-row">
+      <div class="sf sf-name-c" data-sf="name">
+        <span class="sf-name">name[8]</span>
+        <span class="sf-info">偏移 0 · 8B</span>
+      </div>
+      <div class="sf sf-class" data-sf="class">
+        <span class="sf-name">class</span>
+        <span class="sf-info">偏移 8 · 4B</span>
+      </div>
+      <div class="sf sf-score" data-sf="score">
+        <span class="sf-name">score[4]</span>
+        <span class="sf-info">偏移 12 · 16B</span>
+      </div>
+      <div class="sf sf-next" data-sf="next">
+        <span class="sf-name">next</span>
+        <span class="sf-info">偏移 28 · 8B</span>
+      </div>
+    </div>
+    <div class="struct-size" id="structSize">每个结点 = 32 字节（堆上 malloc 分配）</div>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 链表可视化 -->
+<section class="panel" id="pList">
+  <div class="p-head"><span class="p-title">链表可视化 · 指针徽章</span><button class="p-close">×</button></div>
+  <div class="p-body" id="llView"></div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 变量表 -->
+<section class="panel" id="pVars">
+  <div class="p-head"><span class="p-title">变量表（按作用域）</span><button class="p-close">×</button></div>
+  <div class="p-body" id="varTable"></div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 求值链 -->
+<section class="panel" id="pExpand">
+  <div class="p-head"><span class="p-title">表达式求值链</span><button class="p-close">×</button></div>
+  <div class="p-body" id="expandBox"></div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 平台模型 -->
+<section class="panel" id="pModel">
+  <div class="p-head"><span class="p-title">平台模型 · 关键结论</span><button class="p-close">×</button></div>
+  <div class="p-body">
+    <div><span class="k">平台：</span>64 位，小端序；int=4B，char=1B，指针=8B</div>
+    <ul>
+      <li><span class="c">struct LNode</span> → 每个结点 32 字节，堆上 malloc 分配</li>
+      <li><span class="c">name[8]</span> · <span class="c">class</span> · <span class="c">score[4]</span> · <span class="c">next</span></li>
+      <li><span class="p">函数调用</span> → 实参复制 + 栈帧新建 + 控制权跳转 + 返回后继续</li>
+      <li><span class="p">函数栈帧</span> → 返回时自动销毁，局部变量消失；<b>堆上结点仍然存活</b></li>
+      <li><span class="g">值传递</span> → main 的 n 与 create 的 n 是不同变量</li>
+      <li><span class="c">h = NULL</span> → 判断第一个结点的前提</li>
+      <li><span class="c">h = p; t = p;</span> → 第一个结点既是头也是尾</li>
+      <li><span class="c">t->next = p; t = p;</span> → 接到链尾并更新尾指针</li>
+      <li><span class="r">t->next = NULL</span> → 链表封口，漏掉会越界崩溃</li>
+      <li><span class="r">return h</span> → 返回头指针；返回 p/t 会丢头、内存泄漏</li>
+      <li><span class="c">while(q) + q = q->next</span> → 链表遍历套路</li>
+      <li><span class="k">strcpy</span> → 字符串拷贝；数组名不可赋值</li>
+      <li><span class="k">scanf</span> → 数组名不加 &amp;，普通变量必须加 &amp;</li>
+      <li><span class="k">printf 不换行</span> → 追加到同一行；putchar('\n') 收尾换行</li>
+    </ul>
+    <div style="margin-top:.5em;color:var(--gold);font-weight:700;">
+      最终链表：q = 0x1000 → 0x1020 → 0x1040 → NULL
+    </div>
+    <div style="margin-top:.5em;color:var(--rose);">
+      ⚠ 原程序缺陷：① 缺 include &lt;stdlib.h&gt;/&lt;string.h&gt; ② 不查 NULL ③ scanf("%s") 越界风险 ④ 不 free
+    </div>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 控制台 -->
+<section class="panel" id="pConsole">
+  <div class="p-head"><span class="p-title">程序运行输出（终端）</span><button class="p-close">×</button></div>
+  <div class="p-body" id="consoleBody"></div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 解说 -->
+<section class="panel" id="pExplain">
+  <div class="p-head"><span class="p-title">本步解说</span><button class="p-close">×</button></div>
+  <div class="p-body" id="explainBox"></div>
+  <div class="p-resize"></div>
+</section>
+
+<!-- 缩略图 -->
+<section class="panel" id="pMini">
+  <div class="p-head"><span class="p-title">缩略图</span><button class="p-close">×</button></div>
+  <div class="p-body" id="miniBody">
+    <div class="mini-content" id="miniContent"></div>
+  </div>
+  <div class="p-resize"></div>
+</section>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   源码（39 行，带语法着色）
+   ========================================================= */
+var CODE_LINES = [
+  '<span class="kw">struct</span> <span class="ty">LNode</span> <span class="op">*</span><span class="fn">create</span>(<span class="kw">int</span> n) {            <span class="cmt">// 创建链表函数，返回头指针</span>',
+  '    <span class="kw">struct</span> <span class="ty">LNode</span> <span class="op">*</span>h, <span class="op">*</span>p, <span class="op">*</span>t;            <span class="cmt">// 头/动态/尾指针</span>',
+  '    <span class="kw">char</span> xm[<span class="num">8</span>]; <span class="kw">int</span> clas, a[<span class="num">4</span>];        <span class="cmt">// 临时变量</span>',
+  '    <span class="kw">int</span> i, j;                          <span class="cmt">// 循环变量</span>',
+  '    h <span class="op">=</span> <span class="num">NULL</span>;                        <span class="cmt">// 关键句1：头指针赋空</span>',
+  '    <span class="fn">printf</span>(<span class="str">"Please input name,class and 4 score:\\n"</span>);',
+  '    <span class="kw">for</span>(i<span class="op">=</span>n; i<span class="op">&gt;</span><span class="num">0</span>; <span class="op">--</span>i) {             <span class="cmt">// 循环创建 n 个结点</span>',
+  '        p <span class="op">=</span> (<span class="kw">struct</span> <span class="ty">LNode</span><span class="op">*</span>)<span class="fn">malloc</span>(<span class="fn">sizeof</span>(<span class="kw">struct</span> <span class="ty">LNode</span>)); <span class="cmt">// 分配内存</span>',
+  '        <span class="fn">scanf</span>(<span class="str">"%s%d"</span>, xm, <span class="op">&amp;</span>clas);     <span class="cmt">// 输入姓名和班级</span>',
+  '        <span class="kw">for</span>(j<span class="op">=</span><span class="num">0</span>; j<span class="op">&lt;</span><span class="num">4</span>; j<span class="op">++</span>) <span class="fn">scanf</span>(<span class="str">"%d"</span>, <span class="op">&amp;</span>a[j]); <span class="cmt">// 输入4科成绩</span>',
+  '        <span class="fn">strcpy</span>(p<span class="op">-&gt;</span>name, xm);           <span class="cmt">// 数据域赋值</span>',
+  '        p<span class="op">-&gt;</span>class <span class="op">=</span> clas;',
+  '        <span class="kw">for</span>(j<span class="op">=</span><span class="num">0</span>; j<span class="op">&lt;</span><span class="num">4</span>; j<span class="op">++</span>) p<span class="op">-&gt;</span>score[j] <span class="op">=</span> a[j];',
+  '        <span class="kw">if</span>(h <span class="op">==</span> <span class="num">NULL</span>) {              <span class="cmt">// 关键句2：第一个结点</span>',
+  '            h <span class="op">=</span> p;                     <span class="cmt">// 头 = 新建结点</span>',
+  '            t <span class="op">=</span> p;                     <span class="cmt">// 尾 = 新建结点</span>',
+  '        } <span class="kw">else</span> {                       <span class="cmt">// 关键句3：后续结点</span>',
+  '            t<span class="op">-&gt;</span>next <span class="op">=</span> p;               <span class="cmt">// 尾指向新建结点</span>',
+  '            t <span class="op">=</span> p;                     <span class="cmt">// 更新尾</span>',
+  '        }',
+  '    }',
+  '    t<span class="op">-&gt;</span>next <span class="op">=</span> <span class="num">NULL</span>;                  <span class="cmt">// 关键句4：最末结点指针域赋空</span>',
+  '    <span class="kw">return</span> h;                          <span class="cmt">// 关键句5：返回头指针</span>',
+  '}',
+  '<span class="kw">int</span> <span class="fn">main</span>() {                          <span class="cmt">// 主函数</span>',
+  '    <span class="kw">int</span> n, j;                          <span class="cmt">// 定义变量</span>',
+  '    <span class="kw">struct</span> <span class="ty">LNode</span> <span class="op">*</span>q;                  <span class="cmt">// 定义链表指针</span>',
+  '    <span class="fn">printf</span>(<span class="str">"Input you want to create point:"</span>);',
+  '    <span class="fn">scanf</span>(<span class="str">"%d"</span>, <span class="op">&amp;</span>n);               <span class="cmt">// 输入结点个数</span>',
+  '    q <span class="op">=</span> <span class="fn">create</span>(n);                    <span class="cmt">// 调用create创建链表</span>',
+  '    <span class="fn">printf</span>(<span class="str">"name\\tclass\\tChinese\\tMaths\\tEnglish\\tProfessional\\n"</span>);',
+  '    <span class="kw">while</span>(q) {                        <span class="cmt">// 遍历输出每个结点</span>',
+  '        <span class="fn">printf</span>(<span class="str">"%s\\t%d\\t"</span>, q<span class="op">-&gt;</span>name, q<span class="op">-&gt;</span>class);',
+  '        <span class="kw">for</span>(j<span class="op">=</span><span class="num">0</span>; j<span class="op">&lt;</span><span class="num">4</span>; j<span class="op">++</span>) <span class="fn">printf</span>(<span class="str">"%d\\t"</span>, q<span class="op">-&gt;</span>score[j]);',
+  '        <span class="fn">putchar</span>(<span class="str">\'\\n\'</span>);',
+  '        q <span class="op">=</span> q<span class="op">-&gt;</span>next;                  <span class="cmt">// 指针下移</span>',
+  '    }',
+  '    <span class="kw">return</span> <span class="num">0</span>;',
+  '}'
+];
+
+var ADDRS = ['0x1000','0x1020','0x1040'];
+var INPUT = {
+  n:3,
+  nodes:[
+    { name:'Zhang', clas:1, scores:[90,85,88,92] },
+    { name:'Li',    clas:2, scores:[78,82,80,75] },
+    { name:'Wang',  clas:1, scores:[95,91,89,94] }
+  ]
+};
+
+/* =========================================================
+   构建 65 步
+   ========================================================= */
+function buildSteps(){
+  var steps=[], S;
+
+  function resetS(){
+    S = {
+      func:'—', n:null, i:null, j:null,
+      h:null, p:null, t:null, q:null,
+      xm:null, clas:null, a:[null,null,null,null],
+      nodes:[], out:[], pend:null, done:false
+    };
+  }
+  function clone(o){ return JSON.parse(JSON.stringify(o)); }
+  function emit(text,cls){
+    cls = cls || 'out-norm';
+    var i=0;
+    while (i<text.length){
+      var nl = text.indexOf('\n', i);
+      if (nl===-1){
+        if (!S.pend) S.pend={t:'',c:cls};
+        S.pend.t += text.slice(i);
+        break;
+      }
+      if (!S.pend) S.pend={t:'',c:cls};
+      S.pend.t += text.slice(i,nl);
+      S.out.push(S.pend);
+      S.pend=null;
+      i=nl+1;
+    }
+  }
+  function snap(o){
+    steps.push({
+      line:o.line, cls:o.cls||'',
+      title:o.title||'', desc:o.desc||'',
+      s:clone(S)
+    });
+  }
+
+  resetS();
+
+  /* ---------- main 入口 ---------- */
+  S.func='main';
+  snap({ line:25, cls:'gold',
+    title:'进入 <b>main</b> 函数',
+    desc:'程序从 <code>main</code> 开始执行。<br>' +
+      '· 栈上为 main 建立一块<b>活动记录</b>（栈帧），用来存放它的局部变量；<br>' +
+      '· 现在还没有任何局部变量被定义。<br>' +
+      '<span class="tip"><b>本程序执行顺序：</b>main 先跑 → 第 30 行 <code>q = create(n);</code> ' +
+      '<b>跳进</b> create → create 建好整条链表后 <code>return h;</code> 返回 → ' +
+      'main 继续用 q 遍历输出。<br>' +
+      '<b>左侧代码会自动滚动到当前正在执行的那一行。</b></span>'
+  });
+
+  snap({ line:26, cls:'',
+    title:'定义 <b>n</b>、<b>j</b>（整型）',
+    desc:'声明两个 <code>int</code> 变量。<br>' +
+      '· <code>n</code> 后面用来接收用户输入的结点个数；<br>' +
+      '· <code>j</code> 是遍历成绩数组的循环变量；<br>' +
+      '· C 语言中局部变量<b>不会自动清零</b>，现在它们的值是未定义的。' +
+      '<span class="warn">好习惯：变量使用前一定要先赋值。</span>'
+  });
+
+  snap({ line:27, cls:'',
+    title:'定义 <b>q</b>（指向结点的指针）',
+    desc:'声明一个 <code>struct LNode *</code> 指针 <code>q</code>。<br>' +
+      '· q 之后用来接收 <code>create()</code> 返回的头指针；<br>' +
+      '· 现在 q 里是随机地址，<b>绝不能</b>对它做 <code>q->next</code> 之类的操作。'
+  });
+
+  emit('Input you want to create point:');
+  snap({ line:28, cls:'out',
+    title:'输出提示：<b>Input you want to create point:</b>',
+    desc:'调用 <code>printf</code> 打印提示语。<br>' +
+      '· 注意字符串末尾<b>没有</b> <code>\\n</code>，所以光标不会换行；<br>' +
+      '· 用户随后输入的字符会紧接着显示在冒号后面。'
+  });
+
+  S.n = 3;
+  emit('3\n','out-input');
+  snap({ line:29, cls:'rose',
+    title:'读入 <b>n</b> = <b>3</b>',
+    desc:'<code>scanf</code> 从键盘读入一个整数，存入 <code>n</code>。<br>' +
+      '· <code>&amp;n</code> 是取地址运算，把 n 的<b>地址</b>交给 scanf；<br>' +
+      '· 用户输入了 <b>3</b>，所以 <code>n = 3</code>；<br>' +
+      '· 接下来 <code>q = create(n);</code> 会创建一条含 3 个结点的链表。'
+  });
+
+  snap({ line:30, cls:'fn',
+    title:'调用 <b>create(3)</b>　→　控制权转入 create',
+    desc:'这是<b>函数调用</b>语句，执行过程分三步：<br>' +
+      '① 把实参 <code>n</code> 的值（3）<b>复制</b>一份传给形参；<br>' +
+      '② 在栈上为 create 建立新的栈帧，控制权跳进 create 函数体；<br>' +
+      '③ 等 create <code>return</code> 之后，返回值才会赋给 <code>q</code>。<br>' +
+      '· 所以现在 <code>q</code> 还是<b>未初始化</b>的状态。'
+  });
+
+  /* ---------- create 入口 ---------- */
+  S.func='create';
+  snap({ line:1, cls:'gold',
+    title:'进入 <b>create</b> 函数　→　形参 n = 3',
+    desc:'create 开始执行。<br>' +
+      '· 形参 <code>n</code> 是一个<b>局部变量</b>，初值 3，它是实参的一份拷贝；' +
+      '在 create 里修改 n 不会影响 main 的 n；<br>' +
+      '· 栈上为 create 新建一块栈帧，用来放它的所有局部变量；<br>' +
+      '· 返回类型是 <code>struct LNode *</code>，说明这个函数最终要交出一个<b>指向结点的指针</b>。'
+  });
+
+  snap({ line:2, cls:'',
+    title:'定义 <b>h</b>、<b>p</b>、<b>t</b> 三个指针',
+    desc:'三个指针的分工：<br>' +
+      '· <code>h</code>（head）：永远指向<b>头结点</b>，最后要作为返回值交出去；<br>' +
+      '· <code>t</code>（tail）：永远指向<b>尾结点</b>，新结点要接在它后面；<br>' +
+      '· <code>p</code>（pointer）：指向<b>刚 malloc 出来的新结点</b>。<br>' +
+      '· 现在三个指针都没有有效值，必须先赋值再使用。'
+  });
+
+  snap({ line:3, cls:'',
+    title:'定义临时变量：<b>xm[8]</b>、<b>clas</b>、<b>a[4]</b>',
+    desc:'为什么先读到临时变量、再拷进结点？<br>' +
+      '· <code>xm[8]</code>：姓名最多 7 个字符 + 结尾的 <code>\\0</code>；<br>' +
+      '· <code>clas</code>：班级号；<br>' +
+      '· <code>a[4]</code>：4 门课成绩的临时数组；<br>' +
+      '· 好处是<b>输入和数据写入分开</b>，输入出错时结点数据不会只写一半。'
+  });
+
+  snap({ line:4, cls:'',
+    title:'定义循环变量 <b>i</b>、<b>j</b>',
+    desc:'· <code>i</code> 控制外层 for 循环，用来数「还要建几个结点」；<br>' +
+      '· <code>j</code> 控制内层 for 循环，用来遍历 4 门成绩。' +
+      '<span class="tip">注意 create 里的 <code>j</code> 和 main 里的 <code>j</code> ' +
+      '是<b>两个不同的变量</b>，各自在自己的栈帧里，互不干扰。</span>'
+  });
+
+  S.h='NULL';
+  snap({ line:5, cls:'rose',
+    title:'<b>关键句 1</b>：h = NULL　→　头指针先置空',
+    desc:'把头指针 <code>h</code> 置为 <code>NULL</code>。<br>' +
+      '· <code>NULL</code> 是 C 标准库定义的<b>空指针常量</b>，表示「不指向任何有效内存」；<br>' +
+      '· 为什么必须先置空？因为后面第 14 行要靠 <code>if (h == NULL)</code> ' +
+      '来判断「当前是不是第一个结点」；<br>' +
+      '· 如果 h 里是随机垃圾值，这个判断就会出错，链表头可能指向一片非法内存。' +
+      '<span class="tip"><b>这是链表编程最经典的一步。</b>头指针不置空 = 野指针。</span>'
+  });
+
+  emit('Please input name,class and 4 score:\n');
+  snap({ line:6, cls:'out',
+    title:'输出提示：<b>Please input name,class and 4 score:</b>',
+    desc:'打印输入提示。注意和 main 里那句不同：<br>' +
+      '· 这个字符串末尾<b>有</b> <code>\\n</code>，所以打印完会换行；<br>' +
+      '· 接下来进入循环，每轮循环都要输入一个同学的姓名、班级和 4 门成绩。'
+  });
+
+  S.i=3;
+  snap({ line:7, cls:'green',
+    title:'<b>for</b> 初始化：i = 3，条件成立　→　第 1 次循环',
+    desc:'for 循环的执行顺序是：<br>' +
+      '① <b>初始化</b>：<code>i = n</code> → i = 3（只做一次）；<br>' +
+      '② <b>判断条件</b>：<code>i &gt; 0</code> → 3 &gt; 0 <b>成立</b>；<br>' +
+      '③ 执行循环体（第 8 ~ 21 行）；<br>' +
+      '④ 执行 <code>--i</code> 让 i 减 1，再回到 ② 继续判断。' +
+      '<span class="tip">循环变量 i 从 3 递减到 1，正好循环 3 次，创建 3 个结点。</span>'
+  });
+
+  /* ---------- 循环 1 ---------- */
+  var nd1 = { id:1, addr:ADDRS[0], name:null, clas:null, scores:[null,null,null,null], next:'?' };
+  S.nodes.push(nd1); S.p = nd1.addr;
+  snap({ line:8, cls:'mv',
+    title:'<b>malloc</b> 申请结点　→　p = <b>0x1000</b>',
+    desc:'在<b>堆</b>上申请一块 32 字节的内存用来放一个新结点。<br>' +
+      '· <code>malloc</code> 返回这块内存的<b>首地址</b>，这里是 <b>0x1000</b>；<br>' +
+      '· <code>(struct LNode*)</code> 是<b>强制类型转换</b>，把 <code>void*</code> ' +
+      '转成结点指针，赋给 <code>p</code>；<br>' +
+      '· 此刻结点里的字段还是<b>未初始化</b>的随机值。' +
+      '<span class="warn"><b>malloc 可能失败！</b>内存不足时返回 <code>NULL</code>。' +
+      '严谨写法应该在 malloc 后加 <code>if (p == NULL) return NULL;</code></span>'
+  });
+
+  S.xm='Zhang'; S.clas=1;
+  emit('> Zhang 1\n','out-input');
+  snap({ line:9, cls:'rose',
+    title:'读入 <b>xm = "Zhang"</b>，<b>clas = 1</b>',
+    desc:'<code>scanf("%s%d", xm, &amp;clas)</code> 读取一个字符串和一个整数。<br>' +
+      '· <code>%s</code> 会跳过空白符，读到下一个空白符为止，并自动补 <code>\\0</code>；<br>' +
+      '· <code>xm</code> 是数组名，本身就是地址，所以<b>不用加 &amp;</b>；<br>' +
+      '· <code>clas</code> 是普通变量，必须写 <code>&amp;clas</code> 取地址。'
+  });
+
+  S.a=[90,85,88,92]; S.j=4;
+  emit('> 90 85 88 92\n','out-input');
+  snap({ line:10, cls:'rose',
+    title:'读入 4 门成绩　→　<b>a[4] = [90, 85, 88, 92]</b>',
+    desc:'内层 for 循环执行 4 次，每次读一个整数：<br>' +
+      '· j = 0 → 读入 90 存进 <code>a[0]</code>；<br>' +
+      '· j = 1 → 读入 85 存进 <code>a[1]</code>；<br>' +
+      '· j = 2 → 读入 88 存进 <code>a[2]</code>；<br>' +
+      '· j = 3 → 读入 92 存进 <code>a[3]</code>；<br>' +
+      '· j = 4 时条件不成立，循环结束。'
+  });
+
+  nd1.name='Zhang';
+  snap({ line:11, cls:'mv',
+    title:'<b>strcpy</b>　→　结点 0x1000 的 name = "Zhang"',
+    desc:'把 <code>xm</code> 里的字符串<b>拷贝</b>到新结点的 name 字段。<br>' +
+      '· <code>p->name</code> 是 <code>(*p).name</code> 的简写；<br>' +
+      '· <b>为什么不能写 <code>p->name = xm;</code>？</b>' +
+      'C 里数组名是<b>常量地址</b>，不能被赋值，编译器会直接报错；<br>' +
+      '· <code>strcpy</code> 会连同结尾的 <code>\\0</code> 一起拷过去。'
+  });
+
+  nd1.clas=1;
+  snap({ line:12, cls:'mv',
+    title:'结点 0x1000 的 <b>class</b> = <b>1</b>',
+    desc:'把临时变量 <code>clas</code> 的值写进结点的 class 字段。整型用 <code>=</code> 直接赋值。'
+  });
+
+  nd1.scores=[90,85,88,92];
+  snap({ line:13, cls:'mv',
+    title:'结点 0x1000 的 <b>score[4]</b> = [90, 85, 88, 92]',
+    desc:'用 for 循环把 4 门成绩逐个拷进结点。<br>' +
+      '· <code>p->score[j]</code> 和 <code>a[j]</code> 一一对应；<br>' +
+      '· 不能写 <code>p->score = a;</code>，数组名不可赋值；' +
+      'C 里数组之间只能<b>逐个元素</b>拷贝。<br>' +
+      '· 至此结点 0x1000 的<b>数据域全部填好</b>，只差 next 指针。'
+  });
+
+  snap({ line:14, cls:'green',
+    title:'<b>关键句 2</b>：h == NULL 成立　→　这是<b>第一个结点</b>',
+    desc:'判断当前是不是链表的第一个结点。<br>' +
+      '· 第 5 行把 <code>h</code> 置成了 <code>NULL</code>，还没有被修改过，' +
+      '所以 <code>h == NULL</code> 为<b>真</b>；<br>' +
+      '· 这是<b>第一个结点</b>，需要同时：让 h 指向它（记录链表头），' +
+      '让 t 也指向它（既是头也是尾）；<br>' +
+      '· 如果 h 不为 NULL，说明链表里已经有结点了，就走 else 分支接链尾。'
+  });
+
+  S.h=nd1.addr;
+  snap({ line:15, cls:'gold',
+    title:'<b>h = p</b>　→　头指针确定：h = 0x1000',
+    desc:'把新结点的地址赋给头指针 <code>h</code>。<br>' +
+      '· 从此 <code>h</code> 就是整条链表的<b>入口</b>；<br>' +
+      '· 函数最后会把这个 h 返回给 main，所以 h 千万不能在循环里被随便改掉。'
+  });
+
+  S.t=nd1.addr;
+  snap({ line:16, cls:'gold',
+    title:'<b>t = p</b>　→　尾指针确定：t = 0x1000',
+    desc:'把新结点的地址赋给尾指针 <code>t</code>。<br>' +
+      '· 此时链表里只有一个结点，所以它<b>既是头也是尾</b>；<br>' +
+      '· 下一轮循环创建的结点，就要挂在 t 所指结点的后面。' +
+      '<span class="tip"><b>链表三要素：</b>h 记头、t 记尾、p 干活的临时工。</span>'
+  });
+
+  S.i=2;
+  snap({ line:7, cls:'green',
+    title:'<b>--i</b>　→　i = 2，条件成立　→　第 2 次循环',
+    desc:'循环体执行完毕，执行 for 的第三个表达式 <code>--i</code>，i 从 3 变成 2。<br>' +
+      '· 再次判断 <code>i &gt; 0</code> → 2 &gt; 0 <b>成立</b>；<br>' +
+      '· 进入第 2 次循环，准备创建第 2 个结点。'
+  });
+
+  /* ---------- 循环 2 ---------- */
+  var nd2 = { id:2, addr:ADDRS[1], name:null, clas:null, scores:[null,null,null,null], next:'?' };
+  S.nodes.push(nd2); S.p = nd2.addr;
+  snap({ line:8, cls:'mv',
+    title:'<b>malloc</b> 申请第 2 个结点　→　p = <b>0x1020</b>',
+    desc:'再次申请 32 字节，<code>malloc</code> 返回 <b>0x1020</b>。<br>' +
+      '· 注意 <code>p</code> 被<b>重新赋值</b>了，它不再指向第一个结点；<br>' +
+      '· 第一个结点的地址保存在 <code>h</code> 和 <code>t</code> 里，不会丢；<br>' +
+      '· 这就是为什么链表需要<b>多个指针</b>配合工作。'
+  });
+
+  S.xm='Li'; S.clas=2;
+  emit('> Li 2\n','out-input');
+  snap({ line:9, cls:'rose',
+    title:'读入 <b>xm = "Li"</b>，<b>clas = 2</b>',
+    desc:'第二轮输入。临时变量 <code>xm</code> 和 <code>clas</code> 会被<b>覆盖</b>成新值；' +
+      '上一个同学的数据早就拷进结点 0x1000 里了，不受影响。'
+  });
+
+  S.a=[78,82,80,75]; S.j=4;
+  emit('> 78 82 80 75\n','out-input');
+  snap({ line:10, cls:'rose',
+    title:'读入 4 门成绩　→　<b>a[4] = [78, 82, 80, 75]</b>',
+    desc:'同上一轮一样，循环 4 次读入成绩。'
+  });
+
+  nd2.name='Li';
+  snap({ line:11, cls:'mv',
+    title:'<b>strcpy</b>　→　结点 0x1020 的 name = "Li"',
+    desc:'<code>p</code> 当前指向 <b>0x1020</b>，所以写的是这个<b>新结点</b>的字段。'
+  });
+
+  nd2.clas=2;
+  snap({ line:12, cls:'mv',
+    title:'结点 0x1020 的 <b>class</b> = <b>2</b>',
+    desc:'把 <code>clas</code>（2）写进新结点的 class 字段。'
+  });
+
+  nd2.scores=[78,82,80,75];
+  snap({ line:13, cls:'mv',
+    title:'结点 0x1020 的 <b>score[4]</b> = [78, 82, 80, 75]',
+    desc:'4 门成绩拷进结点 0x1020。至此数据域已填满。'
+  });
+
+  snap({ line:14, cls:'green',
+    title:'<b>h == NULL</b> 不成立　→　走 <b>else</b> 分支',
+    desc:'再次判断 <code>h == NULL</code>。<br>' +
+      '· 此时 <code>h = 0x1000</code>，早就不是 NULL 了；<br>' +
+      '· 条件<b>不成立</b>，程序跳过 if 分支，直接进入 <code>else</code> 分支；<br>' +
+      '· 两个分支正好对应链表的两种情况：<b>空表建第一个结点</b> 和 <b>非空表追加结点</b>。'
+  });
+
+  nd1.next = nd2.addr;
+  snap({ line:18, cls:'rose',
+    title:'<b>关键句 3</b>：t->next = p　→　结点 0x1000 → 0x1020',
+    desc:'把新结点挂到链表末尾，这是建立链表<b>最核心的一步</b>。<br>' +
+      '· <code>t</code> 指向当前<b>尾结点</b>（0x1000）；<br>' +
+      '· <code>t->next = p</code> 让尾结点的 next 指向新结点（0x1020）；<br>' +
+      '· 从此 0x1000 和 0x1020 就<b>串起来了</b>。<br>' +
+      '· 注意此时 t 还指着 0x1000，需要下一步更新。' +
+      '<span class="tip"><b>为什么不能反过来写 <code>p->next = t;</code>？</b>' +
+      '那会变成「新结点指向旧结点」，链接方向反了。</span>'
+  });
+
+  S.t = nd2.addr;
+  snap({ line:19, cls:'gold',
+    title:'<b>t = p</b>　→　尾指针后移：t = 0x1020',
+    desc:'把尾指针 <code>t</code> 移到新结点上。<br>' +
+      '· 现在链表是 <b>0x1000 → 0x1020</b>，t 指向真正的尾巴 0x1020；<br>' +
+      '· 下一轮循环再把新结点挂到 t 后面时，才能正确接在链表<b>末尾</b>。'
+  });
+
+  S.i=1;
+  snap({ line:7, cls:'green',
+    title:'<b>--i</b>　→　i = 1，条件成立　→　第 3 次循环',
+    desc:'i 从 2 减到 1，条件 1 &gt; 0 仍成立，进入最后一次循环。'
+  });
+
+  /* ---------- 循环 3 ---------- */
+  var nd3 = { id:3, addr:ADDRS[2], name:null, clas:null, scores:[null,null,null,null], next:'?' };
+  S.nodes.push(nd3); S.p = nd3.addr;
+  snap({ line:8, cls:'mv',
+    title:'<b>malloc</b> 申请第 3 个结点　→　p = <b>0x1040</b>',
+    desc:'第三次申请结点内存，地址为 <b>0x1040</b>。<br>' +
+      '· 堆上现在有三块结点：0x1000、0x1020、0x1040；<br>' +
+      '· 前两块已经串起来了，第三块还是「孤零零」的。'
+  });
+
+  S.xm='Wang'; S.clas=1;
+  emit('> Wang 1\n','out-input');
+  snap({ line:9, cls:'rose',
+    title:'读入 <b>xm = "Wang"</b>，<b>clas = 1</b>',
+    desc:'第三轮输入，临时变量再次被覆盖。<br>' +
+      '· "Wang" 共 4 字符 + <code>\\0</code> 共 5 字节，放进 <code>xm[8]</code> 没问题；<br>' +
+      '· 如果输入的姓名超过 7 个字符，就会<b>数组越界</b>——' +
+      '这是 <code>scanf("%s")</code> 的经典安全隐患。'
+  });
+
+  S.a=[95,91,89,94]; S.j=4;
+  emit('> 95 91 89 94\n','out-input');
+  snap({ line:10, cls:'rose',
+    title:'读入 4 门成绩　→　<b>a[4] = [95, 91, 89, 94]</b>',
+    desc:'读入最后一组成绩。4 个整数依次写入 a[0] ~ a[3]。'
+  });
+
+  nd3.name='Wang';
+  snap({ line:11, cls:'mv',
+    title:'<b>strcpy</b>　→　结点 0x1040 的 name = "Wang"',
+    desc:'把 "Wang" 拷进结点 0x1040 的 name 字段。'
+  });
+
+  nd3.clas=1;
+  snap({ line:12, cls:'mv',
+    title:'结点 0x1040 的 <b>class</b> = <b>1</b>',
+    desc:'把 <code>clas</code>（1）写进结点 0x1040 的 class 字段。'
+  });
+
+  nd3.scores=[95,91,89,94];
+  snap({ line:13, cls:'mv',
+    title:'结点 0x1040 的 <b>score[4]</b> = [95, 91, 89, 94]',
+    desc:'4 门成绩拷进结点 0x1040，数据域全部就绪。'
+  });
+
+  snap({ line:14, cls:'green',
+    title:'<b>h == NULL</b> 不成立　→　走 <b>else</b> 分支',
+    desc:'h 仍然是 0x1000，条件为假，进入 else 分支把新结点接到链尾。'
+  });
+
+  nd2.next = nd3.addr;
+  snap({ line:18, cls:'rose',
+    title:'<b>t->next = p</b>　→　结点 0x1020 → 0x1040',
+    desc:'把第 3 个结点接到尾结点（0x1020）后面。<br>' +
+      '· 此时链表变成 <b>0x1000 → 0x1020 → 0x1040</b>；<br>' +
+      '· 注意结点 0x1040 的 next 还是<b>未设置</b>的随机值，' +
+      '必须在循环结束后单独置空。'
+  });
+
+  S.t = nd3.addr;
+  snap({ line:19, cls:'gold',
+    title:'<b>t = p</b>　→　尾指针后移：t = 0x1040',
+    desc:'尾指针移到 0x1040，它正好是最后一个结点。'
+  });
+
+  S.i=0;
+  snap({ line:7, cls:'green',
+    title:'<b>--i</b>　→　i = 0，条件不成立　→　<b>退出循环</b>',
+    desc:'i 减到 0，条件 <code>0 &gt; 0</code> 为假，for 循环结束。<br>' +
+      '· 循环体一共执行了 3 次，创建了 3 个结点；<br>' +
+      '· 链表已经串成 <b>0x1000 → 0x1020 → 0x1040</b>；' +
+      '但最末结点的 next 还<b>没有被置空</b>，必须补上。'
+  });
+
+  nd3.next='NULL';
+  snap({ line:22, cls:'rose',
+    title:'<b>关键句 4</b>：t->next = NULL　→　链表封口',
+    desc:'把最末结点的 next 指针置为 <code>NULL</code>。<br>' +
+      '· 这是链表的<b>结束标志</b>，没有它，main 里的 <code>while(q)</code> ' +
+      '就永远不知道什么时候停；<br>' +
+      '· 循环里每接一个结点，它的 next 都是随机值，' +
+      '所以必须统一在循环外把尾巴封住；<br>' +
+      '· 这一步的 t 是<b>最后留下的尾指针</b>，所以能准确找到最后一个结点。' +
+      '<span class="warn"><b>漏掉这一步的后果：</b>遍历时 <code>q = q->next</code> ' +
+      '会跳到一个随机地址，轻则打印乱码，重则<b>段错误</b>。</span>'
+  });
+
+  snap({ line:23, cls:'fn',
+    title:'<b>关键句 5</b>：return h　→　返回头指针 <b>0x1000</b>',
+    desc:'把头指针 <code>h</code> 作为函数返回值交回 main。<br>' +
+      '· 为什么返回头指针而不是尾指针？因为只有头指针才能顺着 next 一路走到所有结点；<br>' +
+      '· <b>绝不能返回 p 或 t！</b>它们都指向链表中间或尾部，' +
+      '返回它们会丢失前面的结点，造成<b>内存泄漏</b>；<br>' +
+      '· 返回值 0x1000 马上会被 main 里的 <code>q</code> 接收。'
+  });
+
+  var oldH=S.h, oldP=S.p, oldT=S.t, oldXm=S.xm, oldClas=S.clas, oldA=S.a, oldI=S.i, oldJ=S.j;
+  S.h=null; S.p=null; S.t=null;
+  S.xm=null; S.clas=null;
+  S.a=[null,null,null,null];
+  S.i=null; S.j=null;
+  snap({ line:24, cls:'fn',
+    title:'create 执行完毕　→　<b>栈帧销毁</b>',
+    desc:'函数执行到最后的 <code>}</code>，create 返回。<br>' +
+      '· 栈帧被回收，<b>所有局部变量都消失了</b>——h、p、t、xm、clas、a、i、j 全都没了；<br>' +
+      '· 但 <b>堆上的 3 个结点依然存在</b>！它们由 <code>malloc</code> 分配，' +
+      '只有 <code>free</code> 才能释放；<br>' +
+      '· 幸好我们把 h 返回了，否则这 3 块内存就再也找不到了（内存泄漏）。' +
+      '<span class="tip"><b>栈 vs 堆：</b>栈上的局部变量随函数结束<b>自动销毁</b>；' +
+      '堆上的内存<b>必须手动 free</b> 才会释放。</span>'
+  });
+
+  /* ---------- 回到 main ---------- */
+  S.func='main';
+  S.q=nd1.addr;
+  snap({ line:30, cls:'fn',
+    title:'返回 main　→　<b>q = 0x1000</b>',
+    desc:'create 的返回值 <b>0x1000</b> 被赋给 main 的指针变量 <code>q</code>。<br>' +
+      '· 现在 main 可以顺着 <code>q</code> 访问整条链表；<br>' +
+      '· create 里的局部指针早已销毁，但链表本身（堆内存）完好无损。'
+  });
+
+  emit('name\tclass\tChinese\tMaths\tEnglish\tProfessional\n','out-head');
+  snap({ line:31, cls:'out',
+    title:'输出表头：<b>name / class / Chinese / Maths / English / Professional</b>',
+    desc:'打印一行列标题。<br>' +
+      '· <code>\\t</code> 是<b>制表符</b>，终端会把它展开成对齐的空白；<br>' +
+      '· 末尾的 <code>\\n</code> 让光标换到下一行；<br>' +
+      '· 接下来进入 while 循环，逐个结点打印数据。'
+  });
+
+  /* ---------- 遍历 1 ---------- */
+  snap({ line:32, cls:'green',
+    title:'<b>while(q)</b>　→　q = 0x1000 ≠ NULL　→　进入循环',
+    desc:'判断遍历指针 <code>q</code> 是否为空。<br>' +
+      '· <code>while(q)</code> 等价于 <code>while(q != NULL)</code>；' +
+      '在 C 里非 0 即为真，指针只要不为 NULL 就为真；<br>' +
+      '· 此时 q = 0x1000，指向第一个结点，所以<b>条件成立</b>。' +
+      '<span class="tip"><b>这就是链表遍历的标准写法：</b>' +
+      '<code>q = 头指针;</code> → <code>while(q){ 用 q 干活; q = q->next; }</code></span>'
+  });
+
+  emit('Zhang\t1\t','out-data');
+  snap({ line:33, cls:'out',
+    title:'输出 <b>Zhang</b> / <b>1</b>',
+    desc:'打印当前结点的姓名和班级。<br>' +
+      '· <code>q->name</code> 是结点里的字符数组，用 <code>%s</code> 输出；<br>' +
+      '· <code>q->class</code> 是整型，用 <code>%d</code> 输出；<br>' +
+      '· 两个 <code>\\t</code> 让后面输出的成绩对齐到相应列；<br>' +
+      '· 这里<b>没有</b> <code>\\n</code>，所以光标停在原地，等着下一步输出成绩。'
+  });
+
+  emit('90\t85\t88\t92\t','out-data');
+  snap({ line:34, cls:'out',
+    title:'输出成绩　→　<b>90　85　88　92</b>',
+    desc:'内层 for 循环打印 4 门成绩。<br>' +
+      '· 每打印一个数字就紧跟一个 <code>\\t</code>；<br>' +
+      '· <code>q->score[j]</code> 依次取 score[0] ~ score[3]。'
+  });
+
+  emit('\n');
+  snap({ line:35, cls:'out',
+    title:'<b>putchar(\'\\n\')</b>　→　本行结束，换行',
+    desc:"输出一个换行符。<br>" +
+      '· <code>putchar</code> 一次只输出<b>一个字符</b>，这里是换行符 <code>\'\\n\'</code>；<br>' +
+      '· 到此第一个同学的数据完整打印完毕。'
+  });
+
+  S.q=nd2.addr;
+  snap({ line:36, cls:'mv',
+    title:'<b>q = q->next</b>　→　q = <b>0x1020</b>',
+    desc:'把 q 移到下一个结点。<br>' +
+      '· <code>q->next</code> 取的是当前结点里保存的下一个结点地址；<br>' +
+      '· 结点 0x1000 的 next 是 0x1020，所以 q 变成 0x1020；<br>' +
+      '· <b>这一步是整个遍历的发动机</b>，每执行一次就前进一个结点。'
+  });
+
+  /* ---------- 遍历 2 ---------- */
+  snap({ line:32, cls:'green',
+    title:'<b>while(q)</b>　→　q = 0x1020 ≠ NULL　→　继续循环',
+    desc:'q 现在是 0x1020，不为空，继续执行循环体。'
+  });
+
+  emit('Li\t2\t','out-data');
+  snap({ line:33, cls:'out',
+    title:'输出 <b>Li</b> / <b>2</b>',
+    desc:'打印第 2 个结点的姓名和班级。'
+  });
+
+  emit('78\t82\t80\t75\t','out-data');
+  snap({ line:34, cls:'out',
+    title:'输出成绩　→　<b>78　82　80　75</b>',
+    desc:'打印第 2 个同学的成绩。'
+  });
+
+  emit('\n');
+  snap({ line:35, cls:'out',
+    title:"<b>putchar('\\n')</b>　→　第 2 行结束",
+    desc:'第 2 个同学的数据打印完毕。'
+  });
+
+  S.q=nd3.addr;
+  snap({ line:36, cls:'mv',
+    title:'<b>q = q->next</b>　→　q = <b>0x1040</b>',
+    desc:'q 移到第 3 个结点。'
+  });
+
+  /* ---------- 遍历 3 ---------- */
+  snap({ line:32, cls:'green',
+    title:'<b>while(q)</b>　→　q = 0x1040 ≠ NULL　→　继续循环',
+    desc:'q 指向最后一个结点，条件仍为真。'
+  });
+
+  emit('Wang\t1\t','out-data');
+  snap({ line:33, cls:'out',
+    title:'输出 <b>Wang</b> / <b>1</b>',
+    desc:'打印第 3 个结点的姓名和班级。'
+  });
+
+  emit('95\t91\t89\t94\t','out-data');
+  snap({ line:34, cls:'out',
+    title:'输出成绩　→　<b>95　91　89　94</b>',
+    desc:'打印第 3 个同学的成绩。'
+  });
+
+  emit('\n');
+  snap({ line:35, cls:'out',
+    title:"<b>putchar('\\n')</b>　→　第 3 行结束",
+    desc:'第 3 个同学的数据打印完毕。'
+  });
+
+  S.q='NULL';
+  snap({ line:36, cls:'mv',
+    title:'<b>q = q->next</b>　→　q = <b>NULL</b>',
+    desc:'从最末结点取 next，得到 <code>NULL</code>。<br>' +
+      '· 这正是第 22 行 <code>t->next = NULL;</code> 的作用——' +
+      '如果那一步没做，这里 q 就会变成一个随机地址；<br>' +
+      '· q 变成 NULL 之后，下一轮 while 判断就会失败，循环结束。'
+  });
+
+  snap({ line:32, cls:'green',
+    title:'<b>while(q)</b>　→　q = NULL　→　<b>退出循环</b>',
+    desc:'q 为 NULL，条件为假，while 循环结束。<br>' +
+      '· 循环体一共执行了 3 次，正好对应 3 个结点；<br>' +
+      '· 这就是链表遍历的标准套路：<b>走到 NULL 就停</b>，' +
+      '不需要事先知道结点个数。'
+  });
+
+  S.done=true;
+  snap({ line:38, cls:'gold',
+    title:'<b>return 0;</b>　→　程序正常结束',
+    desc:'main 返回 0，表示程序<b>正常退出</b>（非 0 表示异常）。<br>' +
+      '· 操作系统回收整个进程的内存，包括堆上那 3 个结点；<br>' +
+      '· 在真实项目里，退出前应该用 <code>free()</code> 逐个释放结点。' +
+      '<span class="win"><b>★ 程序执行完毕！</b><br>' +
+      '链表结构：<b>0x1000 → 0x1020 → 0x1040 → NULL</b><br>' +
+      '共 3 个结点，每个 32 字节，总共 96 字节堆内存。<br>' +
+      '输出结果：<br>' +
+      'Zhang　1　90　85　88　92<br>' +
+      'Li　　2　78　82　80　75<br>' +
+      'Wang　1　95　91　89　94</span>'
+  });
+
+  return steps;
+}
+
+var STEPS = buildSteps();
+
+/* =========================================================
+   DOM
+   ========================================================= */
+var codeScroll   = document.getElementById('codeScroll');
+var structLayout = document.getElementById('pStruct');
+var structSize   = document.getElementById('structSize');
+var ptrCards     = document.getElementById('pVars');
+var llViewEl     = document.getElementById('llView');
+var varTable     = document.getElementById('varTable');
+var consoleBody  = document.getElementById('consoleBody');
+var explainBox   = document.getElementById('explainBox');
+var expandBox    = document.getElementById('expandBox');
+var miniBody     = document.getElementById('miniBody');
+var miniContent  = document.getElementById('miniContent');
+var stepCounter  = document.getElementById('stepCounter');
+var funcValEl    = document.getElementById('funcVal');
+var iValEl       = document.getElementById('iVal');
+var nodeValEl    = document.getElementById('nodeVal');
+var lenValEl     = document.getElementById('lenVal');
+
+var btnPlay      = document.getElementById('btnPlay');
+var btnPrev      = document.getElementById('btnPrev');
+var btnNext      = document.getElementById('btnNext');
+var btnReset     = document.getElementById('btnReset');
+var btnFontUp    = document.getElementById('btnFontUp');
+var btnFontDown  = document.getElementById('btnFontDown');
+var btnLayout    = document.getElementById('btnLayout');
+var btnAll       = document.getElementById('btnAllPanels');
+var speedInput   = document.getElementById('speed');
+
+var ALL_PANELS = ['pCtrl','pInfo','pStruct','pList','pVars','pExpand','pModel','pConsole','pExplain','pMini'];
+
+var codeLines=[], miniLines=[];
+var current=-1, playing=false, timer=null;
+var speed = Number(speedInput.value);
+var miniViewport=null;
+var zTop=100;
+
+function escHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+
+/* =========================================================
+   代码区 + 缩略图
+   ========================================================= */
+function buildCode(){
+  var html='', mini='';
+  for (var i=0;i<CODE_LINES.length;i++){
+    html += '<div class="code-line" data-line="'+(i+1)+'">' +
+              '<span class="ln">'+(i+1)+'</span>' +
+              '<span class="src">'+CODE_LINES[i]+'</span>' +
+            '</div>';
+    mini += '<div class="mini-line" data-line="'+(i+1)+'">'+CODE_LINES[i]+'</div>';
+  }
+  codeScroll.innerHTML = html;
+  codeLines = Array.prototype.slice.call(codeScroll.querySelectorAll('.code-line'));
+  miniContent.innerHTML = mini + '<div class="mini-viewport" id="miniViewport"></div>';
+  miniLines = Array.prototype.slice.call(miniContent.querySelectorAll('.mini-line'));
+  miniViewport = document.getElementById('miniViewport');
+  layoutMini();
+}
+
+function layoutMini(){
+  var h = miniBody.clientHeight;
+  if (h <= 0) return;
+  var lh = h / 39;
+  for (var i=0;i<miniLines.length;i++){
+    miniLines[i].style.height = lh+'px';
+    miniLines[i].style.fontSize = Math.max(1.6, lh*0.52)+'px';
+    miniLines[i].style.lineHeight = lh+'px';
+  }
+  syncMini();
+}
+
+function syncMini(){
+  if (!miniViewport) return;
+  var h = miniBody.clientHeight;
+  if (h <= 0) return;
+  var sh = codeScroll.scrollHeight;
+  var ch = codeScroll.clientHeight;
+  var ratio = sh > 0 ? ch/sh : 1;
+  var vh = Math.max(6, h*ratio);
+  var maxScroll = sh - ch;
+  var r = maxScroll > 0 ? codeScroll.scrollTop/maxScroll : 0;
+  miniViewport.style.height = vh+'px';
+  miniViewport.style.top = (r*(h-vh))+'px';
+}
+
+function renderMini(step){
+  if (!miniLines.length) return;
+  var line = step ? step.line : -1;
+  for (var i=0;i<miniLines.length;i++){
+    var el = miniLines[i];
+    el.classList.toggle('cur', line!==-1 && Number(el.getAttribute('data-line'))===line);
+  }
+  syncMini();
+}
+
+miniBody.addEventListener('click', function(e){
+  var r = miniBody.getBoundingClientRect();
+  var ratio = (e.clientY - r.top)/r.height;
+  ratio = Math.max(0, Math.min(1, ratio));
+  var maxScroll = codeScroll.scrollHeight - codeScroll.clientHeight;
+  codeScroll.scrollTop = ratio * maxScroll;
+});
+
+/* =========================================================
+   视图
+   ========================================================= */
+function updateCode(step){
+  var line = step ? step.line : null;
+  var cls = step ? step.cls : '';
+  for (var w=0;w<codeLines.length;w++){
+    var el = codeLines[w];
+    var n = Number(el.getAttribute('data-line'));
+    var isActive = (line !== null && n === line);
+    el.className = 'code-line' +
+      (isActive ? ' active' : '') +
+      (isActive && cls ? ' ' + cls + '-hi' : '');
+  }
+  centerActiveLine();
+  syncMini();
+}
+
+function centerActiveLine(){
+  var el = codeScroll.querySelector('.code-line.active');
+  if (!el) return;
+  var target = el.offsetTop - codeScroll.clientHeight/2 + el.offsetHeight/2;
+  if (target < 0) target = 0;
+  var max = codeScroll.scrollHeight - codeScroll.clientHeight;
+  if (target > max) target = max;
+  codeScroll.scrollTop = target;
+}
+
+/* struct 布局：所有字段在前几步之后点亮 */
+function updateStruct(step){
+  var s = step ? step.s : null;
+  var fns = ['name','class','score','next'];
+  var hl = s ? s.hlField : null;
+
+  /* 默认全部点亮（结构体定义在原始程序中是外部的；本程序第 1 行已进入 create，
+     故直接视为已定义） */
+  for (var i=0;i<fns.length;i++){
+    var el = structLayout.querySelector('[data-sf="'+fns[i]+'"]');
+    if (!el) continue;
+    el.classList.add('on');
+    el.classList.toggle('is-active', hl === fns[i]);
+  }
+  structSize.textContent = '每个结点 = 32 字节（堆上 malloc 分配）';
+  structSize.classList.add('done');
+}
+
+/* 链表可视化 */
+function nodeByAddr(s, addr){
+  if (!s) return null;
+  for (var i=0;i<s.nodes.length;i++) if (s.nodes[i].addr === addr) return s.nodes[i];
+  return null;
+}
+
+function renderList(s){
+  if (!s || !s.nodes.length){
+    return '<div style="color:#3d5474;font-size:.72rem;">链表为空 · 尚未创建任何结点</div>';
+  }
+  var h = '<div class="ll-track">';
+  for (var i=0;i<s.nodes.length;i++){
+    var nd = s.nodes[i];
+    var badges = '';
+    if (s.h === nd.addr) badges += '<span class="badge b-h">h</span>';
+    if (s.t === nd.addr) badges += '<span class="badge b-t">t</span>';
+    if (s.p === nd.addr) badges += '<span class="badge b-p">p</span>';
+    if (s.q === nd.addr) badges += '<span class="badge b-q">q</span>';
+    var isActive = (s.p === nd.addr) || (s.q === nd.addr);
+
+    h += '<div class="ll-node' + (isActive?' is-active':'') + '">';
+    h +=   '<div class="ll-badges">' + badges + '</div>';
+    h +=   '<div class="ll-box">';
+    h +=     '<div class="ll-addr">' + nd.addr + '</div>';
+    h += '<div class="ll-row"><span class="llk">name</span><span class="llv' +
+         (nd.name===null?' unset':'') + '">' + (nd.name===null?'?':nd.name) + '</span></div>';
+    h += '<div class="ll-row"><span class="llk">class</span><span class="llv' +
+         (nd.clas===null?' unset':'') + '">' + (nd.clas===null?'?':nd.clas) + '</span></div>';
+    var scAllNull = true;
+    for (var t=0;t<4;t++) if (nd.scores[t]!==null) scAllNull=false;
+    h += '<div class="ll-row"><span class="llk">score</span><span class="llv' +
+         (scAllNull?' unset':'') + '">' + (scAllNull?'?':nd.scores.join(' ')) + '</span></div>';
+    var nx = nd.next;
+    h += '<div class="ll-row ll-next"><span class="llk">next</span><span class="llv' +
+         (nx==='?'?' unset':'') + '">' + (nx==='?'?'?':nx) + '</span></div>';
+    h +=   '</div></div>';
+
+    if (i < s.nodes.length-1) h += '<div class="ll-arrow">→</div>';
+  }
+  var last = s.nodes[s.nodes.length-1];
+  h += '<div class="ll-arrow">→</div>';
+  h += '<div class="ll-null">' +
+       (last.next === 'NULL' ? 'NULL' : (last.next === '?' ? '?' : last.next)) +
+       '</div>';
+  h += '</div>';
+  return h;
+}
+
+/* 变量表 */
+var VAR_ROWS = [
+  { key:'func',  name:'当前函数',    kind:'k-ctx' },
+  { key:'n',     name:'n',           kind:'k-val' },
+  { key:'i',     name:'i  (循环)',   kind:'k-str' },
+  { key:'j',     name:'j  (循环)',   kind:'k-str' },
+  { key:'h',     name:'h  (头指针)', kind:'k-p'   },
+  { key:'p',     name:'p  (新结点)', kind:'k-p'   },
+  { key:'t',     name:'t  (尾指针)', kind:'k-q'   },
+  { key:'q',     name:'q  (遍历)',   kind:'k-a'   },
+  { key:'xm',    name:'xm[8]',       kind:'k-str' },
+  { key:'clas',  name:'clas',        kind:'k-val' },
+  { key:'a',     name:'a[4]',        kind:'k-a'   },
+  { key:'nodes', name:'已建结点数',  kind:'k-out' }
+];
+
+function vis(key, s){
+  if (!s) return false;
+  if (key === 'func' || key === 'nodes') return true;
+  if (s.func === 'main')   return ['n','j','q'].indexOf(key) >= 0;
+  if (s.func === 'create') return ['n','i','j','h','p','t','xm','clas','a'].indexOf(key) >= 0;
+  return false;
+}
+
+function varText(key, s){
+  if (!s) return '—';
+  if (key === 'func')  return (s.func === '—') ? '—' : s.func + '()';
+  if (key === 'nodes') return s.nodes.length + ' 个';
+  if (!vis(key, s))    return '—';
+  if (key === 'a'){
+    var allNull = true;
+    for (var k=0;k<4;k++) if (s.a[k] !== null) allNull = false;
+    return allNull ? '—' : '[' + s.a.join(', ') + ']';
+  }
+  if (key === 'xm') return (s.xm === null) ? '—' : '"' + s.xm + '"';
+  var v = s[key];
+  if (v === null || v === undefined) return '—';
+  return String(v);
+}
+
+function buildVarTable(){
+  var h = '';
+  for (var w=0;w<VAR_ROWS.length;w++){
+    var r = VAR_ROWS[w];
+    h += '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+           '<span class="var-name">' + r.name + '</span>' +
+           '<span class="var-value dim">—</span>' +
+         '</div>';
+  }
+  varTable.innerHTML = h;
+}
+
+function updateVars(step, prev){
+  var s = step ? step.s : null;
+  for (var w=0;w<VAR_ROWS.length;w++){
+    var r = VAR_ROWS[w];
+    var row = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+    if (!row) continue;
+    var valEl = row.querySelector('.var-value');
+    var val = varText(r.key, s);
+    var old = prev ? varText(r.key, prev.s) : '—';
+
+    if (valEl.textContent !== val){
+      valEl.textContent = val;
+      valEl.title = val;
+      if (val === '—') valEl.classList.add('dim');
+      else valEl.classList.remove('dim');
+      valEl.classList.remove('flash');
+      void valEl.offsetWidth;
+      valEl.classList.add('flash');
+      if (prev && old !== val){
+        row.classList.add('changed');
+        (function(rr){ window.setTimeout(function(){ rr.classList.remove('changed'); }, 700); })(row);
+      }
+    }
+  }
+}
+
+function updateInfoBar(step){
+  if (!step){
+    funcValEl.textContent='—'; iValEl.textContent='—';
+    nodeValEl.textContent='—'; lenValEl.textContent='—';
+    stepCounter.textContent = '步骤 — / ' + STEPS.length;
+    return;
+  }
+  var s = step.s;
+  funcValEl.textContent = (s.func==='—') ? '—' : s.func + '()';
+  iValEl.textContent = (s.i === null) ? '—' : String(s.i);
+  nodeValEl.textContent = s.nodes.length + ' 个';
+
+  /* 计算已成链结点数 */
+  var cnt = 0, cur = s.h, guard = 0;
+  while (cur && cur !== 'NULL' && cur !== '?' && guard < 20){
+    cnt++;
+    var nd = nodeByAddr(s, cur);
+    if (!nd) break;
+    cur = nd.next;
+    guard++;
+  }
+  lenValEl.textContent = cnt + ' 个';
+  stepCounter.textContent = '步骤 ' + (current+1) + ' / ' + STEPS.length;
+}
+
+/* 控制台 */
+function renderConsole(s){
+  consoleBody.innerHTML = '';
+  if (!s){
+    var d0 = document.createElement('div');
+    d0.className = 'out-line out-wait';
+    d0.textContent = '（等待程序开始运行）';
+    consoleBody.appendChild(d0);
+    return;
+  }
+  for (var i=0;i<s.out.length;i++){
+    var d = document.createElement('div');
+    d.className = 'out-line ' + s.out[i].c;
+    d.textContent = s.out[i].t;
+    consoleBody.appendChild(d);
+  }
+  if (s.pend){
+    var dp = document.createElement('div');
+    dp.className = 'out-line ' + s.pend.c;
+    dp.textContent = s.pend.t;
+    var cur = document.createElement('span');
+    cur.className = 'cursor';
+    cur.textContent = '▊';
+    dp.appendChild(cur);
+    consoleBody.appendChild(dp);
+  } else if (!s.done){
+    var dw = document.createElement('div');
+    dw.className = 'out-line out-wait';
+    dw.innerHTML = '&nbsp;<span class="cursor">▊</span>';
+    consoleBody.appendChild(dw);
+  }
+  if (s.done && s.out.length){
+    var df = document.createElement('div');
+    df.className = 'out-line out-final';
+    df.textContent = '程序正常结束（return 0）';
+    consoleBody.appendChild(df);
+  }
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+/* 求值链 */
+function updateExpand(step){
+  var s = step ? step.s : null;
+  var arr = [];
+  if (s){
+    var ln = step.line;
+    if (ln === 8){
+      arr = ['p = (struct LNode*)malloc(sizeof(struct LNode));',
+             '   → sizeof(struct LNode) = 32',
+             '   → malloc 在堆上分配 32 字节',
+             '   → 返回地址 ' + (s.p || '0x1000'),
+             '   → 强制类型转换后赋给 p'];
+    } else if (ln === 9){
+      arr = ['scanf("%s%d", xm, &clas);',
+             '   → xm 是数组名，本身就是地址，不加 &',
+             '   → clas 是普通变量，必须加 &',
+             '   → 输入 ' + (s.xm ? '"' + s.xm + '"' : '...')];
+    } else if (ln === 10){
+      arr = ['for(j=0;j<4;j++) scanf("%d", &a[j]);',
+             '   → 循环 4 次读入 4 门成绩',
+             '   → a = [' + (s.a[0] !== null ? s.a.join(', ') : '...') + ']'];
+    } else if (ln === 11){
+      arr = ['strcpy(p->name, xm);',
+             '   → 数组名不可赋值，必须用 strcpy 拷贝',
+             '   → 连同结尾 \\0 一起拷过去'];
+    } else if (ln === 13){
+      arr = ['for(j=0;j<4;j++) p->score[j] = a[j];',
+             '   → 数组之间不能整体赋值',
+             '   → 只能逐个元素拷贝'];
+    } else if (ln === 14){
+      arr = ['if(h == NULL)',
+             '   → h 在第 5 行被置为 NULL',
+             '   → 判断是否为第一个结点',
+             '   → 第 1 轮为真，第 2、3 轮为假'];
+    } else if (ln === 18){
+      arr = ['t->next = p;',
+             '   → 把新结点挂到链尾',
+             '   → 链表在此处"接上"'];
+    } else if (ln === 22){
+      arr = ['t->next = NULL;',
+             '   → 链表封口',
+             '   → 没有这一步，遍历会越界崩溃'];
+    } else if (ln === 23){
+      arr = ['return h;',
+             '   → 返回头指针 0x1000',
+             '   → 绝不能返回 p 或 t（会丢头、内存泄漏）'];
+    } else if (ln === 30){
+      arr = ['q = create(n);',
+             '   → 函数调用：实参复制 + 栈帧新建 + 控制权跳转',
+             '   → 返回值 0x1000 赋给 q'];
+    } else if (ln === 32){
+      arr = ['while(q) { ... }',
+             '   → 遍历套路：走到 NULL 就停',
+             '   → 不需要事先知道结点个数'];
+    } else if (ln === 36){
+      arr = ['q = q->next;',
+             '   → 顺着 next 指针前进一个结点',
+             '   → 当 q = NULL 时循环结束'];
+    }
+  }
+  if (!arr.length){
+    expandBox.innerHTML = '<div class="exp-empty">（当前步骤没有求值过程）</div>';
+    return;
+  }
+  var html='';
+  for (var i=0;i<arr.length;i++){
+    var cls = 'exp-line';
+    if (i === arr.length-1) cls += ' exp-final';
+    html += '<div class="'+cls+'">'+escHtml(arr[i])+'</div>';
+  }
+  expandBox.innerHTML = html;
+  expandBox.scrollTop = expandBox.scrollHeight;
+}
+
+/* 总渲染 */
+function render(){
+  var step = current>=0 ? STEPS[current] : null;
+  var prev = current>0 ? STEPS[current-1] : null;
+
+  updateCode(step);
+  updateStruct(step);
+  updateVars(step, prev);
+  updateInfoBar(step);
+  llViewEl.innerHTML = renderList(step ? step.s : null);
+  renderConsole(step ? step.s : null);
+  updateExpand(step);
+  renderMini(step);
+
+  if (step){
+    explainBox.innerHTML =
+      '<span class="ex-line'+(step.cls?' '+step.cls:'')+'">第 '+step.line+' 行</span>' +
+      '<strong>'+step.title+'</strong> —— '+step.desc;
+  } else {
+    explainBox.innerHTML =
+      '<em>点击「自动播放」或「下一步」，开始逐句执行链表程序。<br><br>' +
+      '<b>本程序演示：create() 建链 + main() 遍历输出</b><br>' +
+      '· 执行顺序：main → create（建 3 个结点）→ main（遍历打印）；<br>' +
+      '· 关键句：<code>h = NULL</code> / <code>h = p; t = p;</code> / ' +
+      '<code>t-&gt;next = p; t = p;</code> / <code>t-&gt;next = NULL;</code> / ' +
+      '<code>return h;</code>；<br>' +
+      '· 输入数据：n=3，Zhang/1、Li/2、Wang/1 各 4 门成绩；<br>' +
+      '· 最终链表：<b>0x1000 → 0x1020 → 0x1040 → NULL</b>。<br><br>' +
+      '共 ' + STEPS.length + ' 个执行步骤。<br>' +
+      '快捷键：空格 / ← / → / R / F / M / H。</em>';
+  }
+
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length-1;
+}
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+
+function tick(){
+  if (current >= STEPS.length-1){ pause(); return; }
+  current += 1;
+  render();
+  if (current >= STEPS.length-1) pause();
+}
+
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length-1){ current=-1; render(); }
+  playing=true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing=false;
+  window.clearInterval(timer);
+  timer=null;
+  updatePlayBtn();
+}
+
+function nextStep(){ pause(); if (current<STEPS.length-1){ current+=1; render(); } }
+function prevStep(){ pause(); if (current>-1){ current-=1; render(); } }
+function resetAll(){ pause(); current=-1; codeScroll.scrollTop=0; render(); }
+
+/* =========================================================
+   面板
+   ========================================================= */
+function bringToFront(el){
+  zTop += 1;
+  el.style.zIndex = zTop;
+  for (var i=0;i<ALL_PANELS.length;i++){
+    var p = document.getElementById(ALL_PANELS[i]);
+    if (p && p!==el) p.classList.remove('front');
+  }
+  el.classList.add('front');
+}
+
+function makeDraggable(el, handle){
+  handle.addEventListener('pointerdown', function(e){
+    if (e.target.closest('.p-close')) return;
+    if (e.button!==undefined && e.button!==0) return;
+    bringToFront(el);
+    e.preventDefault();
+    var r = el.getBoundingClientRect();
+    var ox = e.clientX - r.left, oy = e.clientY - r.top;
+    el.style.left = r.left+'px';
+    el.style.top  = r.top+'px';
+    el.style.right='auto'; el.style.bottom='auto';
+    el.style.transform='none';
+    function mv(ev){
+      el.style.left = (ev.clientX - ox)+'px';
+      el.style.top  = (ev.clientY - oy)+'px';
+    }
+    function up(){
+      document.removeEventListener('pointermove', mv);
+      document.removeEventListener('pointerup', up);
+    }
+    document.addEventListener('pointermove', mv);
+    document.addEventListener('pointerup', up);
+  });
+}
+
+function makeResizable(el, handle){
+  handle.addEventListener('pointerdown', function(e){
+    if (e.button!==undefined && e.button!==0) return;
+    bringToFront(el);
+    e.preventDefault(); e.stopPropagation();
+    var r = el.getBoundingClientRect();
+    var sw=r.width, sh=r.height;
+    var sx=e.clientX, sy=e.clientY;
+    el.style.width = sw+'px';
+    el.style.height = sh+'px';
+    function mv(ev){
+      el.style.width  = Math.max(24, sw + (ev.clientX - sx))+'px';
+      el.style.height = Math.max(24, sh + (ev.clientY - sy))+'px';
+      if (el.id==='pMini') layoutMini();
+      syncMini();
+    }
+    function up(){
+      document.removeEventListener('pointermove', mv);
+      document.removeEventListener('pointerup', up);
+      layoutMini(); syncMini();
+    }
+    document.addEventListener('pointermove', mv);
+    document.addEventListener('pointerup', up);
+  });
+}
+
+function setupPanels(){
+  for (var i=0;i<ALL_PANELS.length;i++){
+    var el = document.getElementById(ALL_PANELS[i]);
+    if (!el) continue;
+    var head = el.querySelector('.p-head');
+    var rz   = el.querySelector('.p-resize');
+    var close = el.querySelector('.p-close');
+    if (head) makeDraggable(el, head);
+    if (rz) makeResizable(el, rz);
+    if (close){
+      close.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        this.closest('.panel').classList.add('closed');
+      });
+    }
+    el.addEventListener('pointerdown', function(){ bringToFront(this); });
+  }
+}
+
+function defaultLayout(){
+  var W = window.innerWidth, H = window.innerHeight;
+  function place(id, left, top, w, h){
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('closed');
+    el.style.left = Math.max(0,left)+'px';
+    el.style.top  = Math.max(0,top)+'px';
+    el.style.right='auto'; el.style.bottom='auto';
+    el.style.transform='none';
+    el.style.width  = w ? (w+'px') : '';
+    el.style.height = h ? (h+'px') : '';
+    el.style.zIndex = 10;
+    el.classList.remove('front');
+  }
+  if (W < 900){
+    place('pCtrl',   6, 6);
+    place('pInfo',   6, 92);
+    place('pMini',   W-206, 6, 200, 400);
+    place('pStruct', 6, 160, 420, 180);
+    place('pList',   6, 350, 420, 260);
+    place('pVars',   6, 620, 420, 260);
+    place('pExpand', 6, 890, 420, 160);
+    place('pModel',  6, 1060, 420, 320);
+    place('pConsole',6, H-320, 640, 300);
+    place('pExplain',6, H-160, 640, 140);
+  } else {
+    // 左列：结构 / 链表 / 变量
+    place('pStruct', 14, 14, 500, 200);
+    place('pList',   14, 224, 500, 280);
+    place('pVars',   14, 514, 500, 300);
+    // 顶部控制栏
+    place('pCtrl',   W*0.32, 14, 720, 0);
+    place('pInfo',   W*0.32, 84, 720, 0);
+    // 右上缩略图
+    place('pMini',   W-210, 14, 200, 560);
+    // 右侧求值链 / 平台
+    place('pExpand', W-750, 14, 540, 240);
+    place('pModel',  W-750, 264, 540, 380);
+    // 底部控制台 / 解说
+    place('pConsole', W-750, H-360, 730, 340);
+    place('pExplain', W*0.32, H-230, 720, 220);
+  }
+  layoutMini(); syncMini();
+}
+
+function toggleAllPanels(){
+  var anyOpen=false;
+  for (var i=0;i<ALL_PANELS.length;i++){
+    var p = document.getElementById(ALL_PANELS[i]);
+    if (p && !p.classList.contains('closed')){ anyOpen=true; break; }
+  }
+  for (var j=0;j<ALL_PANELS.length;j++){
+    var el = document.getElementById(ALL_PANELS[j]);
+    if (!el) continue;
+    if (anyOpen) el.classList.add('closed');
+    else el.classList.remove('closed');
+  }
+  btnAll.textContent = anyOpen ? '显示面板' : '隐藏面板';
+}
+
+/* =========================================================
+   事件
+   ========================================================= */
+btnPlay.addEventListener('click', function(){ playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+btnLayout.addEventListener('click', defaultLayout);
+btnAll.addEventListener('click', toggleAllPanels);
+
+var fsLevel=1;
+btnFontUp.addEventListener('click', function(){
+  fsLevel = Math.min(2.2, fsLevel + 0.15);
+  document.documentElement.style.setProperty('--fs', fsLevel);
+  setTimeout(function(){ layoutMini(); syncMini(); }, 60);
+});
+btnFontDown.addEventListener('click', function(){
+  fsLevel = Math.max(0.55, fsLevel - 0.15);
+  document.documentElement.style.setProperty('--fs', fsLevel);
+  setTimeout(function(){ layoutMini(); syncMini(); }, 60);
+});
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  if (playing){
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+codeScroll.addEventListener('scroll', function(){ window.requestAnimationFrame(syncMini); });
+window.addEventListener('resize', function(){ layoutMini(); syncMini(); });
+
+document.addEventListener('keydown', function(e){
+  if (e.target && (e.target.tagName==='INPUT' || e.target.tagName==='TEXTAREA')) return;
+  if (e.code==='Space'){ e.preventDefault(); playing ? pause() : play(); }
+  else if (e.code==='ArrowRight'){ e.preventDefault(); nextStep(); }
+  else if (e.code==='ArrowLeft'){ e.preventDefault(); prevStep(); }
+  else if (e.code==='KeyR'){ resetAll(); }
+  else if (e.code==='KeyF'){
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  }
+  else if (e.code==='KeyM'){
+    var m = document.getElementById('pMini');
+    if (m) m.classList.toggle('closed');
+  }
+  else if (e.code==='KeyH'){ toggleAllPanels(); }
+});
+
+/* =========================================================
+   初始化
+   ========================================================= */
+buildCode();
+buildVarTable();
+setupPanels();
+defaultLayout();
+render();
+updatePlayBtn();
+setTimeout(function(){ layoutMini(); syncMini(); }, 120);
+})();
+</script>
+</body>
+</html>

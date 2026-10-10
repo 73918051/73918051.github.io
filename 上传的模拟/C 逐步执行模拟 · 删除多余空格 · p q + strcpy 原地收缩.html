@@ -1,0 +1,1819 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 逐步执行模拟 · 删除多余空格 · p/q + strcpy 原地收缩</title>
+<style>
+/* ============ 大屏教学用 CSS 变量 ============ */
+:root{
+  --bg:#0a1020;
+  --code-font: clamp(40px, 4.6vw, 96px);
+  --code-lh: 1.55;
+  --out-font: clamp(52px, 5.4vw, 120px);
+  --var-font: clamp(24px, 1.9vw, 44px);
+  --cell-font: clamp(24px, 1.9vw, 44px);
+  --cell-idx: clamp(18px, 1.3vw, 30px);
+  --explain-font: clamp(24px, 1.9vw, 40px);
+  --btn-font: clamp(20px, 1.3vw, 30px);
+  --title-font: clamp(26px, 1.8vw, 40px);
+  --blue:#38bdf8; --teal:#2dd4bf; --green:#4ade80; --gold:#facc15;
+  --pink:#f472b6; --purple:#c084fc; --orange:#fb923c; --muted:#7d93b3;
+  --border:#1e2f49;
+  --panel-bg: rgba(13,22,38,0.78);
+  --panel-bg-hover: rgba(15,26,45,0.94);
+  --panel-border: rgba(56,189,248,0.22);
+}
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;overflow:hidden;}
+body{
+  background: radial-gradient(1200px 700px at 15% -10%, #17294a 0%, var(--bg) 65%);
+  color:#dce8f8;
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ============ 全屏代码区 ============ */
+.code-fullscreen{
+  position:fixed; inset:0; z-index:1;
+  background:#0d1117;
+  overflow:hidden;
+}
+.code-scroll{
+  position:absolute; inset:0;
+  overflow:auto;
+  padding: 2vh 0;
+  scrollbar-width:thin; scrollbar-color:#334155 transparent;
+  scroll-behavior:smooth;
+}
+.code-scroll::-webkit-scrollbar{width:12px;height:12px;}
+.code-scroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:12px;}
+.code-line{
+  display:flex; align-items:flex-start; gap:.9em;
+  padding:.05em 2.5vw .05em 1vw;
+  border-left: 6px solid transparent;
+  white-space: pre;
+  font-family: ui-monospace,"Cascadia Mono",Consolas,monospace;
+  font-size: var(--code-font);
+  line-height: var(--code-lh);
+  transition: background .35s, border-color .35s, opacity .35s;
+  color:#c9d6e8;
+}
+.code-line .ln{
+  flex: 0 0 auto;
+  width: 3.2ch; text-align:right;
+  color:#3f5a7d; user-select:none;
+  font-variant-numeric: tabular-nums;
+}
+.code-line .src{flex:1 1 auto;}
+.code-line.executed{opacity:.45;}
+.code-line.active{
+  background: linear-gradient(90deg, rgba(56,189,248,.28), rgba(56,189,248,.02));
+  border-left-color: var(--blue);
+  box-shadow: inset 0 0 0 2px rgba(56,189,248,.25);
+  color:#ffffff;
+  opacity:1;
+}
+.code-line.active .ln{color:var(--blue); font-weight:700;}
+.code-line.fun-body.active{
+  border-left-color: var(--purple);
+  background: linear-gradient(90deg, rgba(192,132,252,.28), rgba(192,132,252,.02));
+  box-shadow: inset 0 0 0 2px rgba(192,132,252,.3);
+}
+/* 语法高亮 */
+.pp{color:var(--purple);font-weight:600;}
+.str{color:var(--green);}
+.cmt{color:#5b6f8c;font-style:italic;}
+.fn{color:var(--blue);}
+.kw{color:var(--pink);font-weight:600;}
+.num{color:var(--gold);}
+.op{color:var(--orange);font-weight:700;}
+
+/* ============ 通用浮动面板 ============ */
+.floating-panel{
+  position: fixed;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  box-shadow: 0 18px 50px rgba(0,0,0,.55);
+  display:flex; flex-direction:column;
+  min-width:0; min-height:0;
+  transition: background .2s, box-shadow .2s;
+  z-index: 10;
+}
+.floating-panel:hover{background: var(--panel-bg-hover);}
+.floating-panel.active{
+  box-shadow: 0 0 0 2px var(--blue), 0 22px 60px rgba(0,0,0,.7);
+}
+.floating-panel.hidden{display:none;}
+
+.panel-head{
+  flex:0 0 auto;
+  display:flex; align-items:center; gap:.5em;
+  padding: .35em .55em;
+  background: rgba(10,20,36,.8);
+  border-bottom: 1px solid var(--panel-border);
+  border-radius: 14px 14px 0 0;
+  cursor: move;
+  user-select: none;
+  font-size: var(--btn-font);
+  color:#9fb6d2;
+  letter-spacing:.05em;
+}
+.panel-head .panel-title{
+  flex:1 1 auto;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  font-weight:700;
+}
+.panel-btn{
+  flex:0 0 auto;
+  width:2em;height:2em;
+  display:flex;align-items:center;justify-content:center;
+  border-radius:.4em; border:1px solid var(--panel-border);
+  background: rgba(30,47,73,.6); color:#c9d6e8;
+  cursor:pointer; font-size:1em;
+  font-family:inherit;
+  transition: background .15s;
+}
+.panel-btn:hover{background: rgba(56,189,248,.3);}
+.panel-body{
+  flex:1 1 auto;
+  min-height:0;
+  overflow:auto;
+  padding: .5em .7em;
+  scrollbar-width:thin; scrollbar-color:#334155 transparent;
+}
+.panel-body::-webkit-scrollbar{width:10px;height:10px;}
+.panel-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+
+.resize-handle{
+  position:absolute; right:-2px; bottom:-2px;
+  width: 26px; height: 26px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 50%, rgba(56,189,248,.55) 50%);
+  border-radius: 0 0 14px 0;
+  touch-action:none;
+  z-index: 2;
+}
+.resize-handle::after{
+  content:''; position:absolute; right:6px; bottom:6px;
+  width:8px; height:8px;
+  border-right:2px solid rgba(200,220,255,.9);
+  border-bottom:2px solid rgba(200,220,255,.9);
+}
+
+/* ============ 顶部控制栏 ============ */
+#topbarPanel{
+  top: 12px; left:50%;
+  transform: translateX(-50%);
+  max-width: 96vw;
+}
+#topbarPanel .panel-body{
+  display:flex; flex-wrap:wrap; align-items:center; gap:.5em;
+  padding:.5em .7em;
+}
+.ctrl-btn{
+  font:inherit;
+  font-size: var(--btn-font);
+  padding:.35em .8em;
+  border-radius:.5em;
+  border:1px solid var(--panel-border);
+  background: rgba(30,47,73,.75);
+  color:#dce8f8;
+  cursor:pointer;
+  white-space:nowrap;
+  min-height: 2.2em;
+  transition: background .15s, transform .1s;
+}
+.ctrl-btn:hover{background: rgba(56,189,248,.35);}
+.ctrl-btn:active{transform: translateY(1px);}
+.ctrl-btn.primary{
+  background: linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#38bdf8; color:#04121f; font-weight:700;
+}
+.ctrl-btn.primary.playing{
+  background: linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24; color:#1a1200;
+}
+.speed-box{
+  display:flex; align-items:center; gap:.5em;
+  font-size: var(--btn-font); color:#9fb6d2;
+}
+.speed-box input[type=range]{
+  width: 9em; accent-color: var(--blue); cursor:pointer;
+  height: 1.6em;
+}
+.speed-box b{color:var(--blue); font-variant-numeric: tabular-nums; min-width:3.5em;}
+
+/* ============ 状态 + 变量面板 ============ */
+#varsPanel{ top: 110px; left: 14px; width: 640px; height: 620px; }
+.info-strip{
+  display:flex; flex-wrap:wrap; align-items:center; gap:.6em;
+  font-size: var(--var-font);
+  padding: .3em .1em .5em;
+  border-bottom:1px dashed rgba(56,189,248,.25);
+  margin-bottom:.5em;
+}
+.info-tag{
+  font-size: .75em; padding:.1em .5em;
+  background: rgba(148,163,184,.2); color:#9db1cb;
+  border-radius:.3em;
+}
+.info-val{font-family: ui-monospace, Consolas, monospace; font-weight:700; color:var(--teal);}
+.info-val.fn{color:var(--blue);}
+.info-val.gold{color:var(--gold);}
+
+.plat-note{
+  font-size:.75em; line-height:1.55;
+  padding:.5em .7em; margin:.3em 0 .6em;
+  background: rgba(192,132,252,.12);
+  border-left: 4px solid var(--purple);
+  border-radius:.4em;
+  color:#e0ccff;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.plat-note b{color:#f0e6ff;}
+
+.stack-strip{
+  display:flex; flex-wrap:wrap; align-items:center; gap:.5em;
+  font-size: var(--var-font);
+  padding: .3em .1em .5em;
+  border-bottom:1px dashed rgba(45,212,191,.25);
+  margin-bottom:.5em;
+}
+.stack-frame{
+  font-family: ui-monospace, Consolas, monospace;
+  padding:.15em .7em; border-radius:.4em;
+  background:#0d1728; border:1px solid #1b293f; color:#8aa2c0;
+  font-weight:700;
+  font-size:.95em;
+}
+.stack-frame.active{
+  border-color: var(--blue); background: rgba(56,189,248,.24);
+  color:#fff; box-shadow: 0 0 12px rgba(56,189,248,.5);
+}
+.stack-frame.func{
+  border-color: var(--purple); background: rgba(192,132,252,.24);
+  color:#f0e6ff; box-shadow: 0 0 12px rgba(192,132,252,.5);
+}
+.stack-arrow{color:#3f5a7d; font-size:1em;}
+.stack-empty{color:#3d5474; font-family:ui-monospace,monospace;}
+
+/* 变量表 */
+.var-table{display:flex; flex-direction:column; gap:.25em;}
+.var-row{
+  display:flex; justify-content:space-between; align-items:center; gap:.6em;
+  padding: .3em .65em; border-radius:.45em;
+  background:#0d1728; border:1px solid #1b293f;
+  font-size: var(--var-font);
+  transition: background .3s, border-color .3s;
+}
+.var-row.changed{
+  border-color: rgba(56,189,248,.9);
+  background: rgba(56,189,248,.14);
+}
+.var-row.k-p{border-left:4px solid var(--blue);}
+.var-row.k-q{border-left:4px solid var(--teal);}
+.var-row.k-a{border-left:4px solid var(--purple);}
+.var-row.k-str{border-left:4px solid var(--green);}
+.var-row.k-stat{border-left:4px solid var(--gold);}
+.var-row.k-ctx{border-left:4px solid #7d93b3;}
+.var-name{
+  color:#8aa2c0; font-size:.8em; white-space:nowrap;
+  flex:0 0 auto;
+}
+.var-value{
+  flex:1 1 auto; min-width:0;
+  font-family: ui-monospace, Consolas, monospace;
+  font-weight:700;
+  color:var(--blue);
+  text-align:right;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.var-value.wrap{white-space:normal; word-break:break-all; text-align:left; line-height:1.35;}
+.var-row.k-q .var-value{color:var(--teal);}
+.var-row.k-a .var-value{color:var(--purple);}
+.var-row.k-str .var-value{color:var(--green);}
+.var-row.k-stat .var-value{color:var(--gold);}
+.var-row.k-ctx .var-value{color:#b8c9e0; font-weight:500;}
+.var-value.dim{color:#5f7796; font-weight:500;}
+
+/* ============ 字符数组面板 ============ */
+#arrPanel{ top: 110px; right: 14px; width: 760px; height: 460px; }
+.ch-grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(3.2em, 1fr));
+  gap:.35em;
+}
+.ch-cell{
+  position:relative;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:.35em .1em;
+  border-radius:.4em;
+  background:#0d1728; border:1px solid #1b293f;
+  font-family: ui-monospace, Consolas, monospace;
+  min-height: 3.8em;
+  transition: all .3s;
+}
+.ch-idx{
+  font-size: var(--cell-idx); color:#3f5a7d;
+  line-height:1;
+  font-variant-numeric: tabular-nums;
+}
+.ch-val{
+  font-size: var(--cell-font); font-weight:700; color:#c8d7ec;
+  line-height:1.1;
+}
+.ch-val.space{color:#8aa2c0; font-weight:500;}
+.ch-val.term{color:var(--pink); font-weight:800;}
+.ch-marks{
+  display:flex; gap:.15em; min-height:1em; align-items:center; flex-wrap:wrap;
+  justify-content:center;
+}
+.mk{
+  font-size:.7em; font-weight:800; line-height:1.2;
+  padding:0 .35em; border-radius:.25em;
+}
+.mk-p{background:rgba(56,189,248,.6); color:#04121f;}
+.mk-q{background:rgba(45,212,191,.6); color:#03231f;}
+.ch-cell.is-p{
+  border-color:var(--blue); background: rgba(56,189,248,.2);
+  box-shadow: 0 0 14px rgba(56,189,248,.55);
+}
+.ch-cell.is-p .ch-val{color:var(--blue);}
+.ch-cell.is-q{
+  border-color:var(--teal); background: rgba(45,212,191,.2);
+  box-shadow: 0 0 14px rgba(45,212,191,.55);
+}
+.ch-cell.is-q .ch-val{color:var(--teal);}
+.ch-cell.is-op{
+  border-color:var(--gold); background: rgba(250,204,21,.28);
+  box-shadow: 0 0 18px rgba(250,204,21,.75);
+  animation: pulseGold 1s ease-in-out infinite;
+}
+.ch-cell.is-src{
+  border-color: var(--purple); background: rgba(192,132,252,.2);
+  box-shadow: 0 0 14px rgba(192,132,252,.5);
+}
+@keyframes pulseGold{
+  0%,100%{transform:scale(1);}
+  50%{transform:scale(1.08);}
+}
+
+/* ============ 指针关系图面板 ============ */
+#ptrPanel{ top: 590px; right: 14px; width: 760px; height: 420px; }
+.ptr-map{
+  display:flex; flex-direction:column; gap:.6em;
+  font-family: ui-monospace, Consolas, monospace;
+}
+.ptr-row{
+  display:flex; align-items:center; gap:.7em; flex-wrap:wrap;
+}
+.ptr-node{
+  display:flex; flex-direction:column; align-items:center; gap:.15em;
+  padding:.5em .9em;
+  border-radius:.5em;
+  background:#0d1728; border:1px solid #1b293f;
+  min-width: 5em;
+  font-size: var(--var-font);
+}
+.ptr-node.is-p{border-color:var(--blue); background: rgba(56,189,248,.15);}
+.ptr-node.is-q{border-color:var(--teal); background: rgba(45,212,191,.15);}
+.ptr-node.is-gold{border-color:var(--gold); background: rgba(250,204,21,.18);}
+.ptr-node.is-target{border-color:#3f5a7d; background: rgba(148,163,184,.1);}
+.ptr-label{font-weight:800; font-size:1em;}
+.ptr-node.is-p .ptr-label{color:var(--blue);}
+.ptr-node.is-q .ptr-label{color:var(--teal);}
+.ptr-node.is-gold .ptr-label{color:var(--gold);}
+.ptr-node.is-target .ptr-label{color:#c8d7ec;}
+.ptr-addr{font-size:.65em; color:#4c6689;}
+.ptr-val{font-size:.85em; font-weight:700; color:#9fb6d2;}
+.ptr-node.is-p .ptr-val{color:var(--blue);}
+.ptr-node.is-q .ptr-val{color:var(--teal);}
+.ptr-arrow{
+  display:flex; flex-direction:column; align-items:center;
+  font-size: 1em; font-weight:800;
+  color: var(--blue);
+  animation: arrowPulse 1.4s ease-in-out infinite;
+}
+.ptr-arrow.c-teal{color: var(--teal);}
+.ptr-arrow.c-gold{color: var(--gold);}
+@keyframes arrowPulse{
+  0%,100%{opacity:.6; transform:translateX(0);}
+  50%{opacity:1; transform:translateX(4px);}
+}
+.ptr-map-empty{color:#3d5474; font-size: var(--var-font);}
+
+/* ============ 输出面板 ============ */
+#outPanel{
+  bottom: 12px; left: 50%; transform: translateX(-50%);
+  width: 900px; height: 240px;
+}
+.console{
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: var(--out-font);
+  line-height: 1.35;
+  color:#86efac;
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding:.5em .9em;
+}
+.out-line.out-empty{color:#3d5474;}
+.out-line.out-note{color:#7d93b3; font-size:.5em; line-height:1.6; margin-top:.5em;}
+.out-line.out-result{color:#86efac; font-weight:800; letter-spacing:.02em;}
+.cursor{
+  display:inline-block; color:#4ade80; font-weight:400;
+  animation: blink 1s step-end infinite; margin-left:2px;
+}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+.exit-note{color:#7d93b3; font-size:.35em; margin-top:.6em;}
+
+/* ============ 说明条 ============ */
+#explainPanel{
+  top: 110px; left: 50%; transform: translateX(-50%);
+  width: 900px; height: 420px;
+}
+.explain{
+  font-size: var(--explain-font);
+  line-height: 1.6;
+  color:#b8c9e0;
+}
+.explain .ex-line{
+  display:inline-block; margin-right:.5em; padding:.05em .6em;
+  border-radius:.4em; background: rgba(56,189,248,.2);
+  color: var(--blue); font-weight:800; font-size:.75em; vertical-align:middle;
+}
+.explain .ex-line.gold{background: rgba(250,204,21,.25); color:var(--gold);}
+.explain .ex-line.mv{background: rgba(244,114,182,.25); color:var(--pink);}
+.explain strong{color:#eaf3ff;}
+.explain code{
+  font-family: ui-monospace, Consolas, monospace;
+  background: rgba(148,163,184,.15); border-radius:.3em;
+  padding:0 .35em; color:#e2e8f0;
+}
+.explain .tip,.explain .warn,.explain .win{
+  display:block; margin-top:.5em; padding:.55em .75em;
+  border-radius:.45em; font-size:.85em;
+}
+.explain .tip{background: rgba(45,212,191,.12); border-left:4px solid var(--teal); color:#bff5ec;}
+.explain .warn{background: rgba(251,191,36,.14); border-left:4px solid var(--gold); color:#ffe6b0;}
+.explain .win{background: rgba(250,204,21,.16); border-left:4px solid var(--gold); color:#fff3c4; font-weight:600;}
+
+/* ============ 缩略图 ============ */
+#minimapPanel{
+  top: 110px; right: 14px;
+  width: 200px; height: 800px;
+  z-index: 5;
+}
+#minimapPanel .panel-body{padding:.3em .4em;}
+.mini-wrap{
+  position:relative;
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 9px;
+  line-height: 1.5;
+  color:#8aa2c0;
+  white-space: pre;
+  overflow:hidden;
+}
+.mini-line{
+  padding:0 .2em;
+  overflow:hidden; text-overflow:clip;
+  border-left: 2px solid transparent;
+}
+.mini-line.active{
+  background: rgba(56,189,248,.3);
+  border-left-color: var(--blue);
+  color:#fff;
+}
+.mini-line .kw{color:var(--pink);}
+.mini-line .fn{color:var(--blue);}
+.mini-line .str{color:var(--green);}
+.mini-line .num{color:var(--gold);}
+.mini-line .cmt{color:#4a5f7e;}
+.mini-line .pp{color:var(--purple);}
+.mini-line .op{color:var(--orange);}
+.mini-viewport{
+  position:absolute; left:0; right:0;
+  border: 2px solid rgba(56,189,248,.7);
+  background: rgba(56,189,248,.08);
+  pointer-events:none;
+  border-radius: 3px;
+}
+
+/* ============ 提示词面板 ============ */
+#promptPanel{
+  top: 50%; left:50%; transform: translate(-50%,-50%);
+  width: 900px; height: 600px; display:none;
+}
+#promptPanel.open{display:flex;}
+#promptPanel .panel-body{
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 14px;
+  line-height:1.65;
+  white-space: pre-wrap;
+  color:#a9bdd8;
+}
+
+/* 移动端堆叠 */
+@media (max-width: 1100px){
+  .code-fullscreen{position:relative; inset:auto; height: 60vh;}
+  body{overflow:auto; height:auto;}
+}
+</style>
+</head>
+<body>
+
+<!-- ==================== 全屏代码区 ==================== -->
+<div class="code-fullscreen">
+  <div class="code-scroll" id="codeScroll">
+    <!-- 由 JS 动态渲染 20 行 -->
+  </div>
+</div>
+
+<!-- ==================== 顶部控制栏 ==================== -->
+<div class="floating-panel" id="topbarPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">▶ 播放控制</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <button class="ctrl-btn" id="btnReset" title="R">⟲ 重置</button>
+    <button class="ctrl-btn" id="btnPrev" title="←">◀ 上一步</button>
+    <button class="ctrl-btn primary" id="btnPlay" title="空格">▶ 自动播放</button>
+    <button class="ctrl-btn" id="btnNext" title="→">下一步 ▶</button>
+    <div class="speed-box">
+      速度 <input type="range" id="speed" min="80" max="2400" step="40" value="700">
+      <b id="speedLabel">0.70s</b>
+    </div>
+    <button class="ctrl-btn" id="btnFullscreen" title="F">⛶ 全屏</button>
+    <button class="ctrl-btn" id="btnTogglePanels" title="H">👁 面板</button>
+    <button class="ctrl-btn" id="btnToggleMinimap" title="M">🗺 缩略图</button>
+    <button class="ctrl-btn" id="btnResetLayout" title="重置布局">↺ 布局</button>
+    <button class="ctrl-btn" id="btnPrompt">📝 提示词</button>
+    <span class="info-val" id="stepCounter" style="font-size:var(--btn-font);color:var(--gold);">— / —</span>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 状态 + 变量面板 ==================== -->
+<div class="floating-panel" id="varsPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">📊 调用栈 · 变量 · 状态</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="info-strip">
+      <span class="info-tag">当前函数</span>
+      <span class="info-val fn" id="funcVal">—</span>
+      <span class="info-tag">栈深度</span>
+      <span class="info-val" id="depthVal">0</span>
+      <span class="info-tag">当前长度</span>
+      <span class="info-val gold" id="lenVal">—</span>
+    </div>
+
+    <div class="plat-note">
+      <b>平台模型</b>：<code>char = 1 字节</code>　<code>指针 = 4 字节</code>（32 位模型）。
+      现代 64 位平台上指针本身是 8 字节，但 <b>char * 的步长永远是 1 字节</b>（<code>sizeof(char)=1</code> 不变），规律不变。
+    </div>
+
+    <div class="stack-strip">
+      <span class="info-tag">调用栈</span>
+      <span id="stackBody" class="stack-empty">（空）</span>
+    </div>
+
+    <div class="var-table" id="varTable"></div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 字符数组可视化面板 ==================== -->
+<div class="floating-panel" id="arrPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">🔢 字符数组 str[17] · 空格=␣ · '\0'=粉</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div id="arrHead" style="font-size:var(--var-font); color:#9db1cb; margin-bottom:.5em;"></div>
+    <div class="ch-grid" id="chGrid"></div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 指针关系图面板 ==================== -->
+<div class="floating-panel" id="ptrPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">🎯 指针关系图 · p 蓝 / q 青</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="ptr-map" id="ptrMap">
+      <span class="ptr-map-empty">（字符串尚未定义）</span>
+    </div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 程序输出面板 ==================== -->
+<div class="floating-panel" id="outPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">🖥 程序运行结果（屏幕输出）</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="console" id="consoleBody"></div>
+    <div class="exit-note" id="exitNote"></div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 说明条 ==================== -->
+<div class="floating-panel" id="explainPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">💡 当前语句解说</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="explain" id="explain"></div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 缩略图 ==================== -->
+<div class="floating-panel" id="minimapPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">🗺 缩略图</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body">
+    <div class="mini-wrap" id="miniWrap">
+      <div id="miniLines"></div>
+      <div class="mini-viewport" id="miniViewport"></div>
+    </div>
+  </div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<!-- ==================== 提示词面板 ==================== -->
+<div class="floating-panel" id="promptPanel">
+  <div class="panel-head" data-drag>
+    <span class="panel-title">📝 教学提示词</span>
+    <button class="panel-btn" data-close title="关闭">×</button>
+  </div>
+  <div class="panel-body" id="promptInner"></div>
+  <div class="resize-handle" data-resize></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   1. 源代码 + STEPS 生成（严格按 C 语义，共 49 步）
+   ========================================================= */
+const INIT_STR = "thisis  a   book";
+const ARR_SIZE = INIT_STR.length + 1;  // 17
+
+// 20 行源代码（含高亮）
+const CODE_HTML = [
+  '<span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                 <span class="cmt">// 包含标准输入输出头文件</span>',
+  '<span class="pp">#include</span> <span class="str">&lt;string.h&gt;</span>                <span class="cmt">// 包含字符串处理头文件</span>',
+  '<span class="kw">void</span> <span class="fn">fun</span>(<span class="kw">char</span> <span class="op">*</span>a) {                 <span class="cmt">// 删除多余空格函数</span>',
+  '    <span class="kw">char</span> <span class="op">*</span>p, <span class="op">*</span>q;                    <span class="cmt">// 定义指针</span>',
+  '    p <span class="op">=</span> a;                          <span class="cmt">// p 指向字符串开头</span>',
+  '    <span class="kw">while</span>(<span class="op">*</span>p <span class="op">&amp;&amp;</span> <span class="op">*</span>p <span class="op">==</span> <span class="str">\' \'</span>) p<span class="op">++</span>;      <span class="cmt">// 清除开头的空格</span>',
+  '    p <span class="op">=</span> <span class="fn">strcpy</span>(a, p);               <span class="cmt">// 复制清除空格后的字符串</span>',
+  '    <span class="kw">while</span>(<span class="op">*</span>p) {                     <span class="cmt">// 遍历字符串</span>',
+  '        <span class="kw">while</span>(<span class="op">*</span>p <span class="op">&amp;&amp;</span> <span class="op">*</span>p <span class="op">!=</span> <span class="str">\' \'</span>) p<span class="op">++</span>; <span class="cmt">// 找到第一个空格</span>',
+  '        q <span class="op">=</span> p <span class="op">+</span> <span class="num">1</span>;                  <span class="cmt">// q 指向空格后的字符</span>',
+  '        <span class="kw">while</span>(<span class="op">*</span>p <span class="op">&amp;&amp;</span> <span class="op">*</span>p <span class="op">==</span> <span class="str">\' \'</span>) p<span class="op">++</span>; <span class="cmt">// 跳过所有连续空格</span>',
+  '        p <span class="op">=</span> <span class="fn">strcpy</span>(q, p);           <span class="cmt">// 将后续字符前移覆盖多余空格</span>',
+  '    }',
+  '}',
+  '<span class="kw">int</span> <span class="fn">main</span>() {                         <span class="cmt">// 主函数</span>',
+  '    <span class="kw">char</span> str[] <span class="op">=</span> <span class="str">"thisis  a   book"</span>; <span class="cmt">// 定义字符串</span>',
+  '    <span class="fn">fun</span>(str);                       <span class="cmt">// 调用删除空格函数</span>',
+  '    <span class="fn">puts</span>(str);                      <span class="cmt">// 输出结果</span>',
+  '    <span class="kw">return</span> <span class="num">0</span>;                       <span class="cmt">// 返回 0，程序结束</span>',
+  '}'
+];
+
+function charRep(c){
+  if (c === '\0' || c === undefined || c === null) return '\\0';
+  if (c === ' ') return '␣';
+  return c;
+}
+
+function buildSteps(){
+  const steps = [];
+  let arr = new Array(ARR_SIZE).fill('\0');
+  let pIdx = null, qIdx = null;
+  let inFun = false;
+  let mainEntered = false;
+  let outText = '';
+  let opFrom = null, opTo = null;
+  let srcFrom = null, srcTo = null;
+
+  function arrStr(){
+    let s = '';
+    for (let i=0;i<arr.length;i++){
+      if (arr[i]==='\0') break;
+      s += arr[i];
+    }
+    return s;
+  }
+  function arrShow(){
+    let s = '';
+    for (let i=0;i<arr.length;i++){
+      if (arr[i]==='\0'){ s += '\\0'; break; }
+      s += charRep(arr[i]);
+    }
+    return s;
+  }
+  function lengthNow(){ return arrStr().length; }
+  function dispP(){
+    if (!inFun) return '尚未声明';
+    if (pIdx === null) return '未初始化';
+    return 'str+' + pIdx + "  →  '" + charRep(arr[pIdx]) + "'";
+  }
+  function dispQ(){
+    if (!inFun) return '尚未声明';
+    if (qIdx === null) return '未初始化';
+    return 'str+' + qIdx + "  →  '" + charRep(arr[qIdx]) + "'";
+  }
+
+  function snap(o){
+    // 修复：改用外层 mainEntered 变量
+    const stack = inFun ? ['main','fun'] : (mainEntered ? ['main'] : []);
+    const func  = inFun ? 'fun' : (mainEntered ? 'main' : '—');
+    steps.push({
+      line: o.line,
+      cls: o.cls || 'ans',
+      title: o.title || '',
+      desc: o.desc || '',
+      s: {
+        arr: arr.slice(),
+        pIdx, qIdx, inFun,
+        func, stack,
+        outText: outText,
+        opFrom, opTo, srcFrom, srcTo
+      },
+      vars: {
+        ctx: o.ctx || '—',
+        expr: o.expr || '—',
+        exprVal: o.exprVal || '—',
+        note: o.note || '—',
+        str: '"' + arrStr() + '"（' + lengthNow() + ' 字符）',
+        a: inFun ? 'str + 0（形参指向实参首地址）' : '尚未声明',
+        p: dispP(),
+        q: dispQ(),
+        strcpyCount: String(steps.filter(x => x.expr && x.expr.indexOf('strcpy') >= 0).length),
+        putsCount: steps.filter(x => x.line === 18).length ? '1' : '0',
+        outBuf: outText === '' ? '（空）' : outText.replace(/\n/g,'⏎')
+      }
+    });
+  }
+
+  /* ---- 第 1 行 ---- */
+  snap({
+    line: 1, ctx: '预处理阶段 · 尚未进入 main',
+    expr: '#include <stdio.h>', exprVal: '引入 puts 的声明',
+    note: '预处理指令，不产生运行代码',
+    title: '<b>#include &lt;stdio.h&gt;</b>',
+    desc: '引入标准输入输出头文件。<code>puts</code> 的声明就来自这里。<br>' +
+          '<code>#include</code> 是<b>预处理指令</b>，不是 C 语句，不产生运行代码。'
+  });
+
+  /* ---- 第 2 行 ---- */
+  snap({
+    line: 2, ctx: '预处理阶段 · 尚未进入 main',
+    expr: '#include <string.h>', exprVal: '引入 strcpy 的声明',
+    note: '预处理指令，不产生运行代码',
+    title: '<b>#include &lt;string.h&gt;</b>',
+    desc: '引入字符串处理头文件。<code>strcpy</code> 的声明就来自这里。<br>' +
+          '<b>关键</b>：<code>strcpy(dst, src)</code> 返回<b>目标地址</b>，' +
+          '所以 <code>p = strcpy(...)</code> 可以让 p 自动跳到新位置。'
+  });
+
+  /* ---- 第 3 行 ---- */
+  snap({
+    line: 3, ctx: '函数定义 · 尚未被调用',
+    expr: 'void fun(char *a) { ... }', exprVal: '函数 fun 登记到代码段 @ 0x0800',
+    note: '函数体此刻不执行',
+    title: '<b>void fun(char *a)</b>　函数就位',
+    desc: '定义函数 <code>fun</code>，形参是字符指针 <code>a</code>。<br>' +
+          '功能：删除字符串中的<b>多余空格</b>，每个单词之间只保留 1 个空格。<br>' +
+          '<b>此刻函数体不会执行</b>——只有被调用时才跳进去。'
+  });
+
+  /* ---- 第 15 行 ---- */
+  snap({
+    line: 15, cls: 'gold',
+    ctx: 'main · 程序入口', expr: 'int main() {',
+    exprVal: '为 main 建立栈帧 @ 0x1000',
+    note: 'main 栈帧建立',
+    title: 'int main() {　程序入口',
+    desc: '操作系统调用 <code>main</code>，程序正式开始执行。<br>' +
+          '将要演示：字符串初始化 → 调用 fun → 双指针删除多余空格 → 输出。<br>' +
+          '<b>五大观察重点：</b>① 数组传参传地址；② 双指针 p/q 分工；' +
+          '③ 前导空格清理；④ 三段式循环；⑤ strcpy 返回值与原地收缩。'
+  });
+  mainEntered = true;
+
+  /* ---- 第 16 行 ---- */
+  for (let i0=0;i0<INIT_STR.length;i0++) arr[i0] = INIT_STR.charAt(i0);
+  arr[INIT_STR.length] = '\0';
+  snap({
+    line: 16, cls: 'mv',
+    ctx: 'main · 初始化字符数组 str',
+    expr: 'char str[] = "thisis  a   book";',
+    exprVal: '分配 ' + ARR_SIZE + ' 字节，写入 16 个字符 + \'\\0\'',
+    note: 'str = "thisis␣␣a␣␣␣book"（"thisis"和"a"之间 2 个空格，"a"和"book"之间 3 个空格）',
+    title: '<b>char str[] = "thisis  a   book";</b>',
+    desc: '定义字符数组 <code>str</code>，大小自动推断为 <b>17</b> 字节。<br>' +
+          '· 内容：<code>thisis</code> + 2 个空格 + <code>a</code> + 3 个空格 + <code>book</code>；<br>' +
+          '· 16 个可见字符 + 末尾 <code>\\0</code> = <b>17</b> 字节；<br>' +
+          '· 数组名 <code>str</code> 在表达式中会<b>退化为 &amp;str[0]</b>。' +
+          '<span class="tip"><b>目标：</b>把 <code>"thisis  a   book"</code> 原地改成 ' +
+          '<code>"thisis a book"</code>——每个单词之间只保留 1 个空格。</span>'
+  });
+
+  /* ---- 第 17 行 ---- */
+  inFun = true;
+  snap({
+    line: 17, cls: 'ans',
+    ctx: 'main → fun · 函数调用',
+    expr: 'fun(str);',
+    exprVal: 'str 退化为 &str[0]，建立 fun 栈帧，形参 a = 0x1000',
+    note: '形参 a 和实参 str 指向同一块内存',
+    title: '<b>fun(str);</b>　→　进入函数 <b>fun</b>',
+    desc: '调用函数 <code>fun</code>，把数组 <code>str</code> 传进去。<br>' +
+          '· 数组名 <code>str</code> 作为实参<b>退化为 &amp;str[0]</b>，' +
+          '形参 <code>char *a</code> 收到的就是首地址；<br>' +
+          '· <b>关键：形参 a 和 main 里的 str 指向同一块内存</b>；<br>' +
+          '· 调用栈变为 <code>main → fun</code>。' +
+          '<span class="warn"><b>为什么能"原地修改"？</b><br>' +
+          '数组传参传的是<b>地址</b>而不是副本，' +
+          'fun 里对 <code>*a</code> 的改动会直接反映到 main 的 str 上。</span>'
+  });
+
+  /* ---- 第 4 行 ---- */
+  snap({
+    line: 4, cls: 'mv',
+    ctx: 'fun · 声明两个指针',
+    expr: 'char *p, *q;',
+    exprVal: 'p、q 都是 char*（4 字节），暂未初始化',
+    note: 'p 负责遍历找空格，q 记录"要搬到的目标位置"',
+    title: '<b>char *p, *q;</b>　两个指针就位',
+    desc: '在 fun 栈帧中声明两个指针：<br>' +
+          '· <code>p</code>：主遍历指针，从头到尾扫描字符串；<br>' +
+          '· <code>q</code>：目标位置指针，指向"这一段该搬到哪儿"。'
+  });
+
+  /* ---- 第 5 行 ---- */
+  pIdx = 0;
+  snap({
+    line: 5, cls: 'mv',
+    ctx: 'fun · p 指向字符串开头',
+    expr: 'p = a;',
+    exprVal: "p = str + 0，指向 't'",
+    note: 'p 就位，从 str[0] 开始',
+    title: '<b>p = a;</b>　p 指向 str[0]',
+    desc: '指针 <code>p</code> 初始化为 <code>a</code>，即指向 <code>str[0]</code>。'
+  });
+
+  /* ---- 第 6 行 ---- */
+  snap({
+    line: 6, ctx: 'fun · 检查字符串开头是否有空格',
+    expr: "while(*p && *p == ' ') p++;",
+    exprVal: "*p = 't'，不是空格，条件为假",
+    note: '字符串开头没有空格，p 保持不动，循环不执行',
+    title: "while(*p && *p == ' ')　条件为<b>假</b>",
+    desc: '检查字符串<b>开头</b>是不是空格。<br>' +
+          '· 现在 <code>*p = \'t\'</code>，不是空格，条件为假；<br>' +
+          '· 循环体 <code>p++</code> <b>一次都不执行</b>，p 保持 <code>str[0]</code>。' +
+          '<span class="tip">如果字符串是 <code>"   abc"</code> 这样以空格开头，' +
+          '这段循环会把 p 推到第一个非空格字符处。</span>'
+  });
+
+  /* ---- 第 7 行 ---- */
+  srcFrom = 0; srcTo = ARR_SIZE - 1;
+  snap({
+    line: 7, cls: 'mv',
+    ctx: 'fun · 把清理后的字符串复制回 a',
+    expr: 'p = strcpy(a, p);',
+    exprVal: 'strcpy(str+0, str+0) —— 源和目标相同，字符串无变化',
+    note: 'p 被赋值为 strcpy 的返回值 = a = str + 0',
+    title: '<b>p = strcpy(a, p);</b>　p 回到 str[0]',
+    desc: '把 <code>p</code> 指向的内容复制到 <code>a</code>（str 开头）。<br>' +
+          '· 本例 <code>p = a</code>，源和目标<b>完全相同</b>，内容<b>不变</b>；<br>' +
+          '· <code>strcpy</code> 返回目标地址 <code>a</code>，所以 <code>p</code> 被赋值为 <code>str + 0</code>。' +
+          '<span class="tip"><b>strcpy 的返回值为什么重要？</b><br>' +
+          '<code>strcpy(dst, src)</code> 返回 <code>dst</code>。' +
+          '所以 <code>p = strcpy(...)</code> 让 p 自动跳到新位置。</span>'
+  });
+  srcFrom = null; srcTo = null;
+
+  /* ---- 外层 while 循环（3 轮 + 1 次退出） ---- */
+  let round = 0;
+  let guard = 0;
+  while (arr[pIdx] !== '\0' && guard < 20){
+    guard++; round++;
+
+    // 第 8 行 条件判断
+    snap({
+      line: 8, cls: 'ans',
+      ctx: 'fun · 外层 while 第 ' + round + ' 轮判断',
+      expr: 'while(*p)',
+      exprVal: "*p = '" + charRep(arr[pIdx]) + "'（str[" + pIdx + "]）　非 0，条件为真",
+      note: '进入第 ' + round + ' 轮',
+      title: '外层 <b>while</b> 第 ' + round + ' 轮　→　为<b>真</b>',
+      desc: '外层循环条件成立，进入循环体。<br>' +
+            '· 当前 <code>p = str + ' + pIdx + '</code>，<code>*p = \'' +
+            charRep(arr[pIdx]) + '\'</code>。'
+    });
+
+    // 第 9 行 内层循环
+    let skipCount = 0;
+    while (true){
+      const c = arr[pIdx];
+      if (c === '\0' || c === ' '){
+        snap({
+          line: 9,
+          ctx: 'fun · 第 9 行内层循环退出',
+          expr: "while(*p && *p != ' ') p++;",
+          exprVal: "*p = '" + charRep(c) + "'（str[" + pIdx + ']）　' +
+                    (c === '\0' ? '是 \\0' : '是空格') + '，条件为假，退出',
+          note: '★ p 停在 str[' + pIdx + ']' + (c === ' ' ? '（第一个空格）' : '（字符串末尾）'),
+          title: '第 9 行退出　→　p 停在 str[' + pIdx + ']' +
+                 (c === ' ' ? '（空格）' : '（\\0）'),
+          desc: '退出"跳过非空格"的内层循环。<br>' +
+                '· 本轮推进了 <b>' + skipCount + '</b> 次；<br>' +
+                '· <code>p</code> 现在停在 <code>str[' + pIdx + ']</code>。'
+        });
+        break;
+      }
+      const oldIdx = pIdx;
+      pIdx++; skipCount++;
+      snap({
+        line: 9,
+        ctx: 'fun · 第 9 行内层循环（第 ' + skipCount + ' 步）',
+        expr: "while(*p && *p != ' ') p++;",
+        exprVal: "*p = '" + charRep(c) + "'（str[" + oldIdx + ']）　不是空格，p 前进到 str[' + pIdx + ']',
+        note: '跳过非空格字符 ' + skipCount + ' 个',
+        title: '第 9 行：<b>\'' + charRep(c) + '\' 不是空格</b>　→　p++ = str + ' + pIdx,
+        desc: '检查 <code>*p = \'' + charRep(c) + '\'</code>，不是空格，执行 <code>p++</code>。'
+      });
+    }
+
+    // 第 10 行
+    qIdx = pIdx + 1;
+    snap({
+      line: 10, cls: 'mv',
+      ctx: 'fun · q 指向空格后面的第一个字符',
+      expr: 'q = p + 1;',
+      exprVal: 'q = str + ' + qIdx + "，指向 '" + charRep(arr[qIdx]) + "'",
+      note: 'q 是「后续字符要搬到的目标位置」',
+      title: '<b>q = p + 1;</b>　→　q = str + ' + qIdx,
+      desc: '让 <code>q</code> 指向当前空格的<b>下一个</b>位置，' +
+            '即「搬运的目标地址」。<br>' +
+            '<code>p</code> 是 <code>char*</code>，<code>p+1</code> 地址增加 <b>1</b> 字节。'
+    });
+
+    // 第 11 行
+    let skipSp = 0;
+    while (true){
+      const c2 = arr[pIdx];
+      if (c2 === '\0' || c2 !== ' '){
+        snap({
+          line: 11,
+          ctx: 'fun · 第 11 行内层循环退出',
+          expr: "while(*p && *p == ' ') p++;",
+          exprVal: "*p = '" + charRep(c2) + "'（str[" + pIdx + ']）　' +
+                    (c2 === '\0' ? '是 \\0' : '不是空格') + '，条件为假，退出',
+          note: '★ 跳过了 ' + skipSp + ' 个连续空格，p 停在 str[' + pIdx + ']',
+          title: '第 11 行退出　→　p 停在 str[' + pIdx + ']' +
+                 (c2 === '\0' ? '（\\0）' : '（\'' + charRep(c2) + '\'）'),
+          desc: '退出"跳过连续空格"的内层循环。<br>' +
+                '· 本轮跳过了 <b>' + skipSp + '</b> 个连续空格；<br>' +
+                '· <code>p</code> 现在指向 <code>str[' + pIdx + ']</code>，' +
+                (c2 === '\0' ? '字符串末尾的 <code>\\0</code>。'
+                             : '<b>下一个单词的第一个字符</b>。')
+        });
+        break;
+      }
+      const oldIdx2 = pIdx;
+      pIdx++; skipSp++;
+      snap({
+        line: 11,
+        ctx: 'fun · 第 11 行内层循环（第 ' + skipSp + ' 步）',
+        expr: "while(*p && *p == ' ') p++;",
+        exprVal: "*p = ' '（str[" + oldIdx2 + ']）　是空格，p 前进到 str[' + pIdx + ']',
+        note: '跳过第 ' + skipSp + ' 个连续空格',
+        title: '第 11 行：跳过一个空格　→　p = str + ' + pIdx,
+        desc: '检查 <code>*p</code> 是空格，执行 <code>p++</code>。'
+      });
+    }
+
+    // 第 12 行 strcpy
+    srcFrom = pIdx;
+    let srcEnd = pIdx;
+    while (srcEnd < ARR_SIZE && arr[srcEnd] !== '\0') srcEnd++;
+    srcTo = srcEnd;
+    opFrom = qIdx;
+
+    const copyLen = srcEnd - pIdx + 1;  // 含 '\0'
+    const beforeStr = arrShow();
+    for (let m=0;m<copyLen;m++){
+      if (qIdx + m < ARR_SIZE) arr[qIdx + m] = arr[pIdx + m];
+    }
+    const afterStr = arrShow();
+
+    snap({
+      line: 12, cls: 'gold',
+      ctx: 'fun · 把后续内容前移覆盖多余空格',
+      expr: 'p = strcpy(q, p);',
+      exprVal: 'strcpy(str+' + qIdx + ', str+' + srcFrom + ')　' +
+                '把 str[' + srcFrom + '..' + srcEnd + ']（含 \\0）搬到 str[' + qIdx + '..]',
+      note: '★ 字符串从 "' + beforeStr + '" 变为 "' + afterStr + '"',
+      title: '第 12 行：<b>strcpy(str+' + qIdx + ', str+' + srcFrom + ')</b>',
+      desc: '把 <code>p</code> 指向的内容（含 <code>\\0</code>）整体复制到 <code>q</code>。<br>' +
+            '· <b>复制前：</b><code>' + beforeStr + '</code><br>' +
+            '· <b>复制后：</b><code>' + afterStr + '</code><br>' +
+            '· 复制了 <b>' + copyLen + '</b> 个字节（含 <code>\\0</code>）；<br>' +
+            '· 原来 <code>str[' + pIdx + ']</code> 处的多余空格被覆盖；<br>' +
+            '· <code>strcpy</code> 返回目标地址 <code>str + ' + qIdx + '</code>，所以 p 跳到那里。' +
+            '<span class="win"><b>★ 第 ' + round + ' 轮完成！</b> 当前字符串：' +
+            '<code>' + afterStr + '</code>（' + lengthNow() + ' 字符）</span>'
+    });
+
+    opFrom = null; opTo = null; srcFrom = null; srcTo = null;
+
+    // 第 13 行（回到第 8 行）
+    snap({
+      line: 13,
+      ctx: 'fun · 第 13 行 } 回到外层循环',
+      expr: '}',
+      exprVal: '第 ' + round + ' 轮结束，回到第 8 行继续判断',
+      note: '第 ' + round + ' 轮结束',
+      title: '第 13 行：<b>}</b>　回到外层 while',
+      desc: '本轮循环体执行完毕，回到第 8 行重新判断 <code>while(*p)</code>。'
+    });
+  }
+
+  // 第 8 行最终判断
+  snap({
+    line: 8, cls: 'gold',
+    ctx: 'fun · 外层 while 最终判断',
+    expr: 'while(*p)',
+    exprVal: "*p = '\\0'　条件为假，退出外层循环",
+    note: '★ 所有多余空格已删除，字符串为 "' + arrStr() + '"',
+    title: '外层 <b>while</b>　条件为<b>假</b>，循环结束',
+    desc: '<code>p</code> 现在指向字符串末尾的 <code>\\0</code>，外层循环退出。<br>' +
+          '· 字符串已变成 <code>"' + arrStr() + '"</code>（' + lengthNow() + ' 字符）；<br>' +
+          '· 原 16 字符 → 删掉 3 个多余空格 → 剩 13 字符。' +
+          '<span class="win"><b>★ 删除完成！</b><br>' +
+          '原始：<code>"thisis␣␣a␣␣␣book"</code>（16 字符）<br>' +
+          '结果：<code>"' + arrStr() + '"</code>（' + lengthNow() + ' 字符）</span>'
+  });
+
+  // 第 14 行 fun 返回
+  inFun = false; pIdx = null; qIdx = null;
+  snap({
+    line: 14, cls: 'ans',
+    ctx: 'fun · 函数返回',
+    expr: '}',
+    exprVal: 'fun 栈帧销毁，局部变量 p、q、a 消失',
+    note: 'str 数组在 main 里，内容保留为 "' + arrStr() + '"',
+    title: '<b>}</b>　fun 函数返回',
+    desc: '函数 fun 执行完毕，隐式返回。<br>' +
+          '· fun 栈帧被销毁，局部变量 <code>p</code>、<code>q</code>、<code>a</code> 全部消失；<br>' +
+          '· <b>但数组 str 是 main 的局部变量</b>，内容仍然是 <code>"' + arrStr() + '"</code>；<br>' +
+          '· 这正是「数组传参传地址」的意义——fun 修改的是 main 的数组本身。' +
+          '<span class="warn"><b>局部变量随栈帧销毁，数组在 main 里完好无损。</b></span>'
+  });
+
+  // 第 18 行 puts
+  outText = arrStr() + '\n';
+  snap({
+    line: 18, cls: 'gold',
+    ctx: 'main · 输出最终结果',
+    expr: 'puts(str);',
+    exprVal: '屏幕输出：' + arrStr() + '　并换行',
+    note: '★ 屏幕上出现：' + arrStr(),
+    title: '<b>puts(str);</b>　屏幕出现 <b>' + arrStr() + '</b>',
+    desc: '<code>puts</code> 把字符串输出到屏幕，<b>并自动追加一个换行</b>。<br>' +
+          '· 从 <code>str[0]</code> 开始逐字符输出，直到遇到 <code>\\0</code> 停止；<br>' +
+          '· 与 <code>printf("%s", ...)</code> 的区别：<code>puts</code> <b>自带换行</b>。' +
+          '<span class="tip"><b>最终结果对照：</b><br>' +
+          '原字符串：<code>"thisis␣␣a␣␣␣book"</code>（16 字符，多余空格 3 个）<br>' +
+          '处理后：<code>"' + arrStr() + '"</code>（' + lengthNow() + ' 字符）</span>'
+  });
+
+  // 第 19 行 return 0
+  snap({
+    line: 19, cls: 'ans',
+    ctx: 'main · return 0',
+    expr: 'return 0;',
+    exprVal: '返回 0 给操作系统，程序正常结束',
+    note: '退出码 0（不打印）',
+    title: '<b>return 0;</b>　程序正常结束',
+    desc: 'main 返回 0，表示程序正常结束。<br>' +
+          '· <b><code>return 0</code> 不打印到屏幕</b>，它是退出码，' +
+          '告诉操作系统程序正常结束。'
+  });
+
+  // 第 20 行 程序结束
+  snap({
+    line: 20, cls: 'ans',
+    ctx: '程序结束',
+    expr: '}',
+    exprVal: 'main 栈帧销毁，程序退出',
+    note: '最终屏幕输出：' + arrStr() + '（后跟换行）',
+    title: '程序结束',
+    desc: '<b>★ 程序最终运行结果：</b><br>' +
+          '<code>' + arrStr() + '</code>（<code>puts</code> 自动换行）<br><br>' +
+          '<b>本程序要点总结：</b><br>' +
+          '① <b>数组传参传地址</b>：<code>fun(str)</code> 中 str 退化为首地址；<br>' +
+          '② <b>双指针分工</b>：p 遍历找空格，q 记录搬运目标；<br>' +
+          '③ <b>前导空格清理</b>：第 6 行跳过开头空格（本例无）；<br>' +
+          '④ <b>三段式循环</b>：找空格 → 定位 q → 跳过连续空格 → 整体前移；<br>' +
+          '⑤ <b>strcpy 返回值</b>：返回目标地址，让 p 自动跳到新位置；<br>' +
+          '⑥ <b>原地收缩</b>：不额外申请内存，直接覆盖；<br>' +
+          '⑦ <b>puts 自带换行</b>：与 printf 不同，puts 输出后自动追加 \\n；<br>' +
+          '⑧ <b>局部变量随栈帧销毁</b>：fun 返回后 p、q、a 消失，数组 str 完好。' +
+          '<span class="win"><b>最终结果：</b><br>' +
+          '<code>"thisis␣␣a␣␣␣book"</code>（16 字符）<br>' +
+          '　↓ 删除多余空格<br>' +
+          '<code>"' + arrStr() + '"</code>（' + lengthNow() + ' 字符）</span>'
+  });
+
+  return steps;
+}
+
+const STEPS = buildSteps();
+
+/* =========================================================
+   2. 渲染代码区
+   ========================================================= */
+const codeScroll = document.getElementById('codeScroll');
+const codeLines = [];
+for (let i=0;i<CODE_HTML.length;i++){
+  const div = document.createElement('div');
+  div.className = 'code-line';
+  div.setAttribute('data-line', String(i+1));
+  div.innerHTML = '<span class="ln">' + (i+1) + '</span><span class="src">' + CODE_HTML[i] + '</span>';
+  codeScroll.appendChild(div);
+  codeLines.push(div);
+}
+
+/* =========================================================
+   3. 渲染变量表骨架
+   ========================================================= */
+const VAR_ROWS = [
+  { key:'ctx',     name:'当前执行位置',        kind:'k-ctx' },
+  { key:'expr',    name:'正在执行的语句',      kind:'k-ctx' },
+  { key:'exprVal', name:'语句结果',            kind:'k-ctx' },
+  { key:'note',    name:'关键状态提示',        kind:'k-ctx' },
+  { key:'str',     name:'字符串 str[]',        kind:'k-str' },
+  { key:'a',       name:'形参 a（指向 str 首地址）', kind:'k-a' },
+  { key:'p',       name:'指针 p（主遍历）',    kind:'k-p' },
+  { key:'q',       name:'指针 q（搬运目标）',  kind:'k-q' },
+  { key:'strcpyCount', name:'strcpy 调用次数',  kind:'k-stat' },
+  { key:'putsCount',   name:'puts 调用次数',    kind:'k-stat' },
+  { key:'outBuf',  name:'屏幕输出缓冲',        kind:'k-stat' }
+];
+const varTable = document.getElementById('varTable');
+let varTableHTML = '';
+for (const r of VAR_ROWS){
+  varTableHTML += '<div class="var-row ' + r.kind + '" data-key="' + r.key + '">' +
+    '<span class="var-name">' + r.name + '</span>' +
+    '<span class="var-value dim">—</span>' +
+  '</div>';
+}
+varTable.innerHTML = varTableHTML;
+
+/* =========================================================
+   4. 渲染各面板
+   ========================================================= */
+const stackBody = document.getElementById('stackBody');
+const funcVal = document.getElementById('funcVal');
+const depthVal = document.getElementById('depthVal');
+const lenVal = document.getElementById('lenVal');
+const arrHead = document.getElementById('arrHead');
+const chGrid = document.getElementById('chGrid');
+const ptrMap = document.getElementById('ptrMap');
+const consoleBody = document.getElementById('consoleBody');
+const exitNote = document.getElementById('exitNote');
+const explainEl = document.getElementById('explain');
+const stepCounter = document.getElementById('stepCounter');
+
+function renderVars(step, prev){
+  for (const r of VAR_ROWS){
+    const row = varTable.querySelector('.var-row[data-key="' + r.key + '"]');
+    if (!row) continue;
+    const valEl = row.querySelector('.var-value');
+    let val = step ? (step.vars[r.key] || '—') : '—';
+    val = String(val);
+    if (valEl.textContent !== val){
+      valEl.textContent = val;
+      valEl.title = val;
+      if (val === '—' || val.indexOf('尚未声明') >= 0){
+        valEl.classList.add('dim');
+      } else {
+        valEl.classList.remove('dim');
+      }
+    }
+    // 长内容换行
+    if (val.length > 24 || val.indexOf('str +') >= 0){
+      valEl.classList.add('wrap');
+    } else {
+      valEl.classList.remove('wrap');
+    }
+  }
+}
+
+function renderStack(step){
+  if (!step || !step.s) return;
+  funcVal.textContent = step.s.func || '—';
+  depthVal.textContent = String(step.s.stack.length);
+  // 长度
+  if (step.s.arr){
+    let s = '';
+    for (let i=0;i<step.s.arr.length;i++){
+      if (step.s.arr[i] === '\0') break;
+      s += step.s.arr[i];
+    }
+    lenVal.textContent = s.length + ' 字符';
+  } else {
+    lenVal.textContent = '—';
+  }
+  if (!step.s.stack.length){
+    stackBody.innerHTML = '<span class="stack-empty">（空）</span>';
+    return;
+  }
+  let h = '';
+  step.s.stack.forEach((name, idx) => {
+    if (idx > 0) h += '<span class="stack-arrow"> → </span>';
+    const isTop = idx === step.s.stack.length - 1;
+    let cls = 'stack-frame';
+    if (isTop && name === 'fun') cls += ' func';
+    else if (isTop) cls += ' active';
+    h += '<span class="' + cls + '">' + name + '</span>';
+  });
+  stackBody.innerHTML = h;
+}
+
+function renderArr(step){
+  if (!step || !step.s || !step.s.arr){
+    arrHead.textContent = '';
+    chGrid.innerHTML = '<span class="ptr-map-empty">（字符串尚未定义）</span>';
+    return;
+  }
+  const s = step.s;
+  const arr = s.arr;
+  let usedLen = 0;
+  for (let i=0;i<arr.length;i++){
+    if (arr[i] === '\0') break;
+    usedLen++;
+  }
+  arrHead.innerHTML = '字符数组 <b style="color:var(--blue)">char str[' + arr.length + ']</b> · 每字符 1 字节　│　' +
+    '当前长度 <b style="color:var(--gold)">' + usedLen + '</b>　│　' +
+    'p = ' + (s.pIdx !== null ? ('str+' + s.pIdx) : '—') + '　' +
+    'q = ' + (s.qIdx !== null ? ('str+' + s.qIdx) : '—');
+
+  let h = '';
+  for (let i=0;i<arr.length;i++){
+    const c = arr[i];
+    let cls = 'ch-cell';
+    const isP = s.inFun && s.pIdx === i;
+    const isQ = s.inFun && s.qIdx === i;
+    const isOp = (s.opFrom !== null && s.opFrom === i);
+    const isSrc = (s.srcFrom !== null && i >= s.srcFrom && i <= s.srcTo);
+    if (isP) cls += ' is-p';
+    if (isQ) cls += ' is-q';
+    if (isOp) cls += ' is-op';
+    if (isSrc && !isOp) cls += ' is-src';
+    let vCls = 'ch-val';
+    if (c === '\0') vCls += ' term';
+    else if (c === ' ') vCls += ' space';
+    let marks = '';
+    if (isP) marks += '<span class="mk mk-p">p</span>';
+    if (isQ) marks += '<span class="mk mk-q">q</span>';
+    h += '<div class="' + cls + '">' +
+      '<div class="ch-idx">' + i + '</div>' +
+      '<div class="' + vCls + '">' + charRep(c) + '</div>' +
+      '<div class="ch-marks">' + marks + '</div>' +
+    '</div>';
+  }
+  chGrid.innerHTML = h;
+}
+
+function renderPtr(step){
+  let h = '';
+  if (!step || !step.s || !step.s.arr){
+    ptrMap.innerHTML = '<span class="ptr-map-empty">（字符串尚未定义）</span>';
+    return;
+  }
+  const s = step.s;
+  if (!s.inFun && s.stack.indexOf('fun') < 0){
+    ptrMap.innerHTML = '<span class="ptr-map-empty">（fun 尚未被调用，指针还未登场）</span>';
+    return;
+  }
+  // p 行
+  if (s.pIdx !== null){
+    h += '<div class="ptr-row">' +
+      '<div class="ptr-node is-p">' +
+        '<div class="ptr-label">p</div>' +
+        '<div class="ptr-addr">fun 栈帧 · char*</div>' +
+        '<div class="ptr-val">str + ' + s.pIdx + '</div>' +
+      '</div>' +
+      '<div class="ptr-arrow">──►</div>' +
+      '<div class="ptr-node is-target">' +
+        '<div class="ptr-label">str[' + s.pIdx + ']</div>' +
+        '<div class="ptr-val">\'' + charRep(s.arr[s.pIdx]) + '\'</div>' +
+      '</div>' +
+    '</div>';
+  } else {
+    h += '<div class="ptr-row">' +
+      '<div class="ptr-node is-p" style="opacity:.5">' +
+        '<div class="ptr-label">p</div>' +
+        '<div class="ptr-addr">fun 栈帧 · char*</div>' +
+        '<div class="ptr-val">未初始化</div>' +
+      '</div>' +
+    '</div>';
+  }
+  // q 行
+  if (s.qIdx !== null){
+    h += '<div class="ptr-row">' +
+      '<div class="ptr-node is-q">' +
+        '<div class="ptr-label">q</div>' +
+        '<div class="ptr-addr">fun 栈帧 · char*</div>' +
+        '<div class="ptr-val">str + ' + s.qIdx + '</div>' +
+      '</div>' +
+      '<div class="ptr-arrow c-teal">──►</div>' +
+      '<div class="ptr-node is-target">' +
+        '<div class="ptr-label">str[' + s.qIdx + ']</div>' +
+        '<div class="ptr-val">\'' + charRep(s.arr[s.qIdx]) + '\'</div>' +
+      '</div>' +
+    '</div>';
+  } else {
+    h += '<div class="ptr-row">' +
+      '<div class="ptr-node is-q" style="opacity:.5">' +
+        '<div class="ptr-label">q</div>' +
+        '<div class="ptr-addr">fun 栈帧 · char*</div>' +
+        '<div class="ptr-val">未初始化</div>' +
+      '</div>' +
+    '</div>';
+  }
+  // strcpy 状态提示
+  if (s.opFrom !== null){
+    h += '<div style="color:var(--gold); font-size:var(--var-font); margin-top:.5em;">' +
+      '★ strcpy 正在覆盖：目标 str[' + s.opFrom + ']　源范围 str[' + s.srcFrom + '..' + s.srcTo + ']</div>';
+  }
+  ptrMap.innerHTML = h;
+}
+
+function renderOutput(step){
+  const text = (step && step.s) ? step.s.outText : '';
+  consoleBody.innerHTML = '';
+  exitNote.textContent = '';
+  if (text === ''){
+    consoleBody.innerHTML =
+      '<div class="out-line out-empty">（程序还没有产生任何输出）</div>' +
+      '<div class="out-line out-note">本程序直到第 18 行的 puts 才会产生屏幕输出。</div>';
+    exitNote.textContent = '退出码：—（程序尚未结束）';
+    return;
+  }
+  // 末尾换行用 ⏎ 显示
+  const show = text.replace(/\n$/, '⏎\n');
+  const parts = show.split('\n');
+  for (const p of parts){
+    const d = document.createElement('div');
+    d.className = 'out-line out-result';
+    d.textContent = p;
+    consoleBody.appendChild(d);
+  }
+  // 光标
+  const cur = document.createElement('span');
+  cur.className = 'cursor';
+  cur.textContent = '▊';
+  if (consoleBody.lastElementChild) consoleBody.lastElementChild.appendChild(cur);
+  exitNote.textContent = '退出码：0（正常结束，不打印）';
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+function renderExplain(step){
+  if (!step){
+    explainEl.innerHTML =
+      '<em>点击「自动播放」或「下一步」开始。</em><br><br>' +
+      '<b>本程序：删除字符串中的多余空格（原地收缩）</b><br>' +
+      '· 第 16 行：<code>char str[] = "thisis  a   book";</code>　16 字符；<br>' +
+      '· 第 17 行：<code>fun(str);</code>　把数组首地址传给 fun；<br>' +
+      '· 第 5~7 行：p 指向开头，先清理前导空格（本例无）；<br>' +
+      '· 第 8~12 行：三段式循环——找空格 / 定位 q / 跳过连续空格 / strcpy 整体前移；<br>' +
+      '· 第 18 行：<code>puts(str);</code>　输出最终字符串。<br><br>' +
+      '<b>运行结果：</b><code>thisis a book</code>（puts 自带换行）。';
+    return;
+  }
+  const exLine = '<span class="ex-line' + (step.cls ? ' ' + step.cls : '') + '">第 ' + step.line + ' 行</span>';
+  explainEl.innerHTML = exLine + '<strong>' + step.title + '</strong> —— ' + step.desc;
+}
+
+/* =========================================================
+   5. 代码高亮 + 自动居中
+   ========================================================= */
+function updateCode(step){
+  const activeLine = step ? step.line : null;
+  codeLines.forEach(el => {
+    const n = Number(el.getAttribute('data-line'));
+    el.classList.remove('active', 'fun-body');
+    if (activeLine !== null && n === activeLine){
+      el.classList.add('active');
+      if (n >= 3 && n <= 14) el.classList.add('fun-body');
+    }
+  });
+  // 标记已执行行
+  if (step){
+    codeLines.forEach(el => {
+      const n = Number(el.getAttribute('data-line'));
+      if (n < step.line) el.classList.add('executed');
+      else el.classList.remove('executed');
+    });
+  } else {
+    codeLines.forEach(el => el.classList.remove('executed'));
+  }
+  centerActiveLine();
+}
+
+function centerActiveLine(){
+  const el = codeScroll.querySelector('.code-line.active');
+  if (!el) return;
+  const er = el.getBoundingClientRect();
+  const cr = codeScroll.getBoundingClientRect();
+  const delta = (er.top + er.height/2) - (cr.top + cr.height/2);
+  if (Math.abs(delta) > 4){
+    codeScroll.scrollTop = Math.max(0, codeScroll.scrollTop + delta);
+  }
+}
+
+/* =========================================================
+   6. 缩略图
+   ========================================================= */
+const miniLines = document.getElementById('miniLines');
+const miniWrap = document.getElementById('miniWrap');
+const miniViewport = document.getElementById('miniViewport');
+
+// 生成缩略图内容（纯文本 + 高亮 span）
+let miniHTML = '';
+for (let i=0;i<CODE_HTML.length;i++){
+  miniHTML += '<div class="mini-line" data-line="' + (i+1) + '">' + CODE_HTML[i] + '</div>';
+}
+miniLines.innerHTML = miniHTML;
+
+function updateMinimap(step){
+  // 高亮当前行
+  const activeLine = step ? step.line : null;
+  miniLines.querySelectorAll('.mini-line').forEach(el => {
+    const n = Number(el.getAttribute('data-line'));
+    if (activeLine !== null && n === activeLine) el.classList.add('active');
+    else el.classList.remove('active');
+  });
+  // 视口框
+  const totalH = codeScroll.scrollHeight;
+  const clientH = codeScroll.clientHeight;
+  const scrollTop = codeScroll.scrollTop;
+  const miniH = miniWrap.clientHeight;
+  if (totalH <= 0 || miniH <= 0) return;
+  const ratio = miniH / totalH;
+  miniViewport.style.top = (scrollTop * ratio) + 'px';
+  miniViewport.style.height = Math.max(20, clientH * ratio) + 'px';
+}
+
+function scrollToMiniY(clientY){
+  const rect = miniWrap.getBoundingClientRect();
+  const ratio = (clientY - rect.top) / rect.height;
+  const target = ratio * codeScroll.scrollHeight - codeScroll.clientHeight/2;
+  codeScroll.scrollTo({ top: Math.max(0, target), behavior: 'smooth' });
+}
+
+miniWrap.addEventListener('click', function(e){
+  scrollToMiniY(e.clientY);
+});
+
+let minimapRaf = null;
+function scheduleMinimap(){
+  if (minimapRaf) return;
+  minimapRaf = requestAnimationFrame(() => {
+    minimapRaf = null;
+    updateMinimap(current >= 0 ? STEPS[current] : null);
+  });
+}
+codeScroll.addEventListener('scroll', scheduleMinimap);
+window.addEventListener('resize', scheduleMinimap);
+
+/* =========================================================
+   7. 面板交互：拖动 / 调整大小 / 关闭 / 置顶
+   ========================================================= */
+let zTop = 100;
+function activate(panel){
+  panel.style.zIndex = String(++zTop);
+  document.querySelectorAll('.floating-panel').forEach(p => p.classList.remove('active'));
+  panel.classList.add('active');
+}
+
+function makeDraggable(panel){
+  const handle = panel.querySelector('[data-drag]');
+  if (!handle) return;
+  let sx, sy, ox, oy, dragging = false;
+  const start = (e) => {
+    const ev = e.touches ? e.touches[0] : e;
+    sx = ev.clientX; sy = ev.clientY;
+    const r = panel.getBoundingClientRect();
+    ox = r.left; oy = r.top;
+    dragging = true;
+    activate(panel);
+    e.preventDefault();
+  };
+  const move = (e) => {
+    if (!dragging) return;
+    const ev = e.touches ? e.touches[0] : e;
+    panel.style.left = (ox + ev.clientX - sx) + 'px';
+    panel.style.top  = (oy + ev.clientY - sy) + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.transform = 'none';
+  };
+  const end = () => { dragging = false; };
+  handle.addEventListener('mousedown', start);
+  handle.addEventListener('touchstart', start, {passive:false});
+  document.addEventListener('mousemove', move);
+  document.addEventListener('touchmove', move, {passive:false});
+  document.addEventListener('mouseup', end);
+  document.addEventListener('touchend', end);
+}
+
+function makeResizable(panel){
+  const handle = panel.querySelector('[data-resize]');
+  if (!handle) return;
+  let sx, sy, ow, oh, resizing = false;
+  const start = (e) => {
+    const ev = e.touches ? e.touches[0] : e;
+    sx = ev.clientX; sy = ev.clientY;
+    const r = panel.getBoundingClientRect();
+    ow = r.width; oh = r.height;
+    resizing = true;
+    activate(panel);
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  const move = (e) => {
+    if (!resizing) return;
+    const ev = e.touches ? e.touches[0] : e;
+    panel.style.width = Math.max(0, ow + ev.clientX - sx) + 'px';
+    panel.style.height = Math.max(0, oh + ev.clientY - sy) + 'px';
+  };
+  const end = () => { resizing = false; };
+  handle.addEventListener('mousedown', start);
+  handle.addEventListener('touchstart', start, {passive:false});
+  document.addEventListener('mousemove', move);
+  document.addEventListener('touchmove', move, {passive:false});
+  document.addEventListener('mouseup', end);
+  document.addEventListener('touchend', end);
+}
+
+const panels = document.querySelectorAll('.floating-panel');
+panels.forEach(p => {
+  makeDraggable(p);
+  makeResizable(p);
+  p.addEventListener('mousedown', () => activate(p));
+  p.addEventListener('touchstart', () => activate(p), {passive:true});
+  const closeBtn = p.querySelector('[data-close]');
+  if (closeBtn){
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      p.classList.add('hidden');
+    });
+  }
+});
+
+/* 重置布局 */
+const DEFAULT_LAYOUT = {};
+panels.forEach(p => {
+  if (p.id){
+    const r = p.getBoundingClientRect();
+    DEFAULT_LAYOUT[p.id] = {
+      left: p.style.left, top: p.style.top,
+      right: p.style.right, bottom: p.style.bottom,
+      width: p.style.width, height: p.style.height,
+      transform: p.style.transform
+    };
+  }
+});
+
+/* =========================================================
+   8. 播放控制
+   ========================================================= */
+let current = -1;
+let playing = false;
+let timer = null;
+let speed = Number(document.getElementById('speed').value);
+
+const btnPlay = document.getElementById('btnPlay');
+const btnPrev = document.getElementById('btnPrev');
+const btnNext = document.getElementById('btnNext');
+const btnReset = document.getElementById('btnReset');
+const speedLabel = document.getElementById('speedLabel');
+
+function render(){
+  const step = current >= 0 ? STEPS[current] : null;
+  updateCode(step);
+  renderVars(step);
+  renderStack(step);
+  renderArr(step);
+  renderPtr(step);
+  renderOutput(step);
+  renderExplain(step);
+  updateMinimap(step);
+  if (step){
+    stepCounter.textContent = '步骤 ' + (current+1) + ' / ' + STEPS.length;
+  } else {
+    stepCounter.textContent = '步骤 — / ' + STEPS.length;
+  }
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+}
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+
+function tick(){
+  if (current >= STEPS.length - 1){ pause(); return; }
+  current++;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+
+function play(){
+  if (playing) return;
+  if (current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  clearInterval(timer);
+  timer = setInterval(tick, speed);
+  tick();
+}
+
+function pause(){
+  playing = false;
+  clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+
+function nextStep(){ pause(); if (current < STEPS.length-1){ current++; render(); } }
+function prevStep(){ pause(); if (current > -1){ current--; render(); } }
+function resetAll(){
+  pause();
+  current = -1;
+  render();
+}
+
+btnPlay.addEventListener('click', () => playing ? pause() : play());
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+document.getElementById('speed').addEventListener('input', function(){
+  speed = Number(this.value);
+  speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+  if (playing){
+    clearInterval(timer);
+    timer = setInterval(tick, speed);
+  }
+});
+
+/* 全屏 */
+document.getElementById('btnFullscreen').addEventListener('click', () => {
+  if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+  else document.exitFullscreen();
+});
+
+/* 面板显隐 */
+let panelsVisible = true;
+document.getElementById('btnTogglePanels').addEventListener('click', () => {
+  panelsVisible = !panelsVisible;
+  panels.forEach(p => {
+    if (p.id === 'promptPanel' && !p.classList.contains('open')) return;
+    p.classList.toggle('hidden', !panelsVisible);
+  });
+  scheduleMinimap();
+});
+
+/* 缩略图显隐 */
+document.getElementById('btnToggleMinimap').addEventListener('click', () => {
+  document.getElementById('minimapPanel').classList.toggle('hidden');
+  scheduleMinimap();
+});
+
+/* 重置布局 */
+document.getElementById('btnResetLayout').addEventListener('click', () => {
+  panels.forEach(p => {
+    if (p.id && DEFAULT_LAYOUT[p.id]){
+      const d = DEFAULT_LAYOUT[p.id];
+      p.style.left = d.left; p.style.top = d.top;
+      p.style.right = d.right; p.style.bottom = d.bottom;
+      p.style.width = d.width; p.style.height = d.height;
+      p.style.transform = d.transform;
+      p.classList.remove('hidden');
+    }
+  });
+  zTop = 100;
+  panels.forEach((p, i) => { p.style.zIndex = String(10 + i); });
+  scheduleMinimap();
+});
+
+/* 提示词 */
+document.getElementById('btnPrompt').addEventListener('click', () => {
+  const p = document.getElementById('promptPanel');
+  p.classList.toggle('open');
+  activate(p);
+});
+
+/* =========================================================
+   9. 键盘快捷键
+   ========================================================= */
+document.addEventListener('keydown', (e) => {
+  if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  if (e.code === 'Space'){ e.preventDefault(); playing ? pause() : play(); }
+  else if (e.code === 'ArrowRight'){ nextStep(); }
+  else if (e.code === 'ArrowLeft'){ prevStep(); }
+  else if (e.code === 'KeyR'){ resetAll(); }
+  else if (e.code === 'KeyF'){
+    if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  }
+  else if (e.code === 'KeyM'){
+    document.getElementById('minimapPanel').classList.toggle('hidden');
+    scheduleMinimap();
+  }
+  else if (e.code === 'KeyH'){
+    panelsVisible = !panelsVisible;
+    panels.forEach(p => {
+      if (p.id === 'promptPanel' && !p.classList.contains('open')) return;
+      p.classList.toggle('hidden', !panelsVisible);
+    });
+    scheduleMinimap();
+  }
+});
+
+/* =========================================================
+   10. 提示词文本
+   ========================================================= */
+const PROMPT_TEXT =
+'【任务】C 语言程序「删除多余空格 · 指针 p/q + strcpy 原地收缩」逐步执行模拟（大屏教学版）\n' +
+'\n' +
+'程序：\n' +
+'  #include <stdio.h>\n' +
+'  #include <string.h>\n' +
+'  void fun(char *a) {\n' +
+'      char *p, *q;\n' +
+'      p = a;\n' +
+'      while(*p && *p == \' \') p++;\n' +
+'      p = strcpy(a, p);\n' +
+'      while(*p) {\n' +
+'          while(*p && *p != \' \') p++;\n' +
+'          q = p + 1;\n' +
+'          while(*p && *p == \' \') p++;\n' +
+'          p = strcpy(q, p);\n' +
+'      }\n' +
+'  }\n' +
+'  int main() {\n' +
+'      char str[] = "thisis  a   book";\n' +
+'      fun(str);\n' +
+'      puts(str);\n' +
+'      return 0;\n' +
+'  }\n' +
+'\n' +
+'输入：str = "thisis  a   book"（16 字符 + \'\\0\' = 17 字节）\n' +
+'预期输出：thisis a book（puts 自动换行，共 1 行，退出码 0）\n' +
+'关键调用：strcpy 4 次（第 7 行 1 次 + 第 12 行 3 次）；puts 1 次。\n';
+
+document.getElementById('promptInner').textContent = PROMPT_TEXT;
+
+/* =========================================================
+   11. 初始化
+   ========================================================= */
+speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+panels.forEach((p, i) => { p.style.zIndex = String(10 + i); });
+render();
+scheduleMinimap();
+
+})();
+</script>
+</body>
+</html>

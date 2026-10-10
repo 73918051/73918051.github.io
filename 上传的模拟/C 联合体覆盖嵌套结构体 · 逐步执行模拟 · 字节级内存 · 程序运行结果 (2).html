@@ -1,0 +1,1823 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 联合体覆盖嵌套结构体 · 逐步执行模拟 · 字节级内存 · 程序运行结果</title>
+<style>
+/* =========================================================
+   全局变量与基础
+   ========================================================= */
+*{box-sizing:border-box;}
+html,body{height:100%;margin:0;overflow:hidden;}
+:root{
+  --code-font: clamp(80px, 4.6vw, 112px);
+  --out-font:  clamp(56px, 3.0vw, 84px);
+  --var-font:  clamp(28px, 1.5vw, 42px);
+  --cell-font: clamp(22px, 1.15vw, 32px);
+  --explain-font: clamp(30px, 1.55vw, 44px);
+  --btn-font:  clamp(26px, 1.35vw, 38px);
+  --title-font:clamp(26px, 1.3vw, 36px);
+  --ui-font:   clamp(24px, 1.2vw, 34px);
+
+  --bg:#0d1117; --accent:#38bdf8; --green:#4ade80; --amber:#fbbf24;
+  --pink:#f472b6; --purple:#c084fc; --teal:#2dd4bf; --orange:#fb923c;
+  --gold:#facc15; --red:#f87171; --rose:#fb7185; --slate:#64748b;
+  --border:rgba(56,189,248,.35);
+}
+body{
+  background:var(--bg);color:#e6edf3;
+  font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* =========================================================
+   全屏代码区（不透明，占满视口）
+   ========================================================= */
+#codeStage{
+  position:fixed;inset:0;overflow:auto;z-index:1;
+  background:radial-gradient(1400px 800px at 8% -12%,#152743 0%,#0d1117 62%);
+  scrollbar-width:thin;scrollbar-color:#30363d transparent;
+}
+#codeStage::-webkit-scrollbar{width:26px;height:26px;}
+#codeStage::-webkit-scrollbar-track{background:#0d1117;}
+#codeStage::-webkit-scrollbar-thumb{background:#30363d;border-radius:13px;border:4px solid #0d1117;}
+#codeStage::-webkit-scrollbar-thumb:hover{background:#4a5568;}
+#codeInner{padding:24px 60px 24px 8px;min-width:max-content;}
+
+.code-line{
+  display:flex;align-items:flex-start;gap:.85em;
+  padding:.10em 1em .10em .4em;
+  border-left:.20em solid transparent;
+  white-space:pre;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  line-height:1.42;
+  transition:background .25s,border-color .25s,opacity .25s;
+}
+.code-line .ln{
+  flex:0 0 auto;width:3.2ch;text-align:right;color:#4a5568;
+  user-select:none;font-variant-numeric:tabular-nums;
+}
+.code-line.done{opacity:.62;}
+.code-line.active{
+  opacity:1;
+  background:linear-gradient(90deg,rgba(56,189,248,.30),rgba(56,189,248,0) 82%);
+  border-left-color:var(--accent);
+}
+.code-line.active .ln{color:var(--accent);font-weight:700;}
+.code-line.active .src{color:#ffffff;text-shadow:0 0 18px rgba(56,189,248,.35);}
+.code-line.gold-hi.active{
+  background:linear-gradient(90deg,rgba(250,204,21,.34),rgba(250,204,21,0) 82%);
+  border-left-color:var(--gold);
+}
+.code-line.gold-hi.active .ln{color:var(--gold);}
+.code-line.rose-hi.active{
+  background:linear-gradient(90deg,rgba(251,113,133,.36),rgba(251,113,133,0) 82%);
+  border-left-color:var(--rose);
+}
+.code-line.rose-hi.active .ln{color:var(--rose);}
+
+/* 语法着色 */
+.t-cmt{color:#5b6f8c;font-style:italic;}
+.t-pp{color:#c084fc;font-weight:700;}
+.t-str{color:#4ade80;}
+.t-kw{color:#f472b6;font-weight:700;}
+.t-union{color:#fb7185;font-weight:800;}
+.t-struct{color:#c084fc;font-weight:800;}
+.t-ty{color:#2dd4bf;font-weight:700;}
+.t-num{color:#fbbf24;font-weight:700;}
+.t-fn{color:#38bdf8;font-weight:700;}
+.t-op{color:#fb923c;font-weight:700;}
+.t-chr{color:#86efac;}
+.t-var{color:#e6edf3;}
+
+/* =========================================================
+   悬浮面板通用
+   ========================================================= */
+.panel{
+  position:fixed;display:flex;flex-direction:column;
+  background:rgba(13,17,23,.86);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  border:2px solid var(--border);border-radius:20px;
+  box-shadow:0 22px 60px rgba(0,0,0,.65);
+  overflow:hidden;z-index:100;
+  transition:border-color .18s,box-shadow .18s;
+}
+.panel.active{
+  border-color:#38bdf8;
+  box-shadow:0 0 0 3px rgba(56,189,248,.30),0 26px 70px rgba(0,0,0,.75);
+}
+.panel.hidden{display:none;}
+.panel.folded .p-body{display:none;}
+
+.p-bar{
+  flex:0 0 auto;display:flex;align-items:center;gap:12px;
+  padding:8px 12px;cursor:move;user-select:none;touch-action:none;
+  background:rgba(22,32,48,.92);
+  border-bottom:2px solid rgba(56,189,248,.22);
+}
+.p-title{
+  font-size:var(--title-font);font-weight:800;color:#7dd3fc;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.p-fold{
+  margin-left:auto;flex:0 0 auto;
+  width:44px;height:44px;border-radius:10px;cursor:pointer;
+  border:2px solid rgba(148,163,184,.45);background:rgba(148,163,184,.14);
+  color:#cbd5e1;font-size:26px;line-height:1;font-weight:700;
+}
+.p-fold:hover{background:rgba(148,163,184,.28);}
+.p-close{
+  flex:0 0 auto;width:48px;height:48px;border-radius:10px;cursor:pointer;
+  border:2px solid rgba(248,113,113,.55);background:rgba(248,113,113,.18);
+  color:#fca5a5;font-size:30px;line-height:1;font-weight:700;
+}
+.p-close:hover{background:rgba(248,113,113,.36);color:#fff;}
+.p-close:first-of-type{margin-left:auto;}
+
+.p-body{flex:1 1 auto;min-height:0;overflow:auto;padding:12px 14px;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;}
+.p-body::-webkit-scrollbar{width:14px;height:14px;}
+.p-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:7px;}
+
+.p-resize{
+  position:absolute;right:0;bottom:0;width:48px;height:48px;
+  cursor:nwse-resize;touch-action:none;
+  background:linear-gradient(135deg,transparent 46%,rgba(56,189,248,.75) 46%,rgba(56,189,248,.75) 62%,transparent 62%);
+  opacity:.75;
+}
+.p-resize:hover{opacity:1;}
+
+/* =========================================================
+   控制栏
+   ========================================================= */
+.ctl-row{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:10px;}
+.ctl-row:last-child{margin-bottom:0;}
+.btn{
+  font:inherit;font-size:var(--btn-font);font-weight:700;
+  padding:.42em .85em;border-radius:14px;cursor:pointer;
+  border:2px solid rgba(56,189,248,.45);background:rgba(24,39,65,.92);
+  color:#dbeafe;white-space:nowrap;min-height:64px;
+  transition:background .15s,border-color .15s,transform .08s;
+}
+.btn:hover{background:rgba(33,51,82,.98);border-color:#38bdf8;}
+.btn:active{transform:translateY(2px);}
+.btn:disabled{opacity:.35;cursor:not-allowed;}
+.btn.primary{background:linear-gradient(180deg,#0ea5e9,#0284c7);border-color:#7dd3fc;color:#04121f;}
+.btn.primary.playing{background:linear-gradient(180deg,#f59e0b,#d97706);border-color:#fbbf24;color:#1a1200;}
+.speed{display:flex;align-items:center;gap:10px;font-size:var(--btn-font);color:#94a3b8;white-space:nowrap;}
+.speed input[type=range]{width:220px;accent-color:var(--accent);height:44px;cursor:pointer;}
+.speed b{color:var(--accent);font-variant-numeric:tabular-nums;min-width:3.6em;display:inline-block;}
+
+/* =========================================================
+   信息 / 平台模型
+   ========================================================= */
+.info-grid{display:flex;flex-wrap:wrap;gap:10px 26px;margin-bottom:12px;}
+.info-item{display:flex;align-items:baseline;gap:8px;font-size:var(--ui-font);}
+.info-k{color:#64748b;font-weight:700;}
+.info-v{color:#7dd3fc;font-weight:800;font-family:ui-monospace,Consolas,monospace;}
+.info-v.gold{color:var(--gold);}
+.info-v.rose{color:var(--rose);}
+.info-v.green{color:var(--green);}
+
+.model-line{
+  font-size:var(--ui-font);line-height:1.75;color:#b8c9e0;
+  font-family:ui-monospace,Consolas,monospace;
+  padding:8px 12px;margin-bottom:8px;border-radius:12px;
+  background:rgba(56,189,248,.08);border-left:6px solid var(--accent);
+}
+.model-line b{color:#eaf3ff;}
+.model-line .hl-gold{color:var(--gold);font-weight:800;}
+.model-line .hl-rose{color:var(--rose);font-weight:800;}
+.model-line.warn{background:rgba(251,191,36,.12);border-left-color:var(--amber);color:#ffe6b0;}
+.model-line.rose{background:rgba(251,113,133,.14);border-left-color:var(--rose);color:#fecdd3;}
+.model-line.green{background:rgba(74,222,128,.12);border-left-color:var(--green);color:#bbf7d0;}
+
+/* =========================================================
+   union 共享视图
+   ========================================================= */
+.u-ruler,.u-row{display:grid;grid-template-columns:9.2em 1fr;align-items:center;min-width:44em;}
+.u-ruler{margin-bottom:8px;padding-bottom:6px;border-bottom:2px dashed rgba(56,189,248,.25);}
+.u-rlabel{font-size:var(--cell-font);color:#64748b;font-weight:700;}
+.u-name{
+  font-size:var(--cell-font);color:#94a3b8;font-weight:800;
+  padding-right:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+.u-name em{display:block;font-style:normal;font-size:.72em;color:#4a6488;font-weight:600;}
+.u-cells{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));}
+.u-ruler .u-cells span{
+  text-align:center;font-size:var(--cell-font);color:#5f7796;
+  border-left:1px solid rgba(56,189,248,.14);padding:4px 0;font-weight:700;
+}
+.u-row{margin-bottom:8px;}
+.u-cell{
+  height:2.6em;display:flex;align-items:center;justify-content:center;
+  font-size:var(--cell-font);font-weight:800;overflow:hidden;
+  transition:all .3s;border-radius:0;
+}
+.u-cell.u-empty{
+  background:repeating-linear-gradient(45deg,rgba(30,47,73,.40) 0 6px,rgba(15,23,40,.40) 6px 12px);
+  border:1px solid rgba(30,47,73,.9);color:#3d5474;
+}
+.u-cell.c-pad{
+  background:repeating-linear-gradient(45deg,rgba(100,116,139,.35) 0 5px,rgba(15,23,40,.55) 5px 10px);
+  border:1px dashed #475569;color:#94a3b8;
+}
+.u-cell.c-x{background:linear-gradient(180deg,rgba(56,189,248,.85),rgba(56,189,248,.35));border:2px solid rgba(56,189,248,.9);color:#e0f4ff;}
+.u-cell.c-y{background:linear-gradient(180deg,rgba(74,222,128,.85),rgba(74,222,128,.35));border:2px solid rgba(74,222,128,.9);color:#e6ffee;}
+.u-cell.c-z{background:linear-gradient(180deg,rgba(192,132,252,.85),rgba(192,132,252,.35));border:2px solid rgba(192,132,252,.9);color:#f5ebff;}
+.u-cell.c-k{background:linear-gradient(180deg,rgba(251,113,133,.88),rgba(251,113,133,.38));border:2px solid rgba(251,113,133,.95);color:#ffe4ea;}
+.u-cell.is-active{
+  box-shadow:0 0 0 4px #fff,0 0 26px rgba(255,255,255,.85);
+  transform:scale(1.10);z-index:3;position:relative;
+}
+.u-cell.dim{opacity:.24;filter:grayscale(65%);}
+.u-row.is-hl .u-name{color:#fff;text-shadow:0 0 14px var(--accent);}
+
+.u-legend{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:12px;font-size:var(--cell-font);color:#9db1cb;}
+.u-legend span{display:inline-flex;align-items:center;gap:8px;}
+.u-legend i{display:inline-block;width:1.4em;height:1.4em;border-radius:5px;}
+.u-legend i.x{background:rgba(56,189,248,.9);}
+.u-legend i.y{background:rgba(74,222,128,.9);}
+.u-legend i.z{background:rgba(192,132,252,.9);}
+.u-legend i.k{background:rgba(251,113,133,.9);}
+.u-legend i.p{background:repeating-linear-gradient(45deg,#64748b 0 4px,#1e2f49 4px 8px);}
+
+/* =========================================================
+   字节级表格
+   ========================================================= */
+.byte-wrap{overflow-x:auto;}
+.byte-table{
+  width:100%;min-width:44em;border-collapse:separate;border-spacing:4px;
+  font-family:ui-monospace,Consolas,monospace;font-size:var(--cell-font);
+  table-layout:fixed;
+}
+.byte-table th{
+  background:rgba(22,35,58,.95);color:#8fa8c8;font-weight:800;
+  padding:8px 2px;border-radius:8px;text-align:center;font-size:.92em;
+}
+.byte-table td{
+  background:rgba(13,23,40,.95);border:1px solid rgba(30,47,73,.9);border-radius:8px;
+  padding:8px 2px;text-align:center;color:#7d93b3;font-weight:800;
+  transition:all .3s;overflow:hidden;
+}
+.byte-table td.b-h{background:rgba(22,35,58,.95);color:#94a3b8;font-size:.85em;}
+.byte-table td.b-hex{color:#7dd3fc;}
+.byte-table td.b-dec{color:#fde68a;}
+.byte-table td.b-char{color:#86efac;}
+.byte-table td.is-active{
+  background:rgba(56,189,248,.28);border-color:rgba(56,189,248,.95);color:#fff;
+  box-shadow:0 0 0 3px rgba(56,189,248,.55);
+}
+.byte-table td.is-shared{border-bottom:5px solid rgba(251,113,133,.95);}
+.byte-table td.fl-x{animation:flashX .8s ease-out;}
+.byte-table td.fl-k{animation:flashK .9s ease-out;}
+@keyframes flashX{
+  0%{transform:scale(1);}
+  25%{transform:scale(1.35);color:#fff;background:rgba(56,189,248,.65);text-shadow:0 0 18px #fff;}
+  100%{transform:scale(1);}
+}
+@keyframes flashK{
+  0%{transform:scale(1);}
+  25%{transform:scale(1.42);color:#fff;background:rgba(251,113,133,.80);text-shadow:0 0 22px #fff;}
+  100%{transform:scale(1);}
+}
+
+/* =========================================================
+   变量卡片
+   ========================================================= */
+.var-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+.var-card{
+  background:rgba(13,23,40,.95);border:2px solid rgba(30,47,73,.95);border-radius:16px;
+  padding:12px 16px;font-family:ui-monospace,Consolas,monospace;transition:all .3s;
+}
+.var-card .vn{font-size:var(--var-font);font-weight:800;display:block;color:#c084fc;}
+.var-card .vt{font-size:.78em;color:#64748b;display:block;margin:2px 0 6px;}
+.var-card .vv{font-size:1.35em;font-weight:900;color:#7d93b3;word-break:break-all;}
+.var-card .vs{font-size:.72em;color:#64748b;display:block;margin-top:6px;}
+.var-card.x-card{border-color:rgba(56,189,248,.5);}
+.var-card.x-card .vn{color:#7dd3fc;}
+.var-card.x-card.has .vv{color:#7dd3fc;text-shadow:0 0 14px rgba(56,189,248,.6);}
+.var-card.y-card{border-color:rgba(74,222,128,.5);}
+.var-card.y-card .vn{color:#86efac;}
+.var-card.y-card.has .vv{color:#86efac;text-shadow:0 0 14px rgba(74,222,128,.6);}
+.var-card.z-card{border-color:rgba(192,132,252,.5);}
+.var-card.z-card .vn{color:#d8b4fe;}
+.var-card.z-card.has .vv{color:#d8b4fe;text-shadow:0 0 14px rgba(192,132,252,.6);}
+.var-card.k-card{border-color:rgba(251,113,133,.5);}
+.var-card.k-card .vn{color:#fda4af;}
+.var-card.k-card.has .vv{color:#fda4af;text-shadow:0 0 14px rgba(251,113,133,.6);}
+.var-card.is-active{
+  box-shadow:0 0 0 4px #fff,0 0 26px rgba(56,189,248,.7);
+  transform:scale(1.035);
+}
+.var-card.flash-x .vv{animation:flashVarX .9s ease-out;}
+@keyframes flashVarX{
+  0%{transform:scale(1);}
+  35%{transform:scale(1.45);color:#fff;text-shadow:0 0 26px #fb7185;}
+  100%{transform:scale(1);}
+}
+
+/* =========================================================
+   控制台
+   ========================================================= */
+.console{
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);line-height:1.45;color:#86efac;
+  white-space:pre;word-break:normal;
+}
+.out-line{margin:0;min-height:1.3em;}
+.c-empty{color:#3d5474;}
+.c-note{color:#7dd3fc;}
+.c-ok{color:#86efac;}
+.c-pad{color:#fbbf24;}
+.c-final{color:#facc15;font-weight:800;}
+.c-info{color:#c084fc;}
+.c-res{color:#f472b6;font-weight:800;}
+.c-union{color:#fda4af;font-weight:800;}
+.c-warn{color:#fbbf24;font-weight:800;}
+.c-rose{color:#fb7185;font-weight:800;}
+.cursor{display:inline-block;color:#4ade80;animation:blink 1s step-end infinite;}
+@keyframes blink{0%,100%{opacity:1;}50%{opacity:0;}}
+
+/* =========================================================
+   说明条
+   ========================================================= */
+.explain{
+  font-size:var(--explain-font);line-height:1.65;color:#c3d4ea;
+}
+.explain .tag{
+  display:inline-block;padding:.06em .5em;margin-right:.5em;border-radius:.35em;
+  background:rgba(56,189,248,.20);color:#7dd3fc;font-weight:800;font-size:.82em;
+  vertical-align:middle;
+}
+.explain .tag.gold{background:rgba(250,204,21,.26);color:var(--gold);}
+.explain .tag.rose{background:rgba(251,113,133,.28);color:var(--rose);}
+.explain strong{color:#eaf3ff;}
+.explain code{
+  font-family:ui-monospace,Consolas,monospace;
+  background:rgba(148,163,184,.16);border-radius:.28em;
+  padding:0 .3em;color:#e2e8f0;
+}
+.explain .box{
+  display:block;margin-top:.5em;padding:.5em .8em;border-radius:.5em;
+  font-size:.88em;line-height:1.6;
+}
+.explain .box.tip{background:rgba(45,212,191,.12);border-left:6px solid var(--teal);color:#bff5ec;}
+.explain .box.warn{background:rgba(251,191,36,.14);border-left:6px solid var(--amber);color:#ffe6b0;}
+.explain .box.win{background:rgba(250,204,21,.16);border-left:6px solid var(--gold);color:#fff3c4;font-weight:700;}
+.explain .box.rose{background:rgba(251,113,133,.18);border-left:6px solid var(--rose);color:#fecdd3;}
+
+/* =========================================================
+   缩略图（VSCode minimap 风格）
+   ========================================================= */
+#mmBody{position:relative;overflow:hidden;padding:0;background:rgba(8,13,22,.75);}
+#mmContent{position:absolute;left:0;top:0;width:100%;}
+.mm-line{
+  white-space:pre;overflow:hidden;
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:9px;line-height:12px;height:12px;
+  color:#8b949e;padding-left:6px;
+  transition:background .2s;
+}
+.mm-line.active{background:rgba(56,189,248,.42);color:#fff;}
+.mm-line.gold{background:rgba(250,204,21,.45);color:#fff;}
+.mm-line.rose{background:rgba(251,113,133,.50);color:#fff;}
+.mm-line .t-cmt{color:#4a5568;}
+#mmViewport{
+  position:absolute;left:0;right:0;top:0;height:60px;
+  background:rgba(56,189,248,.16);
+  border-top:2px solid #38bdf8;border-bottom:2px solid #38bdf8;
+  box-shadow:0 0 14px rgba(56,189,248,.5) inset;
+  pointer-events:none;
+}
+
+/* 提示浮层 */
+#toast{
+  position:fixed;left:50%;bottom:5%;transform:translateX(-50%);
+  padding:.5em 1.2em;border-radius:14px;z-index:9000;
+  background:rgba(14,165,233,.92);color:#04121f;font-weight:800;
+  font-size:clamp(24px,1.3vw,34px);opacity:0;pointer-events:none;
+  transition:opacity .25s;white-space:nowrap;
+}
+#toast.show{opacity:1;}
+</style>
+</head>
+<body>
+
+<!-- =========================================================
+     全屏代码区（19 行）
+     ========================================================= -->
+<div id="codeStage">
+  <div id="codeInner">
+
+    <div class="code-line" data-line="1"><span class="ln">1</span><span class="src"><span class="t-pp">#include</span> <span class="t-str">&lt;stdio.h&gt;</span>                 <span class="t-cmt">// 包含标准输入输出头文件</span></span></div>
+    <div class="code-line" data-line="2"><span class="ln">2</span><span class="src"><span class="t-union">union</span> <span class="t-op">{</span>                             <span class="t-cmt">// 定义联合体</span></span></div>
+    <div class="code-line" data-line="3"><span class="ln">3</span><span class="src">    <span class="t-struct">struct</span> <span class="t-op">{</span>                        <span class="t-cmt">// 结构体成员u</span></span></div>
+    <div class="code-line" data-line="4"><span class="ln">4</span><span class="src">        <span class="t-ty">int</span> x<span class="t-op">;</span>                      <span class="t-cmt">// 整型x</span></span></div>
+    <div class="code-line" data-line="5"><span class="ln">5</span><span class="src">        <span class="t-ty">char</span> y<span class="t-op">;</span>                     <span class="t-cmt">// 字符y</span></span></div>
+    <div class="code-line" data-line="6"><span class="ln">6</span><span class="src">        <span class="t-ty">float</span> z<span class="t-op">;</span>                    <span class="t-cmt">// 浮点z</span></span></div>
+    <div class="code-line" data-line="7"><span class="ln">7</span><span class="src">    <span class="t-op">}</span> u<span class="t-op">;</span>                            <span class="t-cmt">// 结构体变量u</span></span></div>
+    <div class="code-line" data-line="8"><span class="ln">8</span><span class="src">    <span class="t-ty">int</span> k<span class="t-op">;</span>                          <span class="t-cmt">// 整型成员k</span></span></div>
+    <div class="code-line" data-line="9"><span class="ln">9</span><span class="src"><span class="t-op">}</span> a<span class="t-op">;</span>                                <span class="t-cmt">// 联合体变量a</span></span></div>
+    <div class="code-line" data-line="10"><span class="ln">10</span><span class="src"><span class="t-ty">int</span> <span class="t-fn">main</span><span class="t-op">()</span> <span class="t-op">{</span>                        <span class="t-cmt">// 主函数</span></span></div>
+    <div class="code-line" data-line="11"><span class="ln">11</span><span class="src">    a<span class="t-op">.</span>u<span class="t-op">.</span>x <span class="t-op">=</span> <span class="t-num">4</span><span class="t-op">;</span>                      <span class="t-cmt">// 给结构体成员赋值</span></span></div>
+    <div class="code-line" data-line="12"><span class="ln">12</span><span class="src">    a<span class="t-op">.</span>u<span class="t-op">.</span>y <span class="t-op">=</span> <span class="t-chr">'A'</span><span class="t-op">;</span></span></div>
+    <div class="code-line" data-line="13"><span class="ln">13</span><span class="src">    a<span class="t-op">.</span>u<span class="t-op">.</span>z <span class="t-op">=</span> <span class="t-num">3.14</span><span class="t-op">;</span></span></div>
+    <div class="code-line" data-line="14"><span class="ln">14</span><span class="src">    a<span class="t-op">.</span>k <span class="t-op">=</span> <span class="t-num">97</span><span class="t-op">;</span>                       <span class="t-cmt">// 给k赋值，覆盖了x</span></span></div>
+    <div class="code-line" data-line="15"><span class="ln">15</span><span class="src">    <span class="t-fn">printf</span><span class="t-op">(</span><span class="t-str">"%d \n"</span><span class="t-op">,</span> a<span class="t-op">.</span>u<span class="t-op">.</span>x<span class="t-op">);</span>          <span class="t-cmt">// 输出被覆盖后的x（97）</span></span></div>
+    <div class="code-line" data-line="16"><span class="ln">16</span><span class="src">    <span class="t-fn">printf</span><span class="t-op">(</span><span class="t-str">"%c \n"</span><span class="t-op">,</span> a<span class="t-op">.</span>u<span class="t-op">.</span>y<span class="t-op">);</span>          <span class="t-cmt">// y不受影响，输出A</span></span></div>
+    <div class="code-line" data-line="17"><span class="ln">17</span><span class="src">    <span class="t-fn">printf</span><span class="t-op">(</span><span class="t-str">"%f \n"</span><span class="t-op">,</span> a<span class="t-op">.</span>u<span class="t-op">.</span>z<span class="t-op">);</span>          <span class="t-cmt">// z不受影响，输出3.140000</span></span></div>
+    <div class="code-line" data-line="18"><span class="ln">18</span><span class="src">    <span class="t-kw">return</span> <span class="t-num">0</span><span class="t-op">;</span></span></div>
+    <div class="code-line" data-line="19"><span class="ln">19</span><span class="src"><span class="t-op">}</span></span></div>
+
+  </div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：控制栏
+     ========================================================= -->
+<div class="panel" id="pControl">
+  <div class="p-bar" data-drag>
+    <span class="p-title">播放控制</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div class="ctl-row">
+      <button id="btnReset" class="btn">⟲ 重置</button>
+      <button id="btnPrev" class="btn">◀ 上一步</button>
+      <button id="btnPlay" class="btn primary">▶ 自动播放</button>
+      <button id="btnNext" class="btn">下一步 ▶</button>
+      <span class="speed" style="margin-left:auto">速度
+        <input type="range" id="speed" min="120" max="2400" step="40" value="760">
+        <b id="speedLabel">0.76s</b>
+      </span>
+    </div>
+    <div class="ctl-row">
+      <button id="btnFull" class="btn">⛶ 全屏</button>
+      <button id="btnMini" class="btn">▤ 缩略图</button>
+      <button id="btnPanels" class="btn">▦ 面板 H</button>
+      <button id="btnLayout" class="btn">⟳ 重置布局</button>
+      <span class="info-item" style="margin-left:auto">
+        <span class="info-k">步骤</span><span class="info-v" id="stepCounter">— / —</span>
+      </span>
+    </div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：平台模型
+     ========================================================= -->
+<div class="panel" id="pInfo">
+  <div class="p-bar" data-drag>
+    <span class="p-title">平台模型 · union / struct 大小与对齐</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div class="info-grid">
+      <span class="info-item"><span class="info-k">当前行</span><span class="info-v" id="lineVal">—</span></span>
+      <span class="info-item"><span class="info-k">阶段</span><span class="info-v" id="phaseVal">—</span></span>
+      <span class="info-item"><span class="info-k">sizeof(union)</span><span class="info-v gold" id="sizeVal">—</span></span>
+      <span class="info-item"><span class="info-k">sizeof(struct u)</span><span class="info-v gold" id="sizeVal2">—</span></span>
+      <span class="info-item"><span class="info-k">字节序</span><span class="info-v rose">小端序 Little-Endian</span></span>
+    </div>
+    <div class="model-line"><b>int</b> = 4 字节 / 对齐 4　│　<b>char</b> = 1 字节 / 对齐 1　│　<b>float</b> = 4 字节 / 对齐 4</div>
+    <div class="model-line green"><b>struct u</b>：x@0~3、y@4、<span class="hl-gold">填充 3 字节 @5~7</span>、z@8~11 → 4+1+3+4 = <b>12 字节</b>，对齐 4，尾部填充 0</div>
+    <div class="model-line rose"><b>union</b>：所有成员从<span class="hl-rose">偏移 0</span>开始！u@0~11（12 字节）、k@0~3（4 字节）→ max(12,4)=<b>12 字节</b>，最大对齐 4，<b>无尾部填充</b></div>
+    <div class="model-line warn"><b>★ struct 内部为什么有 3 字节填充？</b> y 结束在偏移 5，float z 要求起始偏移是 4 的倍数，5 不是 → 向上取整到 8，偏移 5/6/7 被浪费（不存数据）。</div>
+    <div class="model-line rose"><b>★★★ 成员覆盖：</b>u.x 与 k 都占偏移 0~3，<span class="hl-rose">完全重叠</span>。写 k 会隐式改写 u.x 的那 4 个字节。</div>
+    <div class="model-line green"><b>★ 覆盖有边界：</b>u.y 在偏移 4、u.z 在偏移 8~11，不在 k 的 4 字节范围内 → 完全不受影响。</div>
+    <div class="model-line"><b>★ 小端序：</b>低位字节存放在低地址。int 4 = 0x00000004 → <code>04 00 00 00</code>；float 3.14f 编码 0x4048F5C3 → <code>C3 F5 48 40</code>。</div>
+    <div class="model-line warn"><b>★ 全局变量 a</b> 定义在函数外（第 9 行 <code>} a;</code>），存放在 .bss 段，程序启动时<b>全部字节清零</b>，不是垃圾值。</div>
+    <div class="model-line"><b>★ 格式符：</b>%d 有符号十进制整数　│　%c 按 ASCII 输出字符　│　%f 默认 6 位小数</div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：union 共享视图（核心）
+     ========================================================= -->
+<div class="panel" id="pUnion">
+  <div class="p-bar" data-drag>
+    <span class="p-title">union 内存共享视图 · 12 字节</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div id="unionViz"></div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：字节级表格（核心）
+     ========================================================= -->
+<div class="panel" id="pBytes">
+  <div class="p-bar" data-drag>
+    <span class="p-title">字节级内存 · a 的 12 个字节</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div class="byte-wrap"><table class="byte-table" id="byteTable"></table></div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：变量值变化表
+     ========================================================= -->
+<div class="panel" id="pVars">
+  <div class="p-bar" data-drag>
+    <span class="p-title">变量值变化表</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div class="var-grid">
+      <div class="var-card x-card" data-var="x">
+        <span class="vn">a.u.x</span><span class="vt">int（4 字节）</span>
+        <span class="vv">?</span><span class="vs">偏移 0~3 · 与 k 重叠</span>
+      </div>
+      <div class="var-card y-card" data-var="y">
+        <span class="vn">a.u.y</span><span class="vt">char（1 字节）</span>
+        <span class="vv">?</span><span class="vs">偏移 4 · k 覆盖不到</span>
+      </div>
+      <div class="var-card z-card" data-var="z">
+        <span class="vn">a.u.z</span><span class="vt">float（4 字节）</span>
+        <span class="vv">?</span><span class="vs">偏移 8~11 · k 覆盖不到</span>
+      </div>
+      <div class="var-card k-card" data-var="k">
+        <span class="vn">a.k</span><span class="vt">int（4 字节）</span>
+        <span class="vv">?</span><span class="vs">偏移 0~3 · 与 x 重叠</span>
+      </div>
+    </div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：程序运行输出
+     ========================================================= -->
+<div class="panel" id="pConsole">
+  <div class="p-bar" data-drag>
+    <span class="p-title">程序运行输出 · 控制台</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div class="console" id="consoleBody"></div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：当前语句说明
+     ========================================================= -->
+<div class="panel" id="pExplain">
+  <div class="p-bar" data-drag>
+    <span class="p-title">当前语句说明</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body">
+    <div class="explain" id="explain"></div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<!-- =========================================================
+     悬浮面板：代码缩略图（VSCode minimap）
+     ========================================================= -->
+<div class="panel" id="pMinimap">
+  <div class="p-bar" data-drag>
+    <span class="p-title">缩略图</span>
+    <button class="p-fold" title="折叠">–</button>
+    <button class="p-close" title="关闭（按 H 恢复）">×</button>
+  </div>
+  <div class="p-body" id="mmBody">
+    <div id="mmContent"></div>
+    <div id="mmViewport"></div>
+  </div>
+  <div class="p-resize" data-resize></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* =========================================================
+   0. 工具
+   ========================================================= */
+var $  = function(s){ return document.querySelector(s); };
+var $$ = function(s){ return Array.prototype.slice.call(document.querySelectorAll(s)); };
+
+function hex2(b){ return '0x' + (b & 0xff).toString(16).padStart(2,'0').toUpperCase(); }
+function charOf(b){ return (b >= 32 && b <= 126) ? ("'" + String.fromCharCode(b) + "'") : '·'; }
+
+var DV = new DataView(new ArrayBuffer(4));
+function bytesToFloat(a){
+  if(a.indexOf(null) >= 0) return null;
+  DV.setUint8(0,a[0]); DV.setUint8(1,a[1]); DV.setUint8(2,a[2]); DV.setUint8(3,a[3]);
+  return DV.getFloat32(0,true);
+}
+function bytesToInt(a){
+  if(a.indexOf(null) >= 0) return null;
+  return (a[0] | (a[1] << 8) | (a[2] << 16) | (a[3] << 24)) >>> 0;
+}
+function intToBytes(v){
+  v = v >>> 0;
+  return [v & 0xff, (v >>> 8) & 0xff, (v >>> 16) & 0xff, (v >>> 24) & 0xff];
+}
+function floatToBytes(f){
+  DV.setFloat32(0, f, true);
+  return [DV.getUint8(0), DV.getUint8(1), DV.getUint8(2), DV.getUint8(3)];
+}
+
+/* =========================================================
+   1. 逐步执行数据模型（18 步）
+   ========================================================= */
+var UNION_SIZE = 12;
+var STEPS = (function(){
+  var steps = [];
+  var S;
+
+  function resetState(){
+    S = {
+      phase:'idle',
+      structDone:false, unionDone:false, allocated:false,
+      bytes:new Array(12).fill(null),
+      hl:{member:null, bytes:[], kind:null},
+      flash:[], flashKind:null,
+      console:[]
+    };
+  }
+  function log(cls, txt){ S.console.push({cls:cls, txt:txt}); }
+  function hl(member, bytes, kind){
+    S.hl = { member: member || null, bytes: bytes || [], kind: kind || null };
+  }
+  function snap(o){
+    steps.push({
+      line: o.line,
+      cls: o.cls || '',
+      title: o.title || '',
+      desc: o.desc || '',
+      phase: S.phase,
+      structDone: S.structDone,
+      unionDone: S.unionDone,
+      allocated: S.allocated,
+      bytes: S.bytes.slice(),
+      hl: { member:S.hl.member, bytes:S.hl.bytes.slice(), kind:S.hl.kind },
+      flash: (o.flash || []).slice(),
+      flashKind: o.flashKind || null,
+      console: S.console.map(function(c){ return {cls:c.cls, txt:c.txt}; })
+    });
+  }
+
+  /* ---------- 第 1 行：预处理 ---------- */
+  resetState();
+  S.phase = 'preprocess';
+  log('c-note', '[预处理] #include <stdio.h>   → 展开标准输入输出头文件');
+  log('c-info', '          → printf 的函数声明来自这里，不占用运行时内存');
+  hl(null, [], null);
+  snap({
+    line:1,
+    title:'包含 <code>&lt;stdio.h&gt;</code>',
+    desc:'预处理器把 <code>&lt;stdio.h&gt;</code> 的内容展开到本文件中，其中声明了 <code>printf</code>。' +
+         '<span class="box tip"><b>★ 预处理指令的特点：</b><br>' +
+         '· 只在<b>编译前</b>起作用，<b>不产生任何运行时行为</b>，也不占用内存；<br>' +
+         '· 第 15~17 行要用 <code>printf</code>，所以必须先包含这个头文件。</span>'
+  });
+
+  /* ---------- 第 2 行：union { ---------- */
+  S.phase = 'compile';
+  log('c-union', '[编译] 第 2 行：union {   → 开始定义匿名联合体');
+  log('c-info',  '        → union 的所有成员都从偏移 0 开始，共享同一块内存');
+  hl(null, [], null);
+  snap({
+    line:2,
+    title:'<b>union {</b>　→　开始定义匿名联合体',
+    desc:'编译器看到 <code>union</code> 关键字，开始定义联合体。' +
+         '<span class="box warn"><b>★ union 的核心规则（4 条）：</b><br>' +
+         '① 所有成员都从 <b>偏移 0</b> 开始；<br>' +
+         '② 成员之间<b>互相重叠</b>，共享同一块内存；<br>' +
+         '③ 同一时刻<b>只有一个成员是有效的</b>；<br>' +
+         '④ union 大小 = <code>max(成员大小)</code> 向上取整到 <code>max(成员对齐)</code> 的倍数。<br>' +
+         '这里没有标签名，是<b>匿名联合体</b>，只能通过第 9 行的变量 <code>a</code> 使用。' +
+         '接下来要读入 2 个成员：嵌套结构体 <code>u</code> 和 <code>int k</code>。</span>'
+  });
+
+  /* ---------- 第 3 行：struct { ---------- */
+  log('c-note', '[编译] 第 3 行：struct {   → 开始定义嵌套结构体（union 的第 1 个成员 u）');
+  log('c-info', '        → 注意：这里是 struct，成员按顺序排列，各占不同偏移');
+  hl(null, [], null);
+  snap({
+    line:3,
+    title:'<b>struct {</b>　→　开始定义嵌套结构体（union 成员 u）',
+    desc:'这个 <code>struct</code> 是 union 的<b>第 1 个成员</b>，变量名是 <code>u</code>。' +
+         '<span class="box tip"><b>★ 本程序是「union 套 struct」的嵌套结构：</b><br>' +
+         '· 外层 union 的成员是「整个结构体 u」和「int k」；<br>' +
+         '· 结构体<b>内部成员之间不重叠</b>，依次排列；<br>' +
+         '· 但 union 的另一成员 <code>k</code> 会与结构体的<b>开头部分</b>重叠；<br>' +
+         '· struct 与 union 完全不同：struct 成员各占不同偏移，还会因<b>对齐</b>产生填充字节。' +
+         '</span>'
+  });
+
+  /* ---------- 第 4 行：int x; ---------- */
+  log('c-ok', '  + int   x   偏移 0   大小 4   对齐 4   （0 ~ 3）');
+  hl('x', [0,1,2,3], null);
+  snap({
+    line:4, cls:'gold',
+    title:'结构体成员 <b>int x</b>　→　偏移 0 ~ 3',
+    desc:'解析 <code>int x;</code>。<br>' +
+         '· 类型 <code>int</code>，大小 <b>4</b> 字节，对齐 <b>4</b> 字节；<br>' +
+         '· 结构体从偏移 <b>0</b> 开始，所以 x 占据偏移 <b>0 ~ 3</b>；<br>' +
+         '· 当前结构体候选大小 = <b>4</b>，最大对齐 = <b>4</b>。' +
+         '<span class="box tip"><b>★ 记住这 4 个字节：</b><br>' +
+         '偏移 0~3 属于 <code>u.x</code> —— 后面第 8 行的 <code>int k</code> ' +
+         '也会落在这 4 个字节上，这是整个程序的关键。<br>' +
+         '右侧 union 视图中，<b>蓝色横条</b>代表 <code>u.x</code>（4 格）。</span>'
+  });
+
+  /* ---------- 第 5 行：char y; ---------- */
+  log('c-ok', '  + char  y   偏移 4   大小 1   对齐 1   （4）');
+  hl('y', [4], null);
+  snap({
+    line:5, cls:'gold',
+    title:'结构体成员 <b>char y</b>　→　偏移 4',
+    desc:'解析 <code>char y;</code>。<br>' +
+         '· 类型 <code>char</code>，大小 <b>1</b> 字节，对齐 <b>1</b> 字节；<br>' +
+         '· x 已占用偏移 0~3，下一个空闲位置是偏移 <b>4</b>；<br>' +
+         '· char 对齐要求是 1，偏移 4 正好满足，<b>不需要填充</b>；<br>' +
+         '· 所以 y 落在偏移 <b>4</b>。' +
+         '<span class="box warn"><b>★ 关键点：y 在偏移 4，不在 0~3 范围内。</b><br>' +
+         '后面第 14 行 <code>a.k = 97</code> 只写偏移 0~3，<b>碰不到 y</b> —— ' +
+         '这就是最终能输出 <code>A</code> 的原因。</span>'
+  });
+
+  /* ---------- 第 6 行：float z; ---------- */
+  log('c-ok',  '  + float z   偏移 8   大小 4   对齐 4   （8 ~ 11）');
+  log('c-pad', '    → 偏移 5 ~ 7 为「对齐填充」3 字节（不存数据）');
+  hl('z', [8,9,10,11], null);
+  snap({
+    line:6, cls:'gold',
+    title:'结构体成员 <b>float z</b>　→　偏移 8 ~ 11（中间 3 字节填充）',
+    desc:'解析 <code>float z;</code>。<br>' +
+         '· 类型 <code>float</code>，大小 <b>4</b> 字节，对齐 <b>4</b> 字节；<br>' +
+         '· 当前下一个空闲偏移是 <b>5</b>，但 <code>float</code> 要求偏移必须是 4 的倍数；<br>' +
+         '· <b>5 不是 4 的倍数 → 向上取整到 8</b>；<br>' +
+         '· 所以偏移 <b>5、6、7</b> 这 <b>3 个字节被浪费</b>，叫做<b>填充字节（padding）</b>；<br>' +
+         '· z 落在偏移 <b>8 ~ 11</b>。' +
+         '<span class="box tip"><b>★ 为什么要填充？</b><br>' +
+         'CPU 访问 4 字节的 <code>float</code> 时，希望它的地址是 4 的倍数，这样一次总线访问就能读完。<br>' +
+         '编译器为了满足这个硬件要求，会在成员之间插入填充字节，代价是结构体变大。<br>' +
+         '这也是 <code>struct</code> 和 <code>union</code> 大小计算的重要区别。</span>'
+  });
+
+  /* ---------- 第 7 行：} u; ---------- */
+  S.structDone = true;
+  log('c-final','[结构体完成] struct u = 12 字节（4 + 1 + 3填充 + 4），对齐 4');
+  log('c-ok',   '[变量定义]   } u;   → 结构体变量 u 是 union 的第 1 个成员');
+  hl(null, [0,1,2,3,4,8,9,10,11], null);
+  snap({
+    line:7, cls:'gold',
+    title:'<b>} u;</b>　→　结构体完成，sizeof(struct u) = <b>12</b> 字节',
+    desc:'编译器遇到 <code>} u;</code>，结构体定义结束，同时声明成员变量 <code>u</code>。<br>' +
+         '· 大小计算：<br>' +
+         '　　偏移 0~3　<code>int x</code>　→ 4 字节<br>' +
+         '　　偏移 4　　<code>char y</code>　→ 1 字节<br>' +
+         '　　偏移 5~7　<b>填充</b>　　　→ 3 字节<br>' +
+         '　　偏移 8~11 <code>float z</code> → 4 字节<br>' +
+         '　　合计 = 4 + 1 + 3 + 4 = <b>12</b> 字节<br>' +
+         '· 对齐 = <code>max(4, 1, 4) = 4</code>；12 是 4 的倍数，<b>无需尾部填充</b>。' +
+         '<span class="box win"><b>★ 现在整个结构体 u 占 0~11，共 12 字节。</b><br>' +
+         '它是 union 的第 1 个成员，决定了 union 的大小至少是 12 字节。</span>'
+  });
+
+  /* ---------- 第 8 行：int k; ---------- */
+  log('c-note', '[编译] 第 8 行：int k;   → union 的第 2 个成员');
+  log('c-ok',   '  + int   k   偏移 0   大小 4   对齐 4   （0 ~ 3）');
+  log('c-rose', '    ★ 与 u.x 完全重叠！都占偏移 0 ~ 3');
+  hl('k', [0,1,2,3], null);
+  snap({
+    line:8, cls:'rose',
+    title:'联合体成员 <b>int k</b>　→　偏移 0 ~ 3（<b>与 u.x 完全重叠！</b>）',
+    desc:'解析 <code>int k;</code> —— 这是 union 的<b>第 2 个成员</b>。<br>' +
+         '· 类型 <code>int</code>，大小 <b>4</b> 字节，对齐 <b>4</b> 字节；<br>' +
+         '· <b>union 的所有成员都从偏移 0 开始</b>，所以 k 占据偏移 <b>0 ~ 3</b>；<br>' +
+         '· 偏移 0~3 恰好就是结构体里 <code>x</code> 所在的位置 —— 两者<b>完全重叠、共享同一块内存</b>；<br>' +
+         '· 更新候选大小：<code>max(12, 4) = 12</code>，不变；<br>' +
+         '· 更新最大对齐：<code>max(4, 4) = 4</code>，不变。' +
+         '<span class="box rose"><b>★★★ 这就是整个程序的关键！</b><br>' +
+         '在右侧 union 视图中，<b>玫瑰色的 k 横条</b>和<b>蓝色的 u.x 横条</b>从<b>同一列（偏移 0）出发</b>，' +
+         '长度都是 4 格，完全重合。<br>' +
+         '这意味着：<b>写 k 就等于写 x 的那 4 个字节</b>，两者不可能同时保持各自的值。<br>' +
+         '而 <code>u.y</code> 在偏移 4、<code>u.z</code> 在偏移 8~11，<b>不在 k 的覆盖范围内</b>，所以它们能安然无恙。</span>'
+  });
+
+  /* ---------- 第 9 行：} a; ---------- */
+  S.unionDone = true;
+  S.allocated = true;
+  S.bytes = [0,0,0,0,0,0,0,0,0,0,0,0];
+  log('c-final','[类型完成] union = 12 字节（max(12,4)=12，对齐 max(4,4)=4）');
+  log('c-ok',   '[变量定义] } a;   → 全局变量 a 分配 12 字节');
+  log('c-warn', '  ⚠ a 是【全局变量】→ 存放在 .bss 段，被零初始化为全 0');
+  log('c-info', '  → 当前 12 个字节：00 00 00 00 00 00 00 00 00 00 00 00');
+  hl(null, [0,1,2,3,4,5,6,7,8,9,10,11], null);
+  snap({
+    line:9, cls:'gold', flash:[0,1,2,3,4,5,6,7,8,9,10,11], flashKind:'x',
+    title:'<b>} a;</b>　→　union 完成（<b>12 字节</b>）+ 全局变量 <b>a</b> 零初始化',
+    desc:'编译器遇到 <code>} a;</code>，一步完成两件事：<br>' +
+         '· ① 结束 union 定义：<br>' +
+         '　　候选大小 = <code>max(12, 4) = 12</code>；<br>' +
+         '　　最大对齐 = <code>max(4, 4) = 4</code>；<br>' +
+         '　　向上取整到 4 的倍数：<code>12 → 12</code>；<br>' +
+         '　　所以 <code>sizeof(union) = <b>12</b></code> 字节。<br>' +
+         '· ② 定义变量 <code>a</code>，分配 <b>12</b> 字节。' +
+         '<span class="box win"><b>★ union a 的完整内存布局（12 字节）：</b><br>' +
+         '偏移 0 ~ 3　：<code>u.x</code> 与 <code>k</code> <b>共享</b>（4 字节）<br>' +
+         '偏移 4　　　：<code>u.y</code>（1 字节）<br>' +
+         '偏移 5 ~ 7　：结构体内部的填充（3 字节，不存数据）<br>' +
+         '偏移 8 ~ 11 ：<code>u.z</code>（4 字节）<br>' +
+         '总大小 = 12 字节，对齐 = 4。</span>' +
+         '<span class="box tip"><b>★ 为什么 a 的初始值全是 0？</b><br>' +
+         '因为 <code>a</code> 定义在<b>函数外面</b>，是<b>全局变量</b>。全局变量存放在 <code>.bss</code> 段，' +
+         '操作系统加载程序时会把它<b>清零</b>。<br>' +
+         '所以 <code>a</code> 的 12 个字节初始全是 <code>0x00</code>，而不是垃圾值。<br>' +
+         '（如果 <code>a</code> 是 main 内部的局部变量，初始值就会是栈上的垃圾值。）</span>'
+  });
+
+  /* ---------- 第 10 行：int main() { ---------- */
+  S.phase = 'main';
+  log('c-note', '[编译] 进入 main 函数   → 程序开始运行');
+  log('c-info', '  → a 的 12 个字节当前全部为 0x00');
+  hl(null, [], null);
+  snap({
+    line:10,
+    title:'<b>int main() {</b>　→　程序入口',
+    desc:'编译期的工作已完成，从 <code>main</code> 开始进入<b>运行期</b>。<br>' +
+         '· 全局变量 <code>a</code> 已经存在，12 个字节全是 <code>0x00</code>；<br>' +
+         '· 此时 <code>a.u.x = 0</code>、<code>a.u.y = 0</code>、<code>a.u.z = 0.0</code>、<code>a.k = 0</code>；<br>' +
+         '· 接下来 4 行赋值语句会依次写这块内存，最后 3 行 <code>printf</code> 把结果输出到屏幕。'
+  });
+
+  /* ---------- 第 11 行：a.u.x = 4; ---------- */
+  var xb = intToBytes(4);
+  S.bytes[0] = xb[0]; S.bytes[1] = xb[1]; S.bytes[2] = xb[2]; S.bytes[3] = xb[3];
+  log('c-ok',   '[赋值] a.u.x = 4;   → 写入 4 个字节到偏移 0 ~ 3');
+  log('c-info', '  → 4 = 0x00000004');
+  log('c-info', '  → 小端序：偏移 0=0x04，偏移 1=0x00，偏移 2=0x00，偏移 3=0x00');
+  hl('x', [0,1,2,3], 'x');
+  snap({
+    line:11, cls:'gold', flash:[0,1,2,3], flashKind:'x',
+    title:'<b>a.u.x = 4;</b>　→　写入 4 字节 <b>04 00 00 00</b>',
+    desc:'把整数 <code>4</code> 写入结构体成员 <code>x</code>（4 字节）。<br>' +
+         '· <code>4 = 0x00000004</code>；<br>' +
+         '· <b>小端序</b>下低位字节存放在低地址：<br>' +
+         '　　偏移 0 ← <b>0x04</b>（最低字节）<br>' +
+         '　　偏移 1 ← 0x00<br>' +
+         '　　偏移 2 ← 0x00<br>' +
+         '　　偏移 3 ← 0x00（最高字节）<br>' +
+         '· 因为 <code>k</code> 也在偏移 0~3，此刻 <code>a.k</code> 读出来也正好是 <b>4</b>。' +
+         '<span class="box tip"><b>★ 为什么是 04 00 00 00 而不是 00 00 00 04？</b><br>' +
+         '因为 x86/x64 是<b>小端序（Little-Endian）</b>架构：整数的最低有效字节存放在最低地址。<br>' +
+         '4 的十六进制是 <code>0x04</code>，只有最低字节非零，所以偏移 0 放 0x04，后 3 个字节都是 0。<br>' +
+         '如果是 <code>x = 0x12345678</code>，内存里就是 <code>78 56 34 12</code>（逆序）。</span>'
+  });
+
+  /* ---------- 第 12 行：a.u.y = 'A'; ---------- */
+  S.bytes[4] = 65;
+  log('c-ok',   "[赋值] a.u.y = 'A';   → 写入 1 个字节到偏移 4");
+  log('c-info', "  → 'A' 的 ASCII 码是 65 = 0x41");
+  log('c-info', '  → 偏移 4 = 0x41；偏移 0~3 的 x 不受影响，仍为 0x04 0x00 0x00 0x00');
+  hl('y', [4], 'y');
+  snap({
+    line:12, cls:'gold', flash:[4], flashKind:'y',
+    title:"<b>a.u.y = 'A';</b>　→　只写偏移 4 一个字节",
+    desc:"<code>y</code> 是 <code>char</code>，只占 <b>1</b> 字节，位于偏移 <b>4</b>。<br>" +
+         "· <code>'A'</code> 的 ASCII 码 = <b>65</b> = <b>0x41</b>；<br>" +
+         "· 只写偏移 <b>4</b>，其它字节保持不变：<br>" +
+         "　　偏移 0~3：<code>04 00 00 00</code>（<code>a.u.x</code>，不变）<br>" +
+         "　　偏移 4：<code>00</code> → <b><code>0x41</code></b>（被写入）<br>" +
+         "　　偏移 5~7：<code>00 00 00</code>（填充，不变）<br>" +
+         "　　偏移 8~11：<code>00 00 00 00</code>（<code>a.u.z</code>，尚未赋值）" +
+         '<span class="box tip"><b>★ 记住这一刻的偏移 4：</b><br>' +
+         "偏移 4 存放着 <code>'A'</code>。<br>" +
+         '后面第 14 行 <code>a.k = 97</code> 只写偏移 0~3，<b>不会碰到偏移 4</b>，' +
+         "所以这个 <code>'A'</code> 会一直保留到程序结束，最终第 16 行输出 <code>A</code>。</span>"
+  });
+
+  /* ---------- 第 13 行：a.u.z = 3.14; ---------- */
+  var zb = floatToBytes(3.14);
+  S.bytes[8] = zb[0]; S.bytes[9] = zb[1]; S.bytes[10] = zb[2]; S.bytes[11] = zb[3];
+  log('c-ok',   '[赋值] a.u.z = 3.14;   → 写入 4 个字节到偏移 8 ~ 11');
+  log('c-info', '  → 3.14f 的 IEEE 754 单精度编码 = 0x4048F5C3');
+  log('c-info', '  → 小端序：偏移 8=0xC3，偏移 9=0xF5，偏移 10=0x48，偏移 11=0x40');
+  hl('z', [8,9,10,11], 'z');
+  snap({
+    line:13, cls:'gold', flash:[8,9,10,11], flashKind:'z',
+    title:'<b>a.u.z = 3.14;</b>　→　写入 4 字节 <b>C3 F5 48 40</b>',
+    desc:'把浮点数 <code>3.14</code> 写入结构体成员 <code>z</code>（4 字节）。<br>' +
+         '· <code>float</code> 在内存中按 <b>IEEE 754 单精度</b>存储，' +
+         '<code>3.14f</code> 的 32 位编码是 <b><code>0x4048F5C3</code></b>；<br>' +
+         '· <b>小端序</b>下按字节从低地址到高地址排列：<br>' +
+         '　　偏移 8　← <b>0xC3</b>（最低字节）<br>' +
+         '　　偏移 9　← <b>0xF5</b><br>' +
+         '　　偏移 10 ← <b>0x48</b><br>' +
+         '　　偏移 11 ← <b>0x40</b>（最高字节）<br>' +
+         '· 整数和浮点数在内存里都是二进制位，区别只在于「怎么解释这些位」。' +
+         '<span class="box tip"><b>★ 浮点数的字节看起来「毫无规律」？</b><br>' +
+         '因为 <code>0x4048F5C3</code> 拆开看是：<br>' +
+         '　符号位 = 0（正数）<br>' +
+         '　指数位 = 0x80 = 128 → 实际指数 128-127 = <b>1</b><br>' +
+         '　尾数位 = 0x48F5C3 → 小数部分 ≈ 0.57<br>' +
+         '　结果 = 1.57 × 2¹ ≈ <b>3.14</b><br>' +
+         '所以内存里是 <code>C3 F5 48 40</code>，不是「3.14」这几个字符。</span>'
+  });
+
+  /* ---------- 第 14 行：a.k = 97; ★★★ 覆盖 ---------- */
+  var kb = intToBytes(97);
+  S.bytes[0] = kb[0]; S.bytes[1] = kb[1]; S.bytes[2] = kb[2]; S.bytes[3] = kb[3];
+  log('c-warn', '[赋值] a.k = 97;   → 写入 4 个字节到偏移 0 ~ 3');
+  log('c-info', '  → 97 = 0x00000061');
+  log('c-rose', '  → 偏移 0：0x04 → 0x61（被覆盖）');
+  log('c-rose', '  → 偏移 1~3：0x00 0x00 0x00（不变）');
+  log('c-rose', '  ★★★ a.u.x 被"隐式"修改了！0x00000004 → 0x00000061');
+  log('c-rose', '  ★★★ a.u.x 从 4 变成了 97');
+  log('c-ok',   '  → a.u.y（偏移 4）与 a.u.z（偏移 8~11）不在覆盖范围内，保持不变');
+  hl('k', [0,1,2,3], 'k');
+  snap({
+    line:14, cls:'rose', flash:[0,1,2,3], flashKind:'k',
+    title:'<b>a.k = 97;</b>　→　<b>★★ 覆盖了 a.u.x 的 4 个字节！</b>',
+    desc:'<code>k</code> 是 <code>int</code>，位于偏移 <b>0 ~ 3</b>；这恰好和 <code>u.x</code> 的位置<b>完全重合</b>。<br>' +
+         '· <code>97 = 0x00000061</code>；<br>' +
+         '· <b>写入前后对比（偏移 0~3）：</b><br>' +
+         '　　偏移 0：<code>0x04</code> → <b><code>0x61</code></b>（被覆盖）<br>' +
+         '　　偏移 1：<code>0x00</code> → <code>0x00</code>（不变）<br>' +
+         '　　偏移 2：<code>0x00</code> → <code>0x00</code>（不变）<br>' +
+         '　　偏移 3：<code>0x00</code> → <code>0x00</code>（不变）<br>' +
+         '· <b>偏移 4~11 完全没动：</b><code>0x41</code>（y）和 <code>C3 F5 48 40</code>（z）保持原样。' +
+         '<span class="box rose"><b>★★★ 关键现象：a.u.x 被"隐式"修改了！</b><br>' +
+         '· 我们只写了 <code>a.k</code>，但 <code>a.u.x</code> 的值也跟着变了；<br>' +
+         '· 原来 <code>a.u.x = 0x00000004 = 4</code>；<br>' +
+         '· 现在 <code>a.u.x = 0x00000061 = 97</code>；<br>' +
+         '· 原因：<code>k</code> 和 <code>x</code> <b>共享同一块内存</b>（都在偏移 0~3），写 k 就等于写 x 那 4 个字节。<br>' +
+         '· 反过来看：<code>y</code> 在偏移 4、<code>z</code> 在偏移 8~11，<b>不在 k 的 4 字节范围内</b>，' +
+         '所以它们毫发无伤。<br>' +
+         '· 这解释了为什么程序注释说「k 覆盖了 x」—— 但 y 和 z 不受影响。</span>'
+  });
+
+  /* ---------- 第 15 行：printf("%d \n", a.u.x); ---------- */
+  log('c-res',  '[printf] printf("%d \\n", a.u.x);   → 输出被覆盖后的 x');
+  log('c-info', '  → a.u.x 现在是 97（十进制），%d 按十进制整数输出');
+  log('c-res',  '97 ');
+  hl('x', [0,1,2,3], null);
+  snap({
+    line:15, cls:'gold',
+    title:'<b>printf("%d \\n", a.u.x);</b>　→　输出 <b>97</b>',
+    desc:'<code>printf</code> 按格式串输出 <code>a.u.x</code>：<br>' +
+         '· <code>%d</code> 要求把参数按<b>有符号十进制整数</b>输出；<br>' +
+         '· <code>a.u.x</code> 当前的值是 <b>97</b>（因为被第 14 行的 <code>a.k = 97</code> 覆盖了）；<br>' +
+         '· 格式串是 <code>"%d \\n"</code>，所以输出 <code>97</code>，然后一个<b>空格</b>，最后<b>换行</b>。' +
+         '<span class="box tip"><b>★ 如果第 14 行不存在会怎样？</b><br>' +
+         '那么 <code>a.u.x</code> 会保持第 11 行写入的 <code>4</code>，这里就会输出 <code>4</code>。<br>' +
+         '正是因为 <code>a.k = 97</code> 覆盖了偏移 0~3，<code>x</code> 才从 4 变成了 97。<br>' +
+         '这正是本程序想演示的「union 成员覆盖」的实际后果。</span>'
+  });
+
+  /* ---------- 第 16 行：printf("%c \n", a.u.y); ---------- */
+  log('c-res',  '[printf] printf("%c \\n", a.u.y);   → y 不受 k 影响');
+  log('c-info', '  → a.u.y 仍是 65 = 0x41，%c 按 ASCII 字符输出');
+  log('c-res',  'A ');
+  hl('y', [4], null);
+  snap({
+    line:16, cls:'gold',
+    title:'<b>printf("%c \\n", a.u.y);</b>　→　输出 <b>A</b>',
+    desc:'<code>printf</code> 按格式串输出 <code>a.u.y</code>：<br>' +
+         '· <code>%c</code> 要求把参数的值当作<b>字符编码（ASCII）</b>输出；<br>' +
+         "· <code>a.u.y</code> 是第 12 行写入的 <code>'A'</code>，值为 <b>65</b> = <b>0x41</b>；<br>" +
+         '· ASCII 码 65 对应的字符就是 <b><code>A</code></b>；<br>' +
+         '· 格式串 <code>"%c \\n"</code> → 输出 <code>A</code> + 空格 + 换行。' +
+         '<span class="box win"><b>★ 为什么 y 没有被覆盖？</b><br>' +
+         '<code>y</code> 位于偏移 <b>4</b>。<br>' +
+         '第 14 行的 <code>a.k = 97</code> 只写偏移 <b>0~3</b> 这 4 个字节，<b>够不到偏移 4</b>。<br>' +
+         "所以 <code>y</code> 完好无损，依然是 <code>'A'</code>。<br>" +
+         '这正体现了 union 成员覆盖的<b>边界</b>：只有被覆盖范围内的字节才会变，范围外的成员不受影响。</span>'
+  });
+
+  /* ---------- 第 17 行：printf("%f \n", a.u.z); ---------- */
+  log('c-res',  '[printf] printf("%f \\n", a.u.z);   → z 不受 k 影响');
+  log('c-info', '  → a.u.z 仍是 3.14f（字节 C3 F5 48 40）');
+  log('c-info', '  → %f 默认输出 6 位小数：3.140000');
+  log('c-res',  '3.140000 ');
+  hl('z', [8,9,10,11], null);
+  snap({
+    line:17, cls:'gold',
+    title:'<b>printf("%f \\n", a.u.z);</b>　→　输出 <b>3.140000</b>',
+    desc:'<code>printf</code> 按格式串输出 <code>a.u.z</code>：<br>' +
+         '· <code>%f</code> 按<b>十进制小数</b>输出 <code>double</code> 参数；<br>' +
+         '· <code>a.u.z</code> 是 <code>float</code>，传给变参函数时会<b>默认实参提升</b>为 <code>double</code>，值不变；<br>' +
+         '· 内存中的字节仍是第 13 行写入的 <code>C3 F5 48 40</code>；<br>' +
+         '· <code>%f</code> 默认保留 <b>6 位小数</b>，所以输出 <b><code>3.140000</code></b>。' +
+         '<span class="box win"><b>★ 为什么 z 也没被覆盖？</b><br>' +
+         '<code>z</code> 位于偏移 <b>8 ~ 11</b>。<br>' +
+         '第 14 行的 <code>a.k = 97</code> 只写偏移 <b>0~3</b>，<b>离得很远</b>，完全碰不到。<br>' +
+         '所以 <code>z</code> 保持 <code>3.14f</code> 不变，输出 <code>3.140000</code>。</span>'
+  });
+
+  /* ---------- 第 18 行：return 0; + 总结 ---------- */
+  S.phase = 'done';
+  log('c-empty','');
+  log('c-final','==================== 程序运行结果 ====================');
+  log('c-res',  '97 ');
+  log('c-res',  'A ');
+  log('c-res',  '3.140000 ');
+  log('c-empty','');
+  log('c-note', 'sizeof(union)    = 12 字节（对齐 4，无尾部填充）');
+  log('c-note', 'sizeof(struct u) = 12 字节（含 3 字节内部填充）');
+  log('c-note', '字节序           = 小端序（Little-Endian）');
+  log('c-empty','');
+  log('c-info', 'union 成员表：');
+  log('c-union','  struct u   偏移 0~11   大小 12   对齐 4   （含 3 字节填充 @5~7）');
+  log('c-union','  int    k   偏移 0~3    大小 4    对齐 4   （与 u.x 完全重叠）');
+  log('c-empty','');
+  log('c-info', 'struct u 内部成员表：');
+  log('c-ok',   '  int   x   偏移 0~3    大小 4   对齐 4');
+  log('c-ok',   '  char  y   偏移 4      大小 1   对齐 1');
+  log('c-pad',  '  ----      偏移 5~7    填充 3 字节（对齐需要）');
+  log('c-ok',   '  float z   偏移 8~11   大小 4   对齐 4');
+  log('c-empty','');
+  log('c-info', '内存字节变化过程：');
+  log('c-ok',   '  初始（全局变量零初始化）：');
+  log('c-ok',   '    00 00 00 00 | 00 | 00 00 00 | 00 00 00 00');
+  log('c-ok',   '  执行 a.u.x = 4; 后：');
+  log('c-ok',   '    04 00 00 00 | 00 | 00 00 00 | 00 00 00 00');
+  log('c-ok',   "  执行 a.u.y = 'A'; 后：");
+  log('c-ok',   '    04 00 00 00 | 41 | 00 00 00 | 00 00 00 00');
+  log('c-ok',   '  执行 a.u.z = 3.14; 后：');
+  log('c-ok',   '    04 00 00 00 | 41 | 00 00 00 | C3 F5 48 40');
+  log('c-rose', '  执行 a.k = 97; 后：');
+  log('c-rose', '    61 00 00 00 | 41 | 00 00 00 | C3 F5 48 40');
+  log('c-rose', '    → a.u.x 被覆盖：0x00000004 (4) → 0x00000061 (97)');
+  log('c-rose', '    → a.u.y（偏移 4）与 a.u.z（偏移 8~11）不受影响');
+  log('c-empty','');
+  log('c-info', '输出分析：');
+  log('c-info', '  printf("%d \\n", a.u.x);  → a.u.x = 97 → 输出 97');
+  log('c-info', "  printf(\"%c \\n\", a.u.y);  → a.u.y = 65 = 'A' → 输出 A");
+  log('c-info', '  printf("%f \\n", a.u.z);  → a.u.z = 3.14f → 输出 3.140000');
+  log('c-final','程序正常结束（return 0，退出码 0）');
+  hl(null, [], null);
+  snap({
+    line:18, cls:'gold',
+    title:'<b>return 0;</b>　→　程序正常结束（第 19 行 <code>}</code> main 栈帧销毁）',
+    desc:'main 函数返回 <b>0</b>，向操作系统表示程序正常退出。' +
+         '<span class="box win"><b>★ 程序完整运行结果（共 3 行，每行末尾都有一个空格）：</b><br>' +
+         '<code>97 </code><br><code>A </code><br><code>3.140000 </code></span>' +
+         '<span class="box rose"><b>★ 本程序核心知识点：</b><br>' +
+         '① <b>union 大小</b>：<code>max(12, 4) = 12</code> 字节，最大对齐 4，无尾部填充；<br>' +
+         '② <b>struct 大小</b>：<code>4 + 1 + 3(填充) + 4 = 12</code> 字节，内部含 3 字节对齐填充；<br>' +
+         '③ <b>成员共享内存</b>：<code>u.x</code> 与 <code>k</code> 都从偏移 0 开始，完全重叠；<br>' +
+         '④ <b>小端序</b>：<code>int 4</code> 在内存中是 <code>04 00 00 00</code>；<br>' +
+         '⑤ <b>成员覆盖</b>：写 <code>k</code> 只改 4 字节，却把 <code>u.x</code> 从 4 变成了 97；<br>' +
+         '⑥ <b>覆盖有边界</b>：<code>y</code>（偏移 4）和 <code>z</code>（偏移 8~11）不在 k 的范围内，毫发无损；<br>' +
+         '⑦ <b>格式符</b>：<code>%d</code> 十进制整数、<code>%c</code> ASCII 字符、<code>%f</code> 默认 6 位小数；<br>' +
+         '⑧ <b>union 的危险性</b>：一个成员的写入会「悄悄」改变另一个成员，这是使用 union 时最容易出 bug 的地方 —— ' +
+         '同一时刻只能用一个成员。</span>'
+  });
+
+  return steps;
+})();
+
+/* =========================================================
+   2. DOM 引用
+   ========================================================= */
+var codeStage  = $('#codeStage');
+var codeLines  = $$('#codeInner .code-line');
+var unionViz   = $('#unionViz');
+var byteTable  = $('#byteTable');
+var consoleBody= $('#consoleBody');
+var explainEl  = $('#explain');
+var stepCounter= $('#stepCounter');
+var lineValEl  = $('#lineVal');
+var phaseValEl = $('#phaseVal');
+var sizeValEl  = $('#sizeVal');
+var sizeValEl2 = $('#sizeVal2');
+var mmBody     = $('#mmBody');
+var mmContent  = $('#mmContent');
+var mmViewport = $('#mmViewport');
+var toastEl    = $('#toast');
+
+var MM_LINE_H = 12;   /* 缩略图单行高度 px */
+
+/* =========================================================
+   3. 面板管理：拖动 / 缩放 / 置顶 / 关闭 / 折叠
+   ========================================================= */
+var zTop = 100;
+function activate(panel){
+  if(!panel) return;
+  zTop += 1;
+  panel.style.zIndex = zTop;
+  $$('.panel').forEach(function(p){ p.classList.remove('active'); });
+  panel.classList.add('active');
+}
+
+function clampPos(panel, x, y){
+  var w = panel.offsetWidth || 200;
+  var h = panel.offsetHeight || 80;
+  var maxX = window.innerWidth  - 90;
+  var minX = -(w - 90);
+  var maxY = window.innerHeight - 70;
+  var minY = 0;
+  return [Math.min(maxX, Math.max(minX, x)), Math.min(maxY, Math.max(minY, y))];
+}
+
+function initPanel(panel){
+  var bar = panel.querySelector('[data-drag]');
+  var res = panel.querySelector('[data-resize]');
+  var closeBtn = panel.querySelector('.p-close');
+  var foldBtn  = panel.querySelector('.p-fold');
+
+  panel.addEventListener('pointerdown', function(){ activate(panel); }, true);
+
+  if(closeBtn){
+    closeBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      panel.classList.add('hidden');
+      showToast('面板已关闭 · 按 H 恢复全部');
+    });
+  }
+  if(foldBtn){
+    foldBtn.addEventListener('click', function(e){
+      e.stopPropagation();
+      panel.classList.toggle('folded');
+      foldBtn.textContent = panel.classList.contains('folded') ? '+' : '–';
+    });
+  }
+
+  /* ---- 拖动 ---- */
+  if(bar){
+    var dragging=false, sx=0, sy=0, ox=0, oy=0;
+    bar.addEventListener('pointerdown', function(e){
+      if(e.target.closest('button')) return;
+      dragging = true;
+      sx = e.clientX; sy = e.clientY;
+      var r = panel.getBoundingClientRect();
+      ox = r.left; oy = r.top;
+      try{ bar.setPointerCapture(e.pointerId); }catch(_){}
+      e.preventDefault();
+    });
+    bar.addEventListener('pointermove', function(e){
+      if(!dragging) return;
+      var nx = ox + (e.clientX - sx);
+      var ny = oy + (e.clientY - sy);
+      var p = clampPos(panel, nx, ny);
+      panel.style.left = p[0] + 'px';
+      panel.style.top  = p[1] + 'px';
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+    });
+    function endDrag(e){
+      if(!dragging) return;
+      dragging = false;
+      try{ bar.releasePointerCapture(e.pointerId); }catch(_){}
+    }
+    bar.addEventListener('pointerup', endDrag);
+    bar.addEventListener('pointercancel', endDrag);
+  }
+
+  /* ---- 缩放（无最小 / 最大限制） ---- */
+  if(res){
+    var rz=false, rsx=0, rsy=0, rw=0, rh=0;
+    res.addEventListener('pointerdown', function(e){
+      rz = true;
+      rsx = e.clientX; rsy = e.clientY;
+      var r = panel.getBoundingClientRect();
+      rw = r.width; rh = r.height;
+      try{ res.setPointerCapture(e.pointerId); }catch(_){}
+      e.preventDefault(); e.stopPropagation();
+    });
+    res.addEventListener('pointermove', function(e){
+      if(!rz) return;
+      panel.style.width  = Math.max(0, rw + (e.clientX - rsx)) + 'px';
+      panel.style.height = Math.max(0, rh + (e.clientY - rsy)) + 'px';
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      syncMinimapViewport();
+    });
+    function endRz(e){
+      if(!rz) return;
+      rz = false;
+      try{ res.releasePointerCapture(e.pointerId); }catch(_){}
+    }
+    res.addEventListener('pointerup', endRz);
+    res.addEventListener('pointercancel', endRz);
+  }
+}
+
+/* =========================================================
+   4. 默认布局
+   ========================================================= */
+function applyLayout(){
+  var W = window.innerWidth, H = window.innerHeight;
+  function set(id, left, top, width, height){
+    var p = $(id);
+    if(!p) return;
+    p.style.left = left + 'px';
+    p.style.top  = top + 'px';
+    p.style.right = 'auto';
+    p.style.bottom = 'auto';
+    if(width  !== null) p.style.width  = width + 'px';
+    else p.style.width = '';
+    if(height !== null) p.style.height = height + 'px';
+    else p.style.height = '';
+  }
+
+  /* 控制栏：左上 */
+  set('#pControl', 12, 12, Math.min(1180, W*0.62), null);
+
+  /* 平台模型：控制栏下方左侧 */
+  set('#pInfo', 12, 210, Math.min(1180, W*0.60), Math.min(430, H*0.42));
+
+  /* union 共享视图：左下 */
+  set('#pUnion', 12, Math.max(660, H*0.62), Math.min(1180, W*0.62), Math.min(380, H*0.36));
+
+  /* 字节级表格：右下偏左 */
+  set('#pBytes', Math.max(1260, W*0.655), 12, Math.min(1100, W*0.34), Math.min(560, H*0.52));
+
+  /* 变量卡片：右侧中部 */
+  set('#pVars', Math.max(1260, W*0.655), Math.max(600, H*0.58), Math.min(1100, W*0.34), Math.min(440, H*0.40));
+
+  /* 控制台：右上 */
+  set('#pConsole', Math.max(1580, W*0.82), 12, Math.min(720, W*0.24), Math.min(560, H*0.52));
+
+  /* 说明条：底部 */
+  set('#pExplain', 12, Math.max(300, H - 320), Math.min(1240, W*0.65), 300);
+
+  /* 缩略图：右上角 */
+  set('#pMinimap', W - 260, 12, 240, 300);
+
+  /* 默认层级 */
+  var order = ['#pControl','#pInfo','#pUnion','#pBytes','#pVars','#pConsole','#pExplain','#pMinimap'];
+  order.forEach(function(sel, i){
+    var p = $(sel);
+    if(p){ p.style.zIndex = 120 + i; p.classList.remove('active'); }
+  });
+  zTop = 200;
+}
+
+/* =========================================================
+   5. 构建 union 共享视图
+   ========================================================= */
+var UMEMBERS = [
+  { key:'x',   label:'u.x',  ty:'int',    off:0, size:4, cls:'c-x'   },
+  { key:'y',   label:'u.y',  ty:'char',   off:4, size:1, cls:'c-y'   },
+  { key:'z',   label:'u.z',  ty:'float',  off:8, size:4, cls:'c-z'   },
+  { key:'k',   label:'k',    ty:'int',    off:0, size:4, cls:'c-k'   },
+  { key:'pad', label:'填充', ty:'3 字节', off:5, size:3, cls:'c-pad' }
+];
+
+function buildUnionViz(){
+  var h = '<div class="u-ruler"><span class="u-rlabel">偏移</span><div class="u-cells">';
+  for(var i=0;i<UNION_SIZE;i++) h += '<span>'+i+'</span>';
+  h += '</div></div>';
+
+  UMEMBERS.forEach(function(m){
+    h += '<div class="u-row" data-m="'+m.key+'">';
+    h += '<div class="u-name">'+m.label+'<em>'+m.ty+'</em></div>';
+    h += '<div class="u-cells">';
+    for(var i=0;i<UNION_SIZE;i++){
+      var inR = (i >= m.off && i < m.off + m.size);
+      if(inR){
+        h += '<div class="u-cell '+m.cls+'" data-i="'+i+'" data-owner="'+m.key+'">'+
+             (m.key==='pad' ? '░░' : '--') + '</div>';
+      }else{
+        h += '<div class="u-cell u-empty" data-i="'+i+'" data-owner=""></div>';
+      }
+    }
+    h += '</div></div>';
+  });
+
+  h += '<div class="u-legend">' +
+       '<span><i class="x"></i>u.x（int · 偏移 0~3）</span>' +
+       '<span><i class="y"></i>u.y（char · 偏移 4）</span>' +
+       '<span><i class="z"></i>u.z（float · 偏移 8~11）</span>' +
+       '<span><i class="k"></i>k（int · 偏移 0~3 · 与 u.x 重叠）</span>' +
+       '<span><i class="p"></i>填充（偏移 5~7）</span>' +
+       '</div>';
+
+  unionViz.innerHTML = h;
+}
+
+function updateUnionViz(step){
+  var bytes   = step ? step.bytes : null;
+  var member  = step ? step.hl.member : null;
+  var hlBytes = step ? step.hl.bytes : [];
+
+  var rows = unionViz.querySelectorAll('.u-row');
+  Array.prototype.forEach.call(rows, function(row){
+    var key = row.getAttribute('data-m');
+    row.classList.toggle('is-hl', member === key);
+    var cells = row.querySelectorAll('.u-cell');
+    Array.prototype.forEach.call(cells, function(cell){
+      var idx   = Number(cell.getAttribute('data-i'));
+      var owner = cell.getAttribute('data-owner');
+      if(owner === key && key !== 'pad'){
+        var b = (bytes && bytes[idx] !== null && bytes[idx] !== undefined) ? bytes[idx] : null;
+        cell.textContent = (b === null) ? '--' : hex2(b);
+      }
+      var active = (member === key) && (hlBytes.indexOf(idx) >= 0);
+      cell.classList.toggle('is-active', active);
+      if(member && member !== key && owner === key) cell.classList.add('dim');
+      else cell.classList.remove('dim');
+    });
+  });
+}
+
+/* =========================================================
+   6. 构建字节级表格
+   ========================================================= */
+function buildByteTable(){
+  var h = '<thead><tr><th class="b-h">偏移</th>';
+  for(var i=0;i<UNION_SIZE;i++){
+    h += '<th>0x' + i.toString(16).toUpperCase().padStart(2,'0') + '</th>';
+  }
+  h += '</tr></thead><tbody>';
+
+  ['hex','dec','char'].forEach(function(k){
+    h += '<tr data-row="'+k+'"><td class="b-h">'+k+'</td>';
+    for(var i=0;i<UNION_SIZE;i++){
+      h += '<td class="b-'+k+'" data-i="'+i+'">--</td>';
+    }
+    h += '</tr>';
+  });
+  h += '</tbody>';
+  byteTable.innerHTML = h;
+}
+
+var lastFlashKey = '';
+function updateByteTable(step, stepIdx){
+  var flash = step ? step.flash : [];
+  var kind  = step ? step.flashKind : null;
+  var bytes = step ? step.bytes : null;
+  var active= step ? step.hl.bytes : [];
+
+  var flashKey = stepIdx + '#' + flash.join(',') + '#' + (kind||'');
+  var doFlash  = (flashKey !== lastFlashKey);
+  if(doFlash) lastFlashKey = flashKey;
+
+  var tds = byteTable.querySelectorAll('td[data-i]');
+  Array.prototype.forEach.call(tds, function(td){
+    var i   = Number(td.getAttribute('data-i'));
+    var row = td.parentNode.getAttribute('data-row');
+    var b   = (bytes && bytes[i] !== null && bytes[i] !== undefined) ? bytes[i] : null;
+
+    var val;
+    if(b === null)      val = (row === 'hex') ? '--' : (row === 'dec') ? '-' : '·';
+    else if(row==='hex')val = hex2(b);
+    else if(row==='dec')val = String(b);
+    else                val = charOf(b);
+
+    td.textContent = val;
+
+    /* 闪光：只让本步被写入的字节动 */
+    if(doFlash){
+      td.classList.remove('fl-x','fl-k');
+      if(flash.indexOf(i) >= 0){
+        void td.offsetWidth;                     /* 触发重排以重放动画 */
+        td.classList.add(kind === 'k' ? 'fl-k' : 'fl-x');
+      }
+    }
+
+    td.classList.toggle('is-active', active.indexOf(i) >= 0);
+    td.classList.toggle('is-shared', i >= 0 && i <= 3);
+  });
+}
+
+/* =========================================================
+   7. 变量卡片
+   ========================================================= */
+var prevVarVals = { x:'?', y:'?', z:'?', k:'?' };
+
+function updateVarCards(step){
+  var bytes  = step ? step.bytes : null;
+  var member = step ? step.hl.member : null;
+
+  var vals = { x:'?', y:'?', z:'?', k:'?' };
+  var hasData = false;
+
+  if(bytes && bytes[0] !== null){
+    hasData = true;
+    var iv = bytesToInt([bytes[0],bytes[1],bytes[2],bytes[3]]);
+    vals.x = String(iv);
+    vals.k = String(iv);
+    vals.y = bytes[4] + '  ' + charOf(bytes[4]);
+    var fv = bytesToFloat([bytes[8],bytes[9],bytes[10],bytes[11]]);
+    vals.z = (fv === null) ? '?' : fv.toFixed(6);
+  }
+
+  Object.keys(vals).forEach(function(key){
+    var card = document.querySelector('.var-card.' + key + '-card');
+    if(!card) return;
+    var vv = card.querySelector('.vv');
+    if(vv.textContent !== vals[key]) vv.textContent = vals[key];
+    card.classList.toggle('has', hasData);
+    card.classList.toggle('is-active', member === key);
+  });
+
+  /* a.u.x 从 4 变 97 —— 玫瑰色闪烁强调 */
+  var xCard = document.querySelector('.var-card.x-card');
+  if(xCard){
+    xCard.classList.remove('flash-x');
+    if(step && step.flashKind === 'k'){
+      void xCard.offsetWidth;
+      xCard.classList.add('flash-x');
+    }
+  }
+}
+
+/* =========================================================
+   8. 控制台
+   ========================================================= */
+function updateConsole(step, stepIdx){
+  if(!step){
+    consoleBody.innerHTML = '<div class="out-line c-empty">（等待程序开始…）</div>';
+    return;
+  }
+  var lines = step.console;
+  var frag = document.createDocumentFragment();
+  for(var i=0;i<lines.length;i++){
+    var d = document.createElement('div');
+    d.className = 'out-line ' + lines[i].cls;
+    d.textContent = lines[i].txt;
+    frag.appendChild(d);
+  }
+  consoleBody.innerHTML = '';
+  consoleBody.appendChild(frag);
+
+  var last = consoleBody.lastElementChild;
+  if(last && stepIdx < STEPS.length - 1){
+    var cur = document.createElement('span');
+    cur.className = 'cursor';
+    cur.textContent = '▊';
+    last.appendChild(cur);
+  }
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+/* =========================================================
+   9. 信息条
+   ========================================================= */
+function updateInfoBar(step){
+  if(!step){
+    lineValEl.textContent = '—';
+    phaseValEl.textContent = '—';
+    sizeValEl.textContent = '—';
+    sizeValEl2.textContent = '—';
+    return;
+  }
+  lineValEl.textContent = '第 ' + step.line + ' 行';
+  var ph = '未开始';
+  if(step.phase === 'preprocess') ph = '预处理';
+  else if(step.phase === 'compile') ph = '编译期';
+  else if(step.phase === 'main')    ph = '运行期';
+  else if(step.phase === 'done')    ph = '已结束';
+  phaseValEl.textContent = ph;
+  sizeValEl.textContent  = step.unionDone ? '12 字节' : '计算中…';
+  sizeValEl2.textContent = step.structDone ? '12 字节' : '计算中…';
+}
+
+/* =========================================================
+   10. 代码高亮 + 自动居中
+   ========================================================= */
+function updateCode(step){
+  var activeLine = step ? step.line : -1;
+  codeLines.forEach(function(el, i){
+    var n = i + 1;
+    var isActive = (n === activeLine);
+    el.classList.toggle('active', isActive);
+    el.classList.toggle('gold-hi', isActive && step && step.cls === 'gold');
+    el.classList.toggle('rose-hi', isActive && step && step.cls === 'rose');
+    el.classList.toggle('done', activeLine > 0 && n < activeLine);
+  });
+
+  if(step && codeLines[step.line - 1]){
+    var el = codeLines[step.line - 1];
+    var er = el.getBoundingClientRect();
+    var cr = codeStage.getBoundingClientRect();
+    var target = codeStage.scrollTop + (er.top - cr.top)
+               - (codeStage.clientHeight - er.height) / 2;
+    codeStage.scrollTop = Math.max(0, target);
+  }
+}
+
+/* =========================================================
+   11. 缩略图同步
+   ========================================================= */
+function buildMinimap(){
+  var html = '';
+  codeLines.forEach(function(el){
+    var src = el.querySelector('.src').innerHTML;
+    html += '<div class="mm-line">' + src + '</div>';
+  });
+  mmContent.innerHTML = html;
+}
+
+function getCodeLineHeight(){
+  if(codeLines.length < 2) return 0;
+  return codeLines[1].offsetTop - codeLines[0].offsetTop;
+}
+
+var rafPending = false;
+function syncMinimapViewport(){
+  if(rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(function(){
+    rafPending = false;
+    var lh = getCodeLineHeight();
+    if(!lh) return;
+    var total = codeLines.length * lh;
+    var scale = MM_LINE_H / lh;
+
+    var top = codeStage.scrollTop * scale;
+    var h   = codeStage.clientHeight * scale;
+    var contentH = codeLines.length * MM_LINE_H;
+
+    top = Math.max(0, Math.min(top, Math.max(0, contentH - 20)));
+    h   = Math.max(16, Math.min(h, contentH - top));
+
+    mmViewport.style.top    = top + 'px';
+    mmViewport.style.height = h + 'px';
+  });
+}
+
+function updateMinimap(step){
+  var lines = mmContent.children;
+  for(var i=0;i<lines.length;i++){
+    var n = i + 1;
+    var isActive = step && n === step.line;
+    lines[i].classList.toggle('active', isActive);
+    lines[i].classList.toggle('gold', isActive && step.cls === 'gold');
+    lines[i].classList.toggle('rose', isActive && step.cls === 'rose');
+  }
+  /* 让缩略图中的当前行滚动可见 */
+  if(step){
+    var el = lines[step.line - 1];
+    if(el){
+      var top = (step.line - 1) * MM_LINE_H;
+      var bodyH = mmBody.clientHeight;
+      if(top < mmBody.scrollTop || top + MM_LINE_H > mmBody.scrollTop + bodyH){
+        mmBody.scrollTop = Math.max(0, top - bodyH/2);
+      }
+    }
+  }
+  syncMinimapViewport();
+}
+
+/* =========================================================
+   12. 主渲染
+   ========================================================= */
+var current = -1;
+
+function render(){
+  var step = current >= 0 ? STEPS[current] : null;
+
+  updateCode(step);
+  updateUnionViz(step);
+  updateByteTable(step, current);
+  updateVarCards(step);
+  updateConsole(step, current);
+  updateInfoBar(step);
+  updateMinimap(step);
+
+  if(step){
+    var tagCls = step.cls ? ' ' + step.cls : '';
+    explainEl.innerHTML =
+      '<span class="tag' + tagCls + '">第 ' + step.line + ' 行</span>' +
+      '<strong>' + step.title + '</strong><br>' + step.desc;
+    stepCounter.textContent = (current + 1) + ' / ' + STEPS.length;
+  }else{
+    explainEl.innerHTML =
+      '<em>点击「自动播放」或「下一步」，开始逐步执行模拟。</em><br><br>' +
+      '<strong>本程序演示：union 覆盖嵌套结构体成员 的经典案例</strong><br>' +
+      '· <code>union { struct {int x; char y; float z;} u; int k; } a;</code><br>' +
+      '　→ union 大小 <b>12</b> 字节：<code>u</code> 占 0~11，<code>k</code> 占 0~3；<br>' +
+      '· struct u 内部：<code>x</code>@0~3，<code>y</code>@4，填充 5~7，<code>z</code>@8~11；<br>' +
+      '· <b>a 是全局变量</b> → 存放在 .bss 段，被零初始化为全 0；<br>' +
+      '· <b>第 11~13 行</b>：写入 x=4、y=\'A\'、z=3.14；<br>' +
+      '· <b>第 14 行</b>：<code>a.k = 97</code> → 只写偏移 0~3，' +
+      '却把 <b>a.u.x 从 4 隐式变成 97</b>；<br>' +
+      '· <b>第 15~17 行</b>：依次输出 <code>97 </code>、<code>A </code>、<code>3.140000 </code>；<br>' +
+      '· ★ <code>y</code> 在偏移 4、<code>z</code> 在偏移 8~11，<b>不在覆盖范围内，安然无恙</b>。<br><br>' +
+      '共 ' + STEPS.length + ' 个执行步骤。快捷键：空格 播放/暂停，← → 上一步/下一步，R 重置，F 全屏，M 缩略图，H 面板。';
+    stepCounter.textContent = '— / ' + STEPS.length;
+  }
+
+  var btnPrev = $('#btnPrev'), btnNext = $('#btnNext');
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+
+  syncMinimapViewport();
+}
+
+/* =========================================================
+   13. 播放控制
+   ========================================================= */
+var playing = false;
+var timer = null;
+var speed = 760;
+
+var btnPlay = $('#btnPlay');
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+function tick(){
+  if(current >= STEPS.length - 1){ pause(); return; }
+  current += 1;
+  render();
+  if(current >= STEPS.length - 1) pause();
+}
+function play(){
+  if(playing) return;
+  if(current >= STEPS.length - 1){ current = -1; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+function pause(){
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+function nextStep(){
+  pause();
+  if(current < STEPS.length - 1){ current += 1; render(); }
+}
+function prevStep(){
+  pause();
+  if(current > -1){ current -= 1; render(); }
+}
+function resetAll(){
+  pause();
+  current = -1;
+  codeStage.scrollTop = 0;
+  codeStage.scrollLeft = 0;
+  lastFlashKey = '';
+  render();
+}
+
+/* =========================================================
+   14. Toast
+   ========================================================= */
+var toastTimer = null;
+function showToast(msg){
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(function(){
+    toastEl.classList.remove('show');
+  }, 1400);
+}
+
+/* =========================================================
+   15. 事件绑定
+   ========================================================= */
+$('#btnPlay').addEventListener('click', function(){ playing ? pause() : play(); });
+$('#btnNext').addEventListener('click', nextStep);
+$('#btnPrev').addEventListener('click', prevStep);
+$('#btnReset').addEventListener('click', resetAll);
+
+$('#btnFull').addEventListener('click', function(){
+  if(!document.fullscreenElement){
+    (document.documentElement.requestFullscreen || function(){}).call(document.documentElement);
+  }else{
+    (document.exitFullscreen || function(){}).call(document);
+  }
+});
+
+$('#btnMini').addEventListener('click', function(){
+  var p = $('#pMinimap');
+  p.classList.toggle('hidden');
+  if(!p.classList.contains('hidden')) activate(p);
+});
+
+$('#btnPanels').addEventListener('click', function(){
+  var panels = $$('.panel');
+  var anyHidden = panels.some(function(p){ return p.classList.contains('hidden'); });
+  panels.forEach(function(p){ p.classList.toggle('hidden', !anyHidden); });
+  showToast(anyHidden ? '已显示全部面板' : '已隐藏全部面板 · 按 H 恢复');
+});
+
+$('#btnLayout').addEventListener('click', function(){
+  $$('.panel').forEach(function(p){
+    p.classList.remove('hidden','folded');
+    var f = p.querySelector('.p-fold');
+    if(f) f.textContent = '–';
+    p.style.width = '';
+    p.style.height = '';
+  });
+  applyLayout();
+  buildMinimap();
+  syncMinimapViewport();
+  showToast('已恢复默认布局');
+});
+
+var speedInput = $('#speed');
+var speedLabel = $('#speedLabel');
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+  if(playing){
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+/* 全局快捷键 */
+document.addEventListener('keydown', function(e){
+  var t = e.target;
+  if(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+
+  switch(e.code){
+    case 'Space':
+      e.preventDefault();
+      playing ? pause() : play();
+      break;
+    case 'ArrowRight': e.preventDefault(); nextStep(); break;
+    case 'ArrowLeft':  e.preventDefault(); prevStep(); break;
+    case 'KeyR':       e.preventDefault(); resetAll(); break;
+    case 'KeyF':
+      e.preventDefault();
+      $('#btnFull').click();
+      break;
+    case 'KeyM':
+      e.preventDefault();
+      $('#btnMini').click();
+      break;
+    case 'KeyH':
+      e.preventDefault();
+      $('#btnPanels').click();
+      break;
+  }
+});
+
+/* 缩略图点击跳转 */
+mmBody.addEventListener('click', function(e){
+  var rect = mmContent.getBoundingClientRect();
+  var y = e.clientY - rect.top;
+  var lh = getCodeLineHeight();
+  if(!lh) return;
+  var scale = MM_LINE_H / lh;
+  codeStage.scrollTop = Math.max(0, y / scale);
+  syncMinimapViewport();
+});
+
+/* 代码区滚动 / 窗口变化 */
+codeStage.addEventListener('scroll', syncMinimapViewport, {passive:true});
+window.addEventListener('resize', function(){
+  applyLayout();
+  buildMinimap();
+  syncMinimapViewport();
+});
+window.addEventListener('load', function(){
+  buildMinimap();
+  syncMinimapViewport();
+});
+
+/* =========================================================
+   16. 初始化
+   ========================================================= */
+buildUnionViz();
+buildByteTable();
+buildMinimap();
+
+/* 面板初始化 */
+$$('.panel').forEach(initPanel);
+
+applyLayout();
+speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+updatePlayBtn();
+
+/* 首帧后再同步一次（等字体 / 布局稳定） */
+render();
+requestAnimationFrame(function(){
+  buildMinimap();
+  syncMinimapViewport();
+});
+setTimeout(function(){ buildMinimap(); syncMinimapViewport(); }, 300);
+setTimeout(function(){ buildMinimap(); syncMinimapViewport(); }, 900);
+
+})();
+</script>
+</body>
+</html>

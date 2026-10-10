@@ -1,0 +1,1614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 数组名退化与指针 · p = a 等价于 p = &a[0] · 无输出</title>
+<style>
+  :root{
+    --code-font: clamp(80px, 4.3vw, 110px);
+    --out-font: clamp(72px, 3.9vw, 100px);
+    --var-font: clamp(40px, 2.1vw, 54px);
+    --explain-font: clamp(48px, 2.5vw, 64px);
+    --btn-font: clamp(40px, 2vw, 52px);
+
+    --bg:#0d1117;
+    --panel-bg:rgba(14,22,36,.86);
+    --border:#20344f;
+    --text:#dce8f8;
+    --muted:#8aa0bd;
+    --accent:#38bdf8;
+    --green:#4ade80;
+    --amber:#fbbf24;
+    --pink:#f472b6;
+    --purple:#c084fc;
+    --teal:#2dd4bf;
+    --orange:#fb923c;
+    --gold:#facc15;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    background:var(--bg);color:var(--text);overflow:hidden;
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    -webkit-tap-highlight-color:transparent;
+  }
+
+  #codeArea{
+    position:fixed;inset:0;z-index:1;overflow:auto;background:#0d1117;
+    font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+    font-size:var(--code-font);
+    line-height:1.26;
+    padding:20px 40px 40px 20px;
+    white-space:pre;
+    scrollbar-width:thin;scrollbar-color:#2c3f5e transparent;
+  }
+  #codeArea::-webkit-scrollbar{width:16px;height:16px;}
+  #codeArea::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+
+  .code-line{
+    display:flex;align-items:flex-start;gap:.5em;
+    padding:.06em 1.2em .06em .2em;
+    border-left:.14em solid transparent;
+    transition:background .3s,border-color .3s,opacity .3s;
+  }
+  .code-line .ln{
+    flex:0 0 auto;width:2.3ch;text-align:right;color:#3f5a7d;
+    user-select:none;font-variant-numeric:tabular-nums;
+  }
+  .code-line .src{flex:0 0 auto;white-space:pre;}
+  .code-line.pending{opacity:.34;}
+  .code-line.active{
+    background:linear-gradient(90deg,rgba(56,189,248,.28),rgba(56,189,248,.02));
+    border-left-color:var(--accent);
+    box-shadow:inset 0 0 0 2px rgba(56,189,248,.25);
+    opacity:1;
+  }
+  .code-line.active .ln{color:var(--accent);font-weight:700;}
+  .code-line.active .src{color:#ffffff;}
+  .code-line.done{opacity:.62;}
+
+  .pp{color:#c084fc;font-weight:700;}
+  .str{color:#4ade80;}
+  .cmt{color:#5f7796;font-style:italic;}
+  .fn{color:#38bdf8;}
+  .kw{color:#f472b6;font-weight:700;}
+  .num{color:#fbbf24;}
+  .op{color:#fb923c;font-weight:700;}
+  .hr-key{color:#2dd4bf;font-weight:700;}
+  .hr-star{color:#c084fc;font-weight:800;}
+  .hr-arr{color:#facc15;font-weight:800;text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:6px;}
+  .hr-main{color:#22d3ee;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:6px;}
+  .hr-block{color:#f472b6;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:6px;}
+
+  .panel{
+    position:fixed;z-index:100;display:flex;flex-direction:column;
+    background:var(--panel-bg);
+    -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+    border:3px solid var(--border);border-radius:20px;
+    box-shadow:0 24px 60px rgba(0,0,0,.6);
+    color:var(--text);overflow:hidden;
+    transition:border-color .2s,box-shadow .2s,opacity .2s;
+  }
+  .panel.top{
+    border-color:var(--accent);
+    box-shadow:0 0 0 4px rgba(56,189,248,.3),0 24px 60px rgba(0,0,0,.7);
+  }
+  .panel.hidden{display:none;}
+
+  .panel-head{
+    flex:0 0 auto;display:flex;align-items:center;gap:14px;
+    padding:10px 16px;cursor:move;user-select:none;
+    background:linear-gradient(180deg,rgba(56,189,248,.16),rgba(56,189,248,.03));
+    border-bottom:2px solid var(--border);
+    font-size:var(--var-font);font-weight:800;letter-spacing:.02em;
+  }
+  .panel-head .ttl{color:#eaf3ff;white-space:nowrap;}
+  .panel-head .sub{color:var(--muted);font-size:.72em;font-weight:600;}
+
+  .panel-btn{
+    flex:0 0 auto;min-width:64px;min-height:64px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:calc(var(--btn-font) * .85);line-height:1;
+    border-radius:14px;border:2px solid var(--border);
+    background:rgba(255,255,255,.06);color:var(--text);cursor:pointer;
+    transition:background .15s,border-color .15s;
+  }
+  .panel-btn:hover{background:rgba(56,189,248,.28);border-color:var(--accent);}
+  .panel-close{margin-left:auto;}
+
+  .panel-body{
+    flex:1 1 auto;min-height:0;overflow:auto;padding:14px 16px;
+    scrollbar-width:thin;scrollbar-color:#334155 transparent;
+  }
+  .panel-body::-webkit-scrollbar{width:12px;height:12px;}
+  .panel-body::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:8px;}
+
+  .rz{
+    position:absolute;right:0;bottom:0;width:56px;height:56px;
+    cursor:nwse-resize;z-index:20;
+    background:linear-gradient(135deg,transparent 48%,rgba(56,189,248,.85) 50%,rgba(56,189,248,.85) 62%,transparent 64%,
+                                transparent 74%,rgba(56,189,248,.5) 76%,rgba(56,189,248,.5) 88%,transparent 90%);
+  }
+  .rz:hover{background-color:rgba(56,189,248,.18);}
+
+  #panelCtrl{padding:0;border-radius:22px;}
+  #panelCtrl .ctrl-row{
+    display:flex;align-items:center;gap:16px;padding:14px 18px;flex-wrap:wrap;
+  }
+  .btn{
+    font:inherit;font-size:var(--btn-font);font-weight:700;
+    min-height:76px;padding:0 26px;border-radius:16px;
+    border:3px solid var(--border);background:rgba(255,255,255,.07);
+    color:var(--text);cursor:pointer;white-space:nowrap;
+    transition:background .15s,border-color .15s,transform .1s;
+  }
+  .btn:hover:not(:disabled){background:rgba(56,189,248,.3);border-color:var(--accent);}
+  .btn:active:not(:disabled){transform:translateY(2px);}
+  .btn:disabled{opacity:.3;cursor:not-allowed;}
+  .btn.primary{
+    background:linear-gradient(180deg,#0ea5e9,#0284c7);
+    border-color:#38bdf8;color:#04121f;
+  }
+  .btn.primary.playing{
+    background:linear-gradient(180deg,#f59e0b,#d97706);
+    border-color:#fbbf24;color:#1a1200;
+  }
+  .speed-wrap{
+    display:flex;align-items:center;gap:14px;
+    font-size:var(--btn-font);color:var(--muted);font-weight:700;
+  }
+  .speed-wrap input[type=range]{
+    width:260px;height:28px;accent-color:var(--accent);cursor:pointer;
+  }
+  .speed-wrap b{color:var(--accent);min-width:4.4em;display:inline-block;font-variant-numeric:tabular-nums;}
+
+  .stack-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .stack-cap{color:var(--muted);font-size:.82em;font-weight:700;flex:0 0 auto;}
+  .frames{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .frame-card{
+    font-family:ui-monospace,Consolas,monospace;font-weight:800;
+    font-size:.86em;padding:.14em .6em;border-radius:12px;
+    background:#0b1526;border:2px solid #1b293f;color:#8aa2c0;
+  }
+  .frame-card.top-frame{
+    border-color:var(--accent);background:rgba(56,189,248,.24);color:#fff;
+    box-shadow:0 0 0 3px rgba(56,189,248,.35);
+    animation:popIn .35s ease-out;
+  }
+  @keyframes popIn{0%{transform:scale(.6);opacity:0;}70%{transform:scale(1.12);}100%{transform:scale(1);opacity:1;}}
+  .arrow{color:#3f5a7d;font-weight:800;font-size:.86em;}
+  .stack-empty{color:#4c6689;font-family:ui-monospace,monospace;font-size:.86em;}
+
+  .vrow{
+    display:flex;justify-content:space-between;align-items:center;gap:16px;
+    padding:.2em .7em;border-radius:12px;margin-bottom:6px;
+    background:rgba(255,255,255,.045);border:2px solid #1b293f;
+    font-size:.9em;
+  }
+  .vrow .n{color:var(--muted);font-weight:700;white-space:nowrap;flex:0 0 auto;}
+  .vrow .v{
+    font-family:ui-monospace,Consolas,monospace;font-weight:800;
+    color:var(--accent);text-align:right;word-break:break-word;
+  }
+  .vrow.wrap .v{text-align:left;font-size:.92em;line-height:1.4;}
+  .vrow.k-main{border-left:10px solid rgba(34,211,238,.85);}
+  .vrow.k-main .v{color:#22d3ee;}
+  .vrow.k-block{border-left:10px solid rgba(192,132,252,.85);}
+  .vrow.k-block .v{color:var(--purple);}
+  .vrow.k-gold{border-left:10px solid rgba(250,204,21,.9);}
+  .vrow.k-gold .v{color:var(--gold);}
+  .vrow.k-ctx{border-left:10px solid rgba(74,222,128,.85);}
+  .vrow.k-ctx .v{color:var(--green);}
+  .vrow.k-val{border-left:10px solid rgba(244,114,182,.85);}
+  .vrow.k-val .v{color:var(--pink);}
+  .vrow.k-sw{border-left:10px solid rgba(45,212,191,.9);}
+  .vrow.k-sw .v{color:var(--teal);}
+  .vrow.k-cnt{border-left:10px solid rgba(251,191,36,.6);}
+  .vrow.k-cnt .v{color:var(--amber);}
+  .vrow .v.dim{color:#5f7796;font-weight:600;}
+  .vrow.changed{background:rgba(56,189,248,.18);border-color:rgba(56,189,248,.8);}
+  @keyframes flash{0%{transform:scale(1);}35%{transform:scale(1.18);color:#fff;text-shadow:0 0 18px var(--accent);}100%{transform:scale(1);}}
+  .vrow .v.flash{animation:flash .5s ease-out;}
+
+  .group-title{
+    margin:14px 0 8px;font-size:.82em;font-weight:800;letter-spacing:.06em;
+    color:#93a9c6;border-bottom:2px dashed #26384f;padding-bottom:4px;
+  }
+  .group-title:first-child{margin-top:0;}
+
+  #memCells{display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;}
+  .mem-empty{color:#4c6689;font-family:ui-monospace,monospace;font-size:.9em;}
+  .mem-cell{
+    display:flex;flex-direction:column;gap:.2em;
+    min-width:7em;max-width:18em;padding:.35em .6em .45em;
+    border-radius:14px;background:#0b1526;border:4px solid #1b293f;
+    font-family:ui-monospace,Consolas,monospace;
+    transition:background .25s,border-color .25s,box-shadow .25s;
+  }
+  .mem-cell.main-scope{border-color:#164e63;}
+  .mem-cell.block-scope{border-color:#581c87;}
+  .mem-cell.is-active.main-scope{
+    border-color:var(--teal);background:rgba(45,212,191,.18);
+    box-shadow:0 0 0 4px rgba(45,212,191,.3);
+  }
+  .mem-cell.is-active.block-scope{
+    border-color:var(--purple);background:rgba(192,132,252,.18);
+    box-shadow:0 0 0 4px rgba(192,132,252,.3);
+  }
+  @keyframes cellPulse{
+    0%{transform:scale(1);}
+    45%{transform:scale(1.14);background:rgba(56,189,248,.45);box-shadow:0 0 0 12px rgba(56,189,248,.35);}
+    100%{transform:scale(1);}
+  }
+  .mem-cell.pulse{animation:cellPulse .7s ease-out;}
+  .mem-head{display:flex;align-items:baseline;gap:.4em;flex-wrap:wrap;}
+  .mem-name{font-size:.9em;font-weight:900;color:#e2edff;}
+  .mem-scope{
+    font-size:.56em;color:#93a9c6;border:2px solid #22334d;
+    border-radius:.35rem;padding:0 .35em;line-height:1.3;font-weight:800;
+  }
+  .mem-scope.main{color:#22d3ee;border-color:#164e63;}
+  .mem-scope.block{color:#c084fc;border-color:#581c87;}
+  .mem-addr{font-size:.6em;color:#4c6689;font-weight:700;}
+  .mem-val{
+    font-size:.8em;font-weight:900;color:#9fb6d2;
+    text-align:center;word-break:break-all;line-height:1.4;
+  }
+  .mem-cell.main-scope .mem-val{color:#22d3ee;}
+  .mem-cell.block-scope .mem-val{color:var(--purple);}
+  .mem-cell.pointer .mem-val{color:var(--gold);}
+  .mem-legend{
+    margin-top:14px;font-size:.72em;color:var(--muted);font-weight:700;
+    display:flex;gap:22px;flex-wrap:wrap;
+  }
+  .mem-legend i{display:inline-block;width:.9em;height:.9em;border-radius:5px;margin-right:.35em;vertical-align:-2px;}
+
+  #arrView{display:flex;flex-direction:column;gap:.7em;}
+  .arr-empty{color:#4c6689;font-family:ui-monospace,monospace;font-size:.9em;}
+  .arr-block{display:flex;flex-direction:column;gap:.3em;padding:.35em .5em;
+    background:rgba(255,255,255,.03);border-radius:12px;border:2px solid #1b293f;}
+  .arr-block.main-scope{border-color:#164e63;}
+  .arr-block.block-scope{border-color:#581c87;}
+  .arr-head{display:flex;align-items:baseline;gap:.6em;flex-wrap:wrap;}
+  .arr-name{font-size:.85em;font-weight:900;color:#e2edff;font-family:ui-monospace,Consolas,monospace;}
+  .arr-scope{
+    font-size:.56em;border:2px solid #22334d;border-radius:.35rem;
+    padding:0 .35em;font-weight:800;color:#93a9c6;
+  }
+  .arr-scope.main{color:#22d3ee;border-color:#164e63;}
+  .arr-scope.block{color:#c084fc;border-color:#581c87;}
+  .arr-type{font-size:.62em;color:#4c6689;font-weight:700;}
+  .arr-cells{display:flex;gap:.28em;flex-wrap:wrap;}
+  .arr-cell{
+    display:flex;flex-direction:column;align-items:center;
+    min-width:1.9em;padding:.15em .3em .2em;
+    border-radius:9px;background:#0b1526;border:2px solid #1b293f;
+    font-family:ui-monospace,Consolas,monospace;
+    transition:background .25s,border-color .25s,box-shadow .25s;
+  }
+  .arr-idx{font-size:.6em;color:#4c6689;line-height:1.15;font-weight:700;}
+  .arr-val{font-size:.85em;font-weight:900;color:#c8d7ec;line-height:1.15;}
+  .arr-cell.is-float .arr-val{color:#7dd3fc;}
+  .arr-cell.is-mark{
+    border-color:var(--pink);background:rgba(244,114,182,.26);
+    box-shadow:0 0 0 4px rgba(244,114,182,.3);
+  }
+  .arr-cell.is-mark .arr-val,
+  .arr-cell.is-mark .arr-idx{color:var(--pink);}
+  .arr-cell.pulse{animation:cellPulse .7s ease-out;}
+
+  .out-note{
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:var(--out-font);font-weight:800;color:#fbbf24;
+    white-space:pre-wrap;line-height:1.45;word-break:break-word;
+    animation:fadeInLine .5s ease-out;
+  }
+  .out-sub{
+    font-family:ui-monospace,Consolas,"Courier New",monospace;
+    font-size:calc(var(--out-font) * .78);font-weight:800;color:#86efac;
+    white-space:pre-wrap;line-height:1.5;margin-top:.4em;
+    animation:fadeInLine .6s ease-out;
+  }
+  @keyframes fadeInLine{from{opacity:0;transform:translateY(10px);}to{opacity:1;transform:none;}}
+
+  #explainBox{font-size:var(--explain-font);line-height:1.5;color:#c3d4ea;}
+  #explainBox .tag{
+    display:inline-block;margin-right:14px;padding:.08em .7em;border-radius:12px;
+    background:rgba(56,189,248,.24);color:var(--accent);font-weight:900;
+    font-size:.78em;vertical-align:middle;
+  }
+  #explainBox .tag.mv{background:rgba(244,114,182,.26);color:var(--pink);}
+  #explainBox .tag.gold{background:rgba(250,204,21,.28);color:var(--gold);}
+  #explainBox strong{color:#ffffff;}
+  #explainBox code{
+    font-family:ui-monospace,Consolas,monospace;
+    background:rgba(148,163,184,.18);border-radius:8px;padding:0 .3em;color:#e2e8f0;
+  }
+  #explainBox .tip{
+    display:block;margin-top:.5em;padding:.45em .7em;border-radius:12px;
+    background:rgba(45,212,191,.14);border-left:8px solid var(--teal);color:#c6f7ef;
+    font-size:.9em;
+  }
+  #explainBox .warn{
+    display:block;margin-top:.5em;padding:.45em .7em;border-radius:12px;
+    background:rgba(251,191,36,.14);border-left:8px solid var(--amber);color:#ffe6b0;
+    font-size:.9em;
+  }
+  #explainBox .win{
+    display:block;margin-top:.5em;padding:.45em .7em;border-radius:12px;
+    background:rgba(250,204,21,.16);border-left:8px solid var(--gold);color:#fff3c4;
+    font-size:.92em;font-weight:700;
+  }
+
+  /* ===== 缩略图面板：修复默认可见位置 ===== */
+  #panelMini{padding:0;}
+  #miniScroll{
+    flex:1 1 auto;min-height:0;overflow:hidden;position:relative;
+    background:rgba(5,10,18,.65);cursor:pointer;
+  }
+  #miniInner{
+    position:absolute;left:0;top:0;width:100%;
+    font-family:ui-monospace,Consolas,monospace;
+    /* 稍稍放大一点，让缩略图内容更清晰可见 */
+    font-size:6px;line-height:1.42;
+    white-space:pre;color:#8fa6c4;
+    padding:4px 6px;
+  }
+  #miniInner .code-line{padding:0;border-left:none;gap:2px;display:block;}
+  #miniInner .code-line .ln{display:none;}
+  #miniInner .code-line .src{white-space:pre;}
+  #miniInner .code-line.active{
+    background:rgba(56,189,248,.6);outline:1px solid #38bdf8;
+  }
+  #miniInner .code-line.pending{opacity:.4;}
+  #miniViewport{
+    position:absolute;left:0;width:100%;pointer-events:none;
+    border:2px solid rgba(56,189,248,.9);border-radius:3px;
+    background:rgba(56,189,248,.12);
+    box-shadow:0 0 12px rgba(56,189,248,.5);
+    display:none; /* 初始隐藏，syncMini 后会显示 */
+  }
+
+  @media (max-width:900px){
+    :root{
+      --code-font: clamp(24px, 6vw, 48px);
+      --out-font: clamp(22px, 5vw, 40px);
+      --var-font: clamp(14px, 3vw, 22px);
+      --explain-font: clamp(15px, 3.2vw, 24px);
+      --btn-font: clamp(14px, 3vw, 22px);
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="codeArea"></div>
+
+<div class="panel" id="panelCtrl">
+  <div class="ctrl-row">
+    <button class="btn primary" id="btnPlay">▶ 自动播放</button>
+    <button class="btn" id="btnPrev">◀ 上一步</button>
+    <button class="btn" id="btnNext">下一步 ▶</button>
+    <button class="btn" id="btnReset">⟲ 重置</button>
+    <div class="speed-wrap">
+      <span>速度</span>
+      <input type="range" id="speed" min="120" max="2600" step="40" value="640">
+      <b id="speedLabel">0.64s</b>
+    </div>
+    <button class="btn" id="btnFull">⛶ 全屏</button>
+    <button class="btn" id="btnPanels">▣ 面板</button>
+    <button class="btn" id="btnMini">▤ 缩略图</button>
+    <button class="btn" id="btnLayout">↺ 重置布局</button>
+    <span id="stepCounter" style="font-size:var(--btn-font);font-weight:800;color:var(--accent);margin-left:auto;white-space:nowrap;">步骤 — / —</span>
+    <button class="panel-btn panel-close" id="closeCtrl">✕</button>
+  </div>
+  <div class="rz" data-rz></div>
+</div>
+
+<div class="panel" id="panelVars">
+  <div class="panel-head">
+    <span class="ttl">作用域栈 · 变量 · 状态</span>
+    <span class="sub" id="depthBadge">作用域 0 层</span>
+    <button class="panel-btn panel-close" data-close="panelVars">✕</button>
+  </div>
+  <div class="panel-body" id="varsBody"></div>
+  <div class="rz" data-rz></div>
+</div>
+
+<div class="panel" id="panelMem">
+  <div class="panel-head">
+    <span class="ttl">内存模型（栈）</span>
+    <span class="sub">变量 · 作用域 · 类型 · 地址 · 内容</span>
+    <button class="panel-btn panel-close" data-close="panelMem">✕</button>
+  </div>
+  <div class="panel-body">
+    <div id="memCells"></div>
+    <div class="mem-legend">
+      <span><i style="background:#22d3ee;"></i>main 作用域变量</span>
+      <span><i style="background:#c084fc;"></i>内层块作用域变量</span>
+      <span><i style="background:#facc15;"></i>指针（保存的是地址）</span>
+    </div>
+  </div>
+  <div class="rz" data-rz></div>
+</div>
+
+<div class="panel" id="panelArr">
+  <div class="panel-head">
+    <span class="ttl">数组可视化</span>
+    <span class="sub">int a[10] · float b[5] · 元素未初始化显示 ?</span>
+    <button class="panel-btn panel-close" data-close="panelArr">✕</button>
+  </div>
+  <div class="panel-body">
+    <div id="arrView"></div>
+  </div>
+  <div class="rz" data-rz></div>
+</div>
+
+<div class="panel" id="panelOut">
+  <div class="panel-head">
+    <span class="ttl">程序运行结果（屏幕输出）</span>
+    <button class="panel-btn panel-close" data-close="panelOut">✕</button>
+  </div>
+  <div class="panel-body" id="consoleBody"></div>
+  <div class="rz" data-rz></div>
+</div>
+
+<div class="panel" id="panelExplain">
+  <div class="panel-head">
+    <span class="ttl">当前语句说明</span>
+    <button class="panel-btn panel-close" data-close="panelExplain">✕</button>
+  </div>
+  <div class="panel-body" id="explainBox"></div>
+  <div class="rz" data-rz></div>
+</div>
+
+<div class="panel" id="panelMini">
+  <div class="panel-head">
+    <span class="ttl">缩略图</span>
+    <button class="panel-btn panel-close" data-close="panelMini">✕</button>
+  </div>
+  <div id="miniScroll">
+    <div id="miniInner"></div>
+    <div id="miniViewport"></div>
+  </div>
+  <div class="rz" data-rz></div>
+</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ============================================================
+   1. 源代码（13 行）
+   ============================================================ */
+var SRC_HTML = [
+/*  1 */ '<span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span> <span class="cmt">// 预处理：包含头文件（本程序未用到 printf）</span>',
+/*  2 */ '<span class="kw">int</span> <span class="fn">main</span>() { <span class="cmt">// 主函数：程序入口</span>',
+/*  3 */ '    <span class="kw">int</span> <span class="hr-main">a</span>[<span class="num">10</span>]; <span class="cmt">// 定义整型数组 a（main 作用域）</span>',
+/*  4 */ '    <span class="kw">int</span> <span class="hr-star">*</span><span class="hr-main">p</span>; <span class="cmt">// 定义整型指针 p（main 作用域）</span>',
+/*  5 */ '    <span class="hr-main">p</span> <span class="op">=</span> <span class="hr-arr">a</span>; <span class="cmt">// 数组名 a 退化为 &amp;a[0]，存入 p</span>',
+/*  6 */ '    <span class="cmt">// 等价于：p = &amp;a[0];（值相同，类型都是 int *）</span>',
+/*  7 */ '    <span class="cmt">// 写为一行：</span>',
+/*  8 */ '    <span class="hr-block">{</span> <span class="cmt">// 开新作用域，避免与外层 a、p 重复定义</span>',
+/*  9 */ '        <span class="kw">int</span> <span class="hr-block">a</span>[<span class="num">10</span>], <span class="hr-star">*</span><span class="hr-block">p</span> <span class="op">=</span> <span class="hr-arr">a</span>; <span class="cmt">// 块内数组 a 遮蔽外层；* 只作用于 p</span>',
+/* 10 */ '        <span class="kw">float</span> <span class="hr-block">b</span>[<span class="num">5</span>], <span class="hr-star">*</span><span class="hr-block">pf</span> <span class="op">=</span> <span class="hr-arr">b</span>; <span class="cmt">// pf 是 float *，只能指向 float 数组</span>',
+/* 11 */ '    <span class="hr-block">}</span> <span class="cmt">// 代码块结束，块内 a、p、b、pf 全部销毁（共 76 字节）</span>',
+/* 12 */ '    <span class="kw">return</span> <span class="hr-key">0</span>; <span class="cmt">// 返回 0 给操作系统（不打印）</span>',
+/* 13 */ '}'
+];
+
+var TOTAL_LINES = 13;
+
+/* ============================================================
+   2. 构建逐步执行轨迹
+   ============================================================ */
+var STEPS = [];
+
+function buildSteps(){
+  var steps = [];
+  var scopeStack = [];
+
+  var V = {
+    a_main:  { decl:false, scope:'main',  type:'int',     size:4,  addr:'0x7FFD2000', isArr:true,  arrLen:10, vals:null },
+    p_main:  { decl:false, scope:'main',  type:'int *',   size:8,  addr:'0x7FFD2028', ptr:null, ptrName:null },
+    a_blk:   { decl:false, scope:'block', type:'int',     size:4,  addr:'0x7FFD1F00', isArr:true,  arrLen:10, vals:null },
+    p_blk:   { decl:false, scope:'block', type:'int *',   size:8,  addr:'0x7FFD1F28', ptr:null, ptrName:null },
+    b_blk:   { decl:false, scope:'block', type:'float',   size:4,  addr:'0x7FFD1F30', isArr:true,  arrLen:5,  vals:null },
+    pf_blk:  { decl:false, scope:'block', type:'float *', size:8,  addr:'0x7FFD1F44', ptr:null, ptrName:null }
+  };
+
+  function fmtCell(v){
+    if(!v.decl) return '—';
+    if(v.isArr){
+      return 'int[' + v.arrLen + '] · 未初始化（' + (v.arrLen*v.size) + ' 字节）';
+    }
+    if(v.ptr) return v.ptr + ' → ' + v.ptrName;
+    if(v.ptr === null && v.type.indexOf('*') >= 0 && v.decl) return '未初始化（野指针）';
+    return '未初始化（垃圾值）';
+  }
+
+  function fmtRow(v, isMain){
+    if(!v.decl) return isMain ? '尚未声明' : '不在作用域内';
+    if(v.isArr) return 'int[' + v.arrLen + ']（' + (v.arrLen*v.size) + ' 字节）· 未初始化';
+    if(v.ptr) return v.ptr + ' → ' + v.ptrName;
+    return '未初始化（野指针）';
+  }
+
+  function makeMem(hlKey, pulseKey){
+    var order = [
+      ['a_main','a','main', 'main'],
+      ['p_main','p','main', 'main'],
+      ['a_blk','a','block','块内'],
+      ['p_blk','p','block','块内'],
+      ['b_blk','b','block','块内'],
+      ['pf_blk','pf','block','块内']
+    ];
+    var out = [];
+    for(var i=0;i<order.length;i++){
+      var k = order[i][0];
+      var v = V[k];
+      if(!v.decl) continue;
+      var isPtr = (v.type.indexOf('*') >= 0);
+      out.push({
+        key: k,
+        name: order[i][1],
+        scope: order[i][3],
+        scopeCls: order[i][2],
+        type: v.type + (v.isArr ? '[' + v.arrLen + ']' : ''),
+        addr: v.addr,
+        content: fmtCell(v),
+        pointer: isPtr,
+        active: (k === hlKey),
+        pulse:  (k === pulseKey)
+      });
+    }
+    return out;
+  }
+
+  function makeArrs(markKey, markIdx, markPulse){
+    var rows = [];
+    function pushRow(key, label, scope, addr, isFloat){
+      if(!V[key].decl) return;
+      rows.push({
+        key:key,
+        label: label,
+        scope: scope,
+        scopeCls: (scope === 'main' ? 'main' : 'block'),
+        addr: addr,
+        isFloat: !!isFloat,
+        len: V[key].arrLen,
+        markIdx: (markKey === key) ? markIdx : -1,
+        pulse: !!markPulse
+      });
+    }
+    pushRow('a_main', 'a', 'main', V.a_main.addr, false);
+    pushRow('a_blk',  'a', '块内', V.a_blk.addr,  false);
+    pushRow('b_blk',  'b', '块内', V.b_blk.addr,  true);
+    return rows;
+  }
+
+  var outText = '';
+
+  function snap(o){
+    steps.push({
+      line: o.line,
+      cls: o.cls || 'ans',
+      ctx: o.ctx || '—',
+      expr: o.expr || '—',
+      exprVal: o.exprVal || '—',
+      note: o.note || '—',
+      title: o.title || '—',
+      desc: o.desc || '',
+      func: o.func || '—',
+      scopeStack: scopeStack.slice(),
+      cells: makeMem(o.hl, o.pulse),
+      arrs: makeArrs(o.markKey, o.markIdx, o.markPulse),
+      vars: {
+        mainA:  fmtRow(V.a_main, true),
+        mainP:  fmtRow(V.p_main, true),
+        blockA: fmtRow(V.a_blk,  false),
+        blockP: fmtRow(V.p_blk,  false),
+        blockB: fmtRow(V.b_blk,  false),
+        blockPF:fmtRow(V.pf_blk, false)
+      },
+      printfCount: 0,
+      outLines: 0,
+      ret: o.ret,
+      out: outText
+    });
+  }
+
+  /* ================= 第 1 行：预处理 ================= */
+  snap({
+    line: 1, func:'—',
+    ctx:'预处理阶段 · 第 1 行',
+    expr:'#include <stdio.h>',
+    exprVal:'把 stdio.h 的内容插入本文件（编译前由预处理器处理）',
+    note:'预处理指令，不产生任何运行代码',
+    title:'#include &lt;stdio.h&gt;　预处理指令',
+    desc:'以 <code>#</code> 开头的都是<b>预处理指令</b>，在编译之前由预处理器处理。<br>' +
+         '· 它<b>不是</b> C 语句，<b>不占运行时间，也不产生任何机器指令</b>；<br>' +
+         '· 本程序<b>并没有用到 printf</b>，这一行其实可以省略，保留它只是为了保持标准写法。' +
+         '<span class="tip"><b>本次模拟预测：</b>本程序不做任何计算、<b>也没有任何输出语句</b>，' +
+         '运行时屏幕将保持空白，程序退出码为 <b>0</b>。<br>' +
+         '观察重点有四个：<br>' +
+         '① <b>数组名 a</b> 在表达式中会「退化」成首元素地址 <code>&amp;a[0]</code>；<br>' +
+         '② <code>p = a;</code> 与 <code>p = &amp;a[0];</code> 完全等价；<br>' +
+         '③ 数组名 <b>不是指针变量</b>，不能赋值、不能自增；<br>' +
+         '④ 内层花括号里的同名数组 / 指针会<b>遮蔽</b>外层变量。</span>'
+  });
+
+  /* ================= 第 2 行：进入 main ================= */
+  scopeStack.push('main');
+  snap({
+    line: 2, func:'main', cls:'gold',
+    ctx:'main · 程序入口 · 第 2 行',
+    expr:'int main() {',
+    exprVal:'为 main 建立栈帧，作用域入栈（作用域栈深度 1）',
+    note:'main 栈帧建立，准备存放局部变量',
+    title:'int main() {　程序从这里开始',
+    desc:'操作系统调用 <code>main</code>，程序正式开始执行。<br>' +
+         '· 系统为 main 建立一个<b>栈帧</b>，用来存放它的局部变量；<br>' +
+         '· 栈帧里接下来会分配一个 10 元素整型数组（40 字节）和一个指针变量（8 字节）；<br>' +
+         '· 后面的语句大多是<b>声明</b>，只是向编译器申请内存，本身不做任何计算。' +
+         '<span class="tip"><b>作用域栈：</b>main（深度 1）</span>'
+  });
+
+  /* ================= 第 3 行：int a[10]; ================= */
+  V.a_main.decl = true;
+  V.a_main.vals = new Array(10).fill(null);
+  snap({
+    line: 3, func:'main', hl:'a_main', pulse:'a_main', cls:'ans',
+    ctx:'main · 声明整型数组 a · 第 3 行',
+    expr:'int a[10];',
+    exprVal:'main.a 分配在 0x7FFD2000，连续 40 字节',
+    note:'数组 a 已分配，10 个元素都是垃圾值',
+    title:'int a[10];　→　在栈上分配 10 个 int（共 40 字节）',
+    desc:'声明整型数组 a。<br>' +
+         '· <code>int a[10]</code>：连续 <b>10 个 int</b>，共 <b>40 字节</b>；<br>' +
+         '· 假设起始地址为 <code>0x7FFD2000</code>，则 a[0] 在 0x7FFD2000，' +
+         'a[1] 在 0x7FFD2004，a[2] 在 0x7FFD2008……依次 +4；<br>' +
+         '· 十个元素<b>都没有初始化</b>，里面是栈上的残留数据，是垃圾值；<br>' +
+         '· <code>a</code> 这个名字代表整块内存，<code>a[i]</code> 表示第 i 个元素。' +
+         '<span class="warn"><b>易错点：</b>局部数组不初始化 ≠ 全 0。<br>' +
+         '只有<b>全局数组、静态数组</b>才会被默认清零；' +
+         '局部数组是「垃圾值」，直接读它属于未定义行为。</span>'
+  });
+
+  /* ================= 第 4 行：int *p; ================= */
+  V.p_main.decl = true;
+  snap({
+    line: 4, func:'main', hl:'p_main', pulse:'p_main', cls:'ans',
+    ctx:'main · 声明指针变量 p · 第 4 行',
+    expr:'int *p;',
+    exprVal:'main.p 分配在 0x7FFD2028，占 8 字节',
+    note:'p 已分配，里面的地址是垃圾值（野指针）',
+    title:'int *p;　→　分配指针变量 p（野指针）',
+    desc:'声明指针变量 p。<br>' +
+         '· 类型 <code>int *</code>：<b>p 本身也是一个变量</b>，' +
+         '只不过它专门用来存放 <code>int</code> 变量的<b>地址</b>；<br>' +
+         '· 在 64 位平台上指针占 <b>8 字节</b>，假设地址是 <code>0x7FFD2028</code>；<br>' +
+         '· 同样没有初始化，p 里面是垃圾值——这样的指针叫<b>野指针</b>；<br>' +
+         '· 此刻<b>绝对不能解引用</b> <code>*p</code>，否则会访问随机内存，程序可能直接崩溃。' +
+         '<span class="tip"><b>读法：</b><code>int *p;</code> 读作「p 是一个指向 int 的指针」。<br>' +
+         '变量名是 <b>p</b>，<b>*</b> 只是类型说明符的一部分，不是变量名的一部分。</span>'
+  });
+
+  /* ================= 第 5 行：p = a; ================= */
+  V.p_main.ptr = '0x7FFD2000';
+  V.p_main.ptrName = 'main.a[0]';
+  snap({
+    line: 5, func:'main', hl:'p_main', pulse:'p_main',
+    markKey:'a_main', markIdx:0, markPulse:true, cls:'mv',
+    ctx:'main · 数组名退化为首元素地址 · 第 5 行',
+    expr:'p = a;',
+    exprVal:'a 退化为 &a[0] = 0x7FFD2000，写入 main.p',
+    note:'main.p 现在指向 main.a[0]；*p 与 a[0] 是同一块内存',
+    title:'p = a;　→　数组名 a 退化为 &amp;a[0]，地址存入 p',
+    desc:'执行赋值语句 <code>p = a;</code>：<br>' +
+         '· 在 C 中，数组名 <code>a</code> 出现在表达式里时会<b>自动退化</b>为指向首元素的指针，' +
+         '也就是 <code>&amp;a[0]</code>；<br>' +
+         '· <code>&amp;a[0]</code> 的值就是数组首地址 <code>0x7FFD2000</code>；<br>' +
+         '· 把这个地址写入 main.p 所占的 8 字节内存；<br>' +
+         '· 从此 <b>main.p 指向 main.a[0]</b>：<code>*p</code> 就是 <code>a[0]</code>，' +
+         '<code>p[i]</code> 就是 <code>a[i]</code>。' +
+         '<span class="tip"><b>三条等价写法：</b><br>' +
+         '<code>p = a;</code>　<code>p = &amp;a[0];</code>　<code>p = &amp;*a;</code> —— 效果完全相同。<br>' +
+         '<b>指针运算按类型走：</b><code>p + 1</code> 不是地址加 1，' +
+         '而是加 <b>sizeof(int) = 4</b>，所以 <code>p + 1</code> 指向 <code>a[1]</code>（0x7FFD2004）。<br>' +
+         '<b>注意：</b>这里只取了地址，<b>没有复制数组内容</b>——a 还是原来那一个数组。</span>'
+  });
+
+  /* ================= 第 6 行：注释 ================= */
+  snap({
+    line: 6, func:'main', cls:'ans',
+    ctx:'main · 注释行 · 第 6 行',
+    expr:'// 等价于：p = &a[0];',
+    exprVal:'（注释内容，编译器直接忽略）',
+    note:'注释不产生任何代码，变量保持原样',
+    title:'// 等价于：p = &amp;a[0];　→　注释行，不执行',
+    desc:'这一行是<b>注释</b>。<br>' +
+         '· 编译器会把 <code>//</code> 到行尾的内容全部忽略，不生成任何代码；<br>' +
+         '· 它说明了 <code>p = a;</code> 的等价写法是 <code>p = &amp;a[0];</code>；<br>' +
+         '· <code>&amp;a[0]</code> 表示「取数组第 0 个元素的地址」，类型是 <code>int *</code>；<br>' +
+         '· 而 <code>a</code> 退化后的类型也是 <code>int *</code>，值也相同，所以两者完全等价。' +
+         '<span class="warn"><b>注意区分：</b><code>&amp;a</code>（没有下标）和 <code>&amp;a[0]</code> ' +
+         '值虽然一样，但类型不同：<br>' +
+         '· <code>&amp;a</code> 的类型是 <code>int (*)[10]</code>（指向整个数组）；<br>' +
+         '· <code>&amp;a[0]</code> 的类型是 <code>int *</code>（指向单个 int）。<br>' +
+         '把它们混用，虽然地址相同，但 <code>+1</code> 跳过的字节数完全不同：' +
+         '<code>&amp;a + 1</code> 会跳过整整 40 字节。</span>'
+  });
+
+  /* ================= 第 7 行：注释 ================= */
+  snap({
+    line: 7, func:'main', cls:'ans',
+    ctx:'main · 注释行 · 第 7 行',
+    expr:'// 写为一行：',
+    exprVal:'（注释内容，编译器直接忽略）',
+    note:'注释不产生任何代码，变量保持原样',
+    title:'// 写为一行：　→　注释行，不执行',
+    desc:'注释行，编译器忽略，不产生任何代码。<br>' +
+         '· 它提示接下来要演示「声明 + 初始化」写在一行的等价形式；<br>' +
+         '· 也就是把数组声明和指针初始化合成一条语句：<code>int a[10], *p = a;</code>。' +
+         '<span class="tip"><b>一行声明多个变量：</b><br>' +
+         '<code>int a[10], *p = a;</code> 相当于<br>' +
+         '<code>int a[10];</code><br>' +
+         '<code>int *p = a;</code><br>' +
+         '注意 <b>*</b> 只作用于紧跟其后的 <code>p</code>，' +
+         '<code>a</code> 仍然是一个数组，不是指针。</span>'
+  });
+
+  /* ================= 第 8 行：{ ================= */
+  scopeStack.push('块 { }');
+  snap({
+    line: 8, func:'main · 内层块', cls:'mv',
+    ctx:'main · 进入内层代码块 · 第 8 行',
+    expr:'{',
+    exprVal:'开启新作用域，作用域栈深度变为 2',
+    note:'块内可以重新使用 a、p 这两个名字',
+    title:'{　→　进入新的代码块（作用域）',
+    desc:'左花括号 <code>{</code> 开启一个新的<b>代码块</b>，也就是一个新的<b>作用域（scope）</b>。<br>' +
+         '· 在块内声明的变量只在这个块里有效；<br>' +
+         '· 块内的变量可以与块外<b>同名</b>，块内的那个叫「<b>遮蔽</b>（shadow）」了外层；<br>' +
+         '· 进入块时，会在栈上为块内变量开辟新的空间。' +
+         '<span class="tip"><b>为什么要加这层花括号？</b><br>' +
+         '原程序片段里 <code>int a[10]; int *p; p = a;</code> 和后面的 ' +
+         '<code>int a[10], *p = a;</code> 如果在同一个作用域，' +
+         '就构成<b>重复定义</b>，编译会报错。<br>' +
+         '放进独立代码块后，两组同名变量各活各的，程序合法，也更容易看清区别。</span>'
+  });
+
+  /* ================= 第 9 行（前）：块内 int a[10]; ================= */
+  V.a_blk.decl = true;
+  V.a_blk.vals = new Array(10).fill(null);
+  snap({
+    line: 9, func:'main · 内层块', hl:'a_blk', pulse:'a_blk', cls:'ans',
+    ctx:'内层块 · 声明块内的数组 a · 第 9 行',
+    expr:'int a[10], *p = a;   →   先执行 int a[10]',
+    exprVal:'块内 a[10] 分配在 0x7FFD1F00，连续 40 字节',
+    note:'这是一个全新的数组 a，与外层的 a 毫无关系',
+    title:'int a[10]　→　块内新声明一个数组 a（遮蔽 main.a）',
+    desc:'语句 <code>int a[10], *p = a;</code> 的第一部分：<code>int a[10]</code>。<br>' +
+         '· 这是一个<b>全新的数组</b>（块内的 a），起始地址假设为 <code>0x7FFD1F00</code>；<br>' +
+         '· 占 <b>40 字节</b>，10 个元素同样<b>未初始化</b>；<br>' +
+         '· 它与 main 里那个 a（<code>0x7FFD2000</code>）<b>毫无关系</b>，只是名字一样；<br>' +
+         '· 在这个块里写 <code>a</code>，指的都是块内的新数组。' +
+         '<span class="warn"><b>易错点：</b>同名 ≠ 同一个变量！<br>' +
+         '块内的 a 和外层的 a 是两块完全不同的内存（相差 0x100 字节），' +
+         '改一个不会影响另一个。</span>'
+  });
+
+  /* ================= 第 9 行（后）：块内 *p = a; ================= */
+  V.p_blk.decl = true;
+  V.p_blk.ptr = '0x7FFD1F00';
+  V.p_blk.ptrName = '块内 a[0]';
+  snap({
+    line: 9, func:'main · 内层块', hl:'p_blk', pulse:'p_blk',
+    markKey:'a_blk', markIdx:0, markPulse:true, cls:'mv',
+    ctx:'内层块 · 声明并初始化指针 p · 第 9 行',
+    expr:'int *p = a;',
+    exprVal:'块内 p = 0x7FFD1F00，指向块内 a[0]',
+    note:'块内 p 指向块内 a[0]；外层 p 仍然指向外层 a[0]',
+    title:'*p = a　→　块内 p 指向块内的 a[0]',
+    desc:'语句的第二部分：<code>int *p = a;</code>，声明指针 p 并用数组名 <code>a</code> 初始化。<br>' +
+         '· 新分配指针变量 p（块内），地址 <code>0x7FFD1F28</code>，占 8 字节；<br>' +
+         '· 这里的 <code>a</code> 是<b>块内的数组</b>，退化成 <code>&amp;a[0]</code>，' +
+         '值为 <code>0x7FFD1F00</code>；<br>' +
+         '· 于是形成一对全新绑定：块内 p → 块内 a[0]，与外层的 p、a 互不影响；<br>' +
+         '· <b>声明 + 初始化</b>写在一行，能避免出现野指针。' +
+         '<span class="tip"><b>关键：</b><code>int a[10], *p = a;</code> 中，' +
+         '<b>*</b> 只作用于紧跟其后的 p，块内的 a 仍是数组。<br>' +
+         '如果写成 <code>int *a, *p = a;</code>，那么 a 也变成指针了，' +
+         '后面的 <code>a</code> 就变成「未初始化的野指针」，语义完全不同。</span>'
+  });
+
+  /* ================= 第 10 行（前）：块内 float b[5]; ================= */
+  V.b_blk.decl = true;
+  V.b_blk.vals = new Array(5).fill(null);
+  snap({
+    line: 10, func:'main · 内层块', hl:'b_blk', pulse:'b_blk', cls:'ans',
+    ctx:'内层块 · 声明浮点数组 b · 第 10 行',
+    expr:'float b[5], *pf = b;   →   先执行 float b[5]',
+    exprVal:'b 分配在 0x7FFD1F30，连续 20 字节',
+    note:'b 已分配，5 个元素都是垃圾值',
+    title:'float b[5]　→　块内声明浮点数组 b',
+    desc:'处理 <code>float b[5], *pf = b;</code> 的前半部分。<br>' +
+         '· <code>float b[5]</code>：连续 <b>5 个 float</b>，每个 4 字节，共 <b>20 字节</b>；<br>' +
+         '· 起始地址假设为 <code>0x7FFD1F30</code>，b[0] 在 0x7FFD1F30，' +
+         'b[1] 在 0x7FFD1F34……依次 +4；<br>' +
+         '· 5 个元素同样<b>未初始化</b>，直接读它们会得到无意义的数值。' +
+         '<span class="tip"><b>int 与 float：</b><br>' +
+         '· <code>int</code> 按二进制整数存，4 字节；<br>' +
+         '· <code>float</code> 按 IEEE-754 浮点格式存，也是 4 字节，但能表示小数；<br>' +
+         '· 同样 4 字节，二进制位一样，<b>解读方式不同，结果就完全不同</b>——' +
+         '这也是指针类型必须匹配的根本原因。</span>'
+  });
+
+  /* ================= 第 10 行（后）：块内 float *pf = b; ================= */
+  V.pf_blk.decl = true;
+  V.pf_blk.ptr = '0x7FFD1F30';
+  V.pf_blk.ptrName = 'b[0]';
+  snap({
+    line: 10, func:'main · 内层块', hl:'pf_blk', pulse:'pf_blk',
+    markKey:'b_blk', markIdx:0, markPulse:true, cls:'mv',
+    ctx:'内层块 · 声明并初始化浮点指针 pf · 第 10 行',
+    expr:'float *pf = b;',
+    exprVal:'pf = 0x7FFD1F30，指向 b[0]',
+    note:'pf 是 float *，只能指向 float 变量',
+    title:'*pf = b　→　pf 指向 b[0]',
+    desc:'后半部分：<code>float *pf = b;</code>。<br>' +
+         '· 声明指针 pf，类型是 <code>float *</code>——它指向的必须是 <code>float</code> 变量；<br>' +
+         '· pf 分配在 <code>0x7FFD1F44</code>，占 8 字节；<br>' +
+         '· 用数组名 <code>b</code> 初始化，b 退化为 <code>&amp;b[0]</code>，' +
+         '值为 <code>0x7FFD1F30</code>；<br>' +
+         '· 于是 pf → b[0]，<code>*pf</code> 就是 <code>b[0]</code>，' +
+         '<code>pf[i]</code> 就是 <code>b[i]</code>；<br>' +
+         '· <code>pf + 1</code> 前进 <b>sizeof(float) = 4</b> 字节，指向 b[1]。' +
+         '<span class="warn"><b>类型必须匹配：</b>指针类型要和它指向的变量类型一致。<br>' +
+         '如果写成 <code>int *pf = b;</code>（b 是 float 数组），' +
+         '编译器会给出<b>不兼容指针类型</b>的警告；<br>' +
+         '即便强制转换后解引用，也会按 int 的规则去解读那 4 个字节，得到错误的值。</span>'
+  });
+
+  /* ================= 第 11 行：} 退出块 ================= */
+  V.a_blk.decl = false;  V.a_blk.vals = null;
+  V.p_blk.decl = false;  V.p_blk.ptr = null; V.p_blk.ptrName = null;
+  V.b_blk.decl = false;  V.b_blk.vals = null;
+  V.pf_blk.decl = false; V.pf_blk.ptr = null; V.pf_blk.ptrName = null;
+  scopeStack.pop();
+  snap({
+    line: 11, func:'main', cls:'gold',
+    ctx:'内层块 · 作用域结束 · 第 11 行',
+    expr:'}',
+    exprVal:'块内 4 个变量全部销毁（共 76 字节），作用域栈弹回到深度 1',
+    note:'块内 a / p / b / pf 消失，外层 a / p 完好无损',
+    title:'}　→　代码块结束，块内变量全部销毁（共 76 字节）',
+    desc:'右花括号结束代码块：<br>' +
+         '· 块内的 <code>a[10]</code>（40 字节）、<code>p</code>（8 字节）、' +
+         '<code>b[5]</code>（20 字节）、<code>pf</code>（8 字节）' +
+         '四个变量的<b>生存期结束</b>，共 <b>76 字节</b>栈空间被回收；<br>' +
+         '· 这些变量随之消失，之后再也无法访问它们；<br>' +
+         '· 外层的 a（40 字节）、p（8 字节）<b>毫发无损</b>，因为它们是另外两块内存，从未被触碰；<br>' +
+         '· 栈指针回到进入块之前的位置。' +
+         '<span class="tip"><b>作用域的意义：</b>块内变量只在块内有效，' +
+         '可以放心复用名字，不会和外层冲突。<br>' +
+         '「同名遮蔽」只影响<b>名字的查找</b>，不影响内存的分配。</span>'
+  });
+
+  /* ================= 第 12 行：return 0; ================= */
+  snap({
+    line: 12, func:'main', cls:'ans',
+    ctx:'main · return 0 · 第 12 行',
+    expr:'return 0;',
+    exprVal:'返回整数 0 给操作系统（不打印）',
+    note:'返回 0 表示程序正常结束，这个 0 不会打印到屏幕',
+    title:'return 0;　结束 main 函数',
+    desc:'执行 <code>return 0;</code>：<br>' +
+         '· 把整数 <b>0</b> 作为 main 的返回值交给操作系统；<br>' +
+         '· 约定返回 <b>0</b> 表示程序<b>正常结束</b>（返回非 0 表示出错）；<br>' +
+         '· 这个 0 <b>不会</b>打印到屏幕上，它是给系统看的「退出码」；<br>' +
+         '· main 的栈帧即将销毁，其中的数组 a（40 字节）和指针 p（8 字节）随之消失。' +
+         '<span class="tip"><b>本程序全程没有任何计算与输出：</b><br>' +
+         'a 的十个元素从未被赋值，p 只是保存了 a 的首地址，' +
+         'b、pf 在块结束时就被销毁了。<br>' +
+         '所以屏幕上看不到任何内容。</span>',
+    ret: 0
+  });
+
+  /* ================= 第 13 行：程序结束 ================= */
+  scopeStack.pop();
+  outText =
+    '（本程序没有任何 printf）\n' +
+    '运行时屏幕不产生任何内容。\n' +
+    '\n' +
+    '退出码：0（正常结束，不打印）';
+  snap({
+    line: 13, func:'—', cls:'gold',
+    ctx:'程序结束 · 第 13 行',
+    expr:'}',
+    exprVal:'main 栈帧销毁，作用域栈清空',
+    note:'作用域栈清空，程序正常退出',
+    title:'main 函数体结束 }　→　程序结束',
+    desc:'main 的栈帧被销毁，作用域栈清空。' +
+         '<span class="win"><b>★ 程序最终运行结果：屏幕无任何输出（本程序没有 printf）。</b><br>' +
+         '退出码：0（正常结束，不打印）</span>' +
+         '<b>本程序要点总结：</b><br>' +
+         '① <b>数组的本质</b>：<code>int a[10]</code> 是一整块连续内存，共 40 字节，' +
+         'a[0] 到 a[9] 依次排开；<br>' +
+         '② <b>数组名退化</b>：数组名出现在表达式中会变成指向首元素的指针 <code>&amp;a[0]</code>；<br>' +
+         '③ <b>两种例外</b>：<code>sizeof(a)</code> 得到 40（整块大小），' +
+         '<code>&amp;a</code> 得到 <code>int (*)[10]</code>——这两处数组名不退化；<br>' +
+         '④ <b>p = a 与 p = &amp;a[0] 等价</b>，都把首元素地址写进指针；<br>' +
+         '⑤ <b>指针运算按类型走</b>：<code>p + 1</code> 前进 <code>sizeof(int) = 4</code> 字节，' +
+         '正好指向 a[1]；<br>' +
+         '⑥ <b>数组名不能赋值</b>：<code>a = p;</code> 或 <code>a++</code> 都是非法的，' +
+         '因为它不是变量；而 <code>p++</code> 完全合法；<br>' +
+         '⑦ <b>声明 + 初始化</b>：<code>int *p = a;</code> 比先声明后赋值更不容易留下野指针；<br>' +
+         '⑧ <b>一行声明多个变量</b>：<code>int a[10], *p = a;</code> 中，' +
+         '<b>*</b> 只作用于紧随其后的 p，a 仍是数组；<br>' +
+         '⑨ <b>作用域与遮蔽</b>：花括号划出作用域，块内同名变量遮蔽外层，' +
+         '块结束时统一销毁；<br>' +
+         '⑩ <b>类型匹配</b>：<code>float *pf</code> 只能指向 <code>float</code>，' +
+         '<code>int *p</code> 只能指向 <code>int</code>。' +
+         '<b>常见错误：</b><br>' +
+         '① 写 <code>p = &amp;a;</code> 却当成 <code>int *</code>——类型是 <code>int (*)[10]</code>，' +
+         '赋值给 <code>int *</code> 会产生类型不兼容警告；<br>' +
+         '② 以为 <code>p = a;</code> 把整个数组复制给了 p——<b>只复制了首地址</b>，' +
+         '数组还是原来那一个，p 和 a 共用同一块内存；<br>' +
+         '③ 写 <code>a = p;</code> 想「让 a 指向别处」——数组名不能被赋值，编译报错；<br>' +
+         '④ 用 <code>int *p = a;</code> 之后越界访问 <code>p[10]</code>——已超出数组范围；<br>' +
+         '⑤ 在代码块外使用块内的 a、p、b、pf——已超出作用域，编译报错。'
+  });
+
+  return { steps: steps, finalOutput: outText };
+}
+
+STEPS = buildSteps().steps;
+
+/* ============================================================
+   3. DOM 渲染
+   ============================================================ */
+var codeArea   = document.getElementById('codeArea');
+var miniInner  = document.getElementById('miniInner');
+var miniScroll = document.getElementById('miniScroll');
+var miniView   = document.getElementById('miniViewport');
+
+var varsBody   = document.getElementById('varsBody');
+var memCellsEl = document.getElementById('memCells');
+var arrViewEl  = document.getElementById('arrView');
+var consoleBody= document.getElementById('consoleBody');
+var explainBox = document.getElementById('explainBox');
+var stepCounter= document.getElementById('stepCounter');
+var depthBadge = document.getElementById('depthBadge');
+
+var btnPlay = document.getElementById('btnPlay');
+var btnPrev = document.getElementById('btnPrev');
+var btnNext = document.getElementById('btnNext');
+var btnReset= document.getElementById('btnReset');
+var btnFull = document.getElementById('btnFull');
+var btnPanels=document.getElementById('btnPanels');
+var btnMini = document.getElementById('btnMini');
+var btnLayout=document.getElementById('btnLayout');
+var speedInput = document.getElementById('speed');
+var speedLabel = document.getElementById('speedLabel');
+
+(function renderCode(){
+  var h = '';
+  for(var k = 0; k < TOTAL_LINES; k++){
+    var isBody = (k >= 8 && k <= 9);
+    h += '<div class="code-line' + (isBody ? ' pending' : '') + '" data-line="' + (k+1) + '">' +
+           '<span class="ln">' + (k+1) + '</span>' +
+           '<span class="src">' + SRC_HTML[k] + '</span>' +
+         '</div>';
+  }
+  codeArea.innerHTML = h;
+})();
+
+(function renderMini(){
+  var h = '';
+  for(var k = 0; k < TOTAL_LINES; k++){
+    var isBody = (k >= 8 && k <= 9);
+    h += '<div class="code-line' + (isBody ? ' pending' : '') + '" data-mline="' + (k+1) + '">' +
+           '<span class="src">' + SRC_HTML[k] + '</span>' +
+         '</div>';
+  }
+  miniInner.innerHTML = h;
+})();
+
+var codeLines = Array.prototype.slice.call(codeArea.querySelectorAll('.code-line'));
+var miniLines = Array.prototype.slice.call(miniInner.querySelectorAll('.code-line'));
+
+var VAR_ROWS = [
+  { key:'ctx',        name:'当前执行位置',                    cls:'k-ctx',   wrap:true  },
+  { key:'funcName',   name:'当前正在执行的作用域',            cls:'k-main',  wrap:false },
+  { key:'scopeDepth', name:'作用域栈深度',                    cls:'k-cnt',   wrap:false },
+  { key:'expr',       name:'正在求值的语句',                  cls:'k-val',   wrap:true  },
+  { key:'exprVal',    name:'语句结果',                        cls:'k-val',   wrap:true  },
+  { key:'note',       name:'关键状态提示',                    cls:'k-sw',    wrap:true  },
+  { key:'mainA',      name:'main 作用域 · a（int[10]）',      cls:'k-main',  wrap:false },
+  { key:'mainP',      name:'main 作用域 · p（int *）',        cls:'k-main',  wrap:false },
+  { key:'blockA',     name:'块作用域 · a（int[10]）',         cls:'k-block', wrap:false },
+  { key:'blockP',     name:'块作用域 · p（int *）',           cls:'k-block', wrap:false },
+  { key:'blockB',     name:'块作用域 · b（float[5]）',        cls:'k-block', wrap:false },
+  { key:'blockPF',    name:'块作用域 · pf（float *）',        cls:'k-block', wrap:false },
+  { key:'printfCount',name:'printf 调用次数',                 cls:'k-cnt',   wrap:false },
+  { key:'outLines',   name:'输出行数',                        cls:'k-cnt',   wrap:false },
+  { key:'ret',        name:'main 返回值',                     cls:'k-cnt',   wrap:false }
+];
+
+(function buildVars(){
+  var h = '<div class="group-title">作用域栈</div>';
+  h += '<div class="stack-row"><span class="stack-cap">当前栈</span><span class="frames" id="framesBox"><span class="stack-empty">（空）</span></span></div>';
+  h += '<div class="group-title">变量与状态</div>';
+  for(var w = 0; w < VAR_ROWS.length; w++){
+    var r = VAR_ROWS[w];
+    h += '<div class="vrow ' + r.cls + (r.wrap ? ' wrap' : '') + '" data-key="' + r.key + '">' +
+           '<span class="n">' + r.name + '</span>' +
+           '<span class="v dim">—</span>' +
+         '</div>';
+  }
+  varsBody.innerHTML = h;
+})();
+
+var framesBox = document.getElementById('framesBox');
+
+function disp(v){ return (v === null || v === undefined || v === '') ? '—' : String(v); }
+
+function getRowValue(step, key){
+  if(!step) return null;
+  switch(key){
+    case 'funcName':   return step.func;
+    case 'scopeDepth': return step.scopeStack.length;
+    case 'mainA':      return step.vars.mainA;
+    case 'mainP':      return step.vars.mainP;
+    case 'blockA':     return step.vars.blockA;
+    case 'blockP':     return step.vars.blockP;
+    case 'blockB':     return step.vars.blockB;
+    case 'blockPF':    return step.vars.blockPF;
+    case 'printfCount':return step.printfCount;
+    case 'outLines':   return step.outLines;
+    case 'ret':        return step.ret;
+    default: return step[key];
+  }
+}
+
+function renderMem(step){
+  var cells = (step && step.cells) ? step.cells : [];
+  if(!cells.length){
+    memCellsEl.innerHTML = '<span class="mem-empty">（栈上还没有分配任何变量）</span>';
+    return;
+  }
+  var h = '';
+  for(var i=0;i<cells.length;i++){
+    var c = cells[i];
+    var cls = 'mem-cell ' + (c.scopeCls === 'main' ? 'main-scope' : 'block-scope');
+    if(c.pointer) cls += ' pointer';
+    if(c.active)  cls += ' is-active';
+    if(c.pulse)   cls += ' pulse';
+    h += '<div class="' + cls + '" data-key="' + c.key + '">' +
+           '<div class="mem-head">' +
+             '<span class="mem-name">' + c.name + '</span>' +
+             '<span class="mem-scope ' + c.scopeCls + '">' + c.scope + '</span>' +
+           '</div>' +
+           '<div class="mem-addr">' + c.addr + '　' + c.type + '</div>' +
+           '<div class="mem-val">' + c.content + '</div>' +
+         '</div>';
+  }
+  memCellsEl.innerHTML = h;
+}
+
+var lastArrMark = { key: null, idx: -1 };
+function renderArrs(step){
+  var rows = (step && step.arrs) ? step.arrs : [];
+  if(!rows.length){
+    arrViewEl.innerHTML = '<span class="arr-empty">（尚未分配任何数组）</span>';
+    lastArrMark = { key: null, idx: -1 };
+    return;
+  }
+  var h = '';
+  for(var i=0;i<rows.length;i++){
+    var r = rows[i];
+    h += '<div class="arr-block ' + (r.scopeCls === 'main' ? 'main-scope' : 'block-scope') + '">' +
+           '<div class="arr-head">' +
+             '<span class="arr-name">' + r.label + '</span>' +
+             '<span class="arr-scope ' + r.scopeCls + '">' + r.scope + '</span>' +
+             '<span class="arr-type">' + (r.isFloat ? 'float' : 'int') + '[' + r.len + '] · ' + r.addr + '</span>' +
+           '</div>' +
+           '<div class="arr-cells">';
+    for(var k=0; k<r.len; k++){
+      var cls = 'arr-cell';
+      if(r.isFloat) cls += ' is-float';
+      var pulse = '';
+      if(r.markIdx === k){
+        cls += ' is-mark';
+        if(!(lastArrMark.key === r.key && lastArrMark.idx === k)) pulse = ' pulse';
+      }
+      h += '<div class="' + cls + pulse + '">' +
+             '<div class="arr-idx">' + k + '</div>' +
+             '<div class="arr-val">?</div>' +
+           '</div>';
+    }
+    h += '</div></div>';
+  }
+  arrViewEl.innerHTML = h;
+  if(rows.length){
+    for(var q=0;q<rows.length;q++){
+      if(rows[q].markIdx >= 0){ lastArrMark = { key: rows[q].key, idx: rows[q].markIdx }; break; }
+    }
+  }
+}
+
+function renderFrames(step){
+  var stack = (step && step.scopeStack) ? step.scopeStack : [];
+  if(!stack.length){
+    framesBox.innerHTML = '<span class="stack-empty">（空）</span>';
+    return;
+  }
+  var h = '';
+  for(var w = 0; w < stack.length; w++){
+    if(w > 0) h += '<span class="arrow">→</span>';
+    var isTop = (w === stack.length - 1);
+    h += '<span class="frame-card' + (isTop ? ' top-frame' : '') + '">' + stack[w] + '</span>';
+  }
+  framesBox.innerHTML = h;
+}
+
+function renderVars(step){
+  for(var w = 0; w < VAR_ROWS.length; w++){
+    var r = VAR_ROWS[w];
+    var row = varsBody.querySelector('.vrow[data-key="' + r.key + '"]');
+    if(!row) continue;
+    var vEl = row.querySelector('.v');
+    var val = step ? disp(getRowValue(step, r.key)) : '—';
+    if(vEl.textContent !== val){
+      vEl.textContent = val;
+      vEl.title = val;
+      if(val === '—' ||
+         val.indexOf('尚未声明') >= 0 ||
+         val.indexOf('不在作用域') >= 0){
+        vEl.classList.add('dim');
+      } else {
+        vEl.classList.remove('dim');
+      }
+      vEl.classList.remove('flash');
+      void vEl.offsetWidth;
+      vEl.classList.add('flash');
+      row.classList.add('changed');
+      (function(rr){ window.setTimeout(function(){ rr.classList.remove('changed'); }, 700); })(row);
+    }
+  }
+  if(step){
+    depthBadge.textContent = '作用域 ' + step.scopeStack.length + ' 层';
+  } else {
+    depthBadge.textContent = '作用域 0 层';
+  }
+}
+
+var lastOut = null;
+function renderOut(step){
+  var txt = step ? step.out : '';
+  if(txt === lastOut) return;
+  lastOut = txt;
+  if(txt === ''){
+    consoleBody.innerHTML = '<div class="out-note">（程序运行中，尚未产生输出…）</div>';
+    return;
+  }
+  var lines = txt.split('\n');
+  var h = '';
+  for(var i=0;i<lines.length;i++){
+    var line = lines[i];
+    if(line === ''){ continue; }
+    if(line.indexOf('退出码') >= 0){
+      h += '<div class="out-sub">' + line.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>';
+    } else {
+      h += '<div class="out-note">' + line.replace(/&/g,'&amp;').replace(/</g,'&lt;') + '</div>';
+    }
+  }
+  consoleBody.innerHTML = h;
+}
+
+function renderCode(step){
+  var activeLine = step ? step.line : null;
+  var idx = step ? STEPS.indexOf(step) : -1;
+  var enterIdx = -1;
+  for(var q=0;q<STEPS.length;q++){ if(STEPS[q].line === 8){ enterIdx = q; break; } }
+  var blockEntered = (enterIdx >= 0 && idx >= enterIdx);
+
+  for(var w = 0; w < codeLines.length; w++){
+    var el = codeLines[w];
+    var n = Number(el.dataset.line);
+    el.classList.toggle('active', n === activeLine);
+    var isBody = (n >= 9 && n <= 10);
+    el.classList.toggle('pending', isBody && !blockEntered);
+    el.classList.toggle('done', n < (activeLine || 0) && n !== activeLine);
+  }
+  for(var m = 0; m < miniLines.length; m++){
+    var me = miniLines[m];
+    var mn = Number(me.dataset.mline);
+    me.classList.toggle('active', mn === activeLine);
+    var isBody2 = (mn >= 9 && mn <= 10);
+    me.classList.toggle('pending', isBody2 && !blockEntered);
+  }
+  centerActiveLine();
+}
+
+function centerActiveLine(){
+  var el = codeArea.querySelector('.code-line.active');
+  if(!el) return;
+  var er = el.getBoundingClientRect();
+  var cr = codeArea.getBoundingClientRect();
+  var delta = (er.top + er.height/2) - (cr.top + cr.height/2);
+  if(Math.abs(delta) > 4){
+    codeArea.scrollTop = Math.max(0, codeArea.scrollTop + delta);
+  }
+  syncMini();
+}
+
+/* ---- 缩略图同步：使用同一套行高 / 行索引 / 滚动位置计算逻辑 ---- */
+var rafPending = false;
+function syncMini(){
+  if(rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(function(){
+    rafPending = false;
+    var firstLine = codeArea.querySelector('.code-line');
+    if(!firstLine) return;
+    var lineH = firstLine.getBoundingClientRect().height;
+    if(lineH <= 0) return;
+
+    var miniH = miniScroll.clientHeight;
+    if(miniH <= 0){ miniView.style.display='none'; return; }
+
+    var miniLineH = miniH / TOTAL_LINES;
+
+    var scrollTop = codeArea.scrollTop;
+    var firstVisible = scrollTop / lineH;
+    var visibleCount = codeArea.clientHeight / lineH;
+
+    var vpTop = firstVisible * miniLineH;
+    var vpHeight = Math.max(8, visibleCount * miniLineH);
+    vpTop = Math.max(0, Math.min(miniH - vpHeight, vpTop));
+
+    miniView.style.display = 'block';
+    miniView.style.height = vpHeight + 'px';
+    miniView.style.top = vpTop + 'px';
+  });
+}
+
+codeArea.addEventListener('scroll', syncMini, { passive:true });
+window.addEventListener('resize', syncMini);
+
+miniScroll.addEventListener('click', function(e){
+  var r = miniScroll.getBoundingClientRect();
+  var y = e.clientY - r.top;
+  var ratio = y / r.height;
+  var firstLine = codeArea.querySelector('.code-line');
+  var lineH = firstLine.getBoundingClientRect().height;
+  var target = Math.floor(ratio * TOTAL_LINES);
+  codeArea.scrollTo({ top: Math.max(0, target * lineH), behavior:'smooth' });
+  window.setTimeout(syncMini, 260);
+});
+
+var cur = -1;
+
+function render(){
+  var step = (cur >= 0) ? STEPS[cur] : null;
+
+  renderCode(step);
+  renderVars(step);
+  renderFrames(step);
+  renderMem(step);
+  renderArrs(step);
+  renderOut(step);
+
+  if(step){
+    explainBox.innerHTML =
+      '<span class="tag' + (step.cls === 'mv' ? ' mv' : step.cls === 'gold' ? ' gold' : '') + '">第 ' + step.line + ' 行</span>' +
+      '<strong>' + step.title + '</strong> —— ' + step.desc;
+    stepCounter.textContent = '步骤 ' + (cur + 1) + ' / ' + STEPS.length;
+  } else {
+    explainBox.innerHTML =
+      '<em>点击「自动播放」或「下一步」，开始逐条执行程序。<br><br>' +
+      '<b>本程序演示：数组名退化 · 指针赋值 · 作用域遮蔽 · 无输出</b><br>' +
+      '· 第 3 行：<code>int a[10];</code> 分配 40 字节，<b>10 个元素未初始化</b>；<br>' +
+      '· 第 4 行：<code>int *p;</code> 分配 8 字节指针，此时是<b>野指针</b>；<br>' +
+      '· 第 5 行：<code>p = a;</code> 数组名退化为 <code>&amp;a[0]</code>，地址存入 p；<br>' +
+      '· 第 6 行：注释，说明 <code>p = a;</code> 等价于 <code>p = &amp;a[0];</code>；<br>' +
+      '· 第 7 行：注释，说明「声明 + 初始化」可写在一行；<br>' +
+      '· 第 8 行：花括号开启<b>新作用域</b>，解决同名重复定义；<br>' +
+      '· 第 9 行：<code>int a[10], *p = a;</code> 块内数组遮蔽外层，块内 p 指向块内 a[0]；<br>' +
+      '· 第 10 行：<code>float b[5], *pf = b;</code> 浮点数组与浮点指针配对；<br>' +
+      '· 第 11 行：块结束，块内 4 个变量<b>全部销毁</b>（共 76 字节）；<br>' +
+      '· 第 12~13 行：return 0，程序正常结束。<br><br>' +
+      '<b>运行结果：</b>本程序没有 printf，屏幕无任何输出，退出码 0。<br>' +
+      '共 ' + STEPS.length + ' 个执行步骤，请用「自动播放」或方向键逐步查看。</em>';
+    stepCounter.textContent = '步骤 — / ' + STEPS.length;
+  }
+
+  btnPrev.disabled = cur < 0;
+  btnNext.disabled = cur >= STEPS.length - 1;
+}
+
+var playing = false, timer = null;
+var speed = Number(speedInput.value);
+
+function updatePlayBtn(){
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+function tick(){
+  if(cur >= STEPS.length - 1){ pause(); return; }
+  cur++; render();
+  if(cur >= STEPS.length - 1) pause();
+}
+function play(){
+  if(playing) return;
+  if(cur >= STEPS.length - 1){ cur = -1; render(); }
+  playing = true; updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+function pause(){
+  playing = false;
+  window.clearInterval(timer); timer = null;
+  updatePlayBtn();
+}
+function nextStep(){ pause(); if(cur < STEPS.length - 1){ cur++; render(); } }
+function prevStep(){ pause(); if(cur > -1){ cur--; render(); } }
+function resetAll(){
+  pause(); cur = -1; lastOut = null;
+  consoleBody.innerHTML = '';
+  codeArea.scrollTop = 0;
+  render(); syncMini();
+}
+
+btnPlay.addEventListener('click', function(){ playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function(){
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+  if(playing){ window.clearInterval(timer); timer = window.setInterval(tick, speed); }
+});
+
+btnFull.addEventListener('click', function(){
+  if(!document.fullscreenElement) document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+  else document.exitFullscreen && document.exitFullscreen();
+});
+
+var zTop = 200;
+function bringToFront(panel){
+  zTop += 1;
+  panel.style.zIndex = zTop;
+  document.querySelectorAll('.panel').forEach(function(p){ p.classList.remove('top'); });
+  panel.classList.add('top');
+}
+
+function makeDraggable(panel, handle){
+  handle.addEventListener('pointerdown', function(e){
+    if(e.target.closest('.panel-btn')) return;
+    if(e.target.closest('[data-rz]')) return;
+    bringToFront(panel);
+    var r = panel.getBoundingClientRect();
+    var sx = e.clientX, sy = e.clientY;
+    var ox = r.left, oy = r.top;
+    panel.style.left = ox + 'px';
+    panel.style.top = oy + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    function mv(ev){
+      var nx = ox + ev.clientX - sx;
+      var ny = oy + ev.clientY - sy;
+      nx = Math.max(-r.width + 100, Math.min(window.innerWidth - 100, nx));
+      ny = Math.max(0, Math.min(window.innerHeight - 60, ny));
+      panel.style.left = nx + 'px';
+      panel.style.top = ny + 'px';
+    }
+    function up(){
+      document.removeEventListener('pointermove', mv);
+      document.removeEventListener('pointerup', up);
+    }
+    document.addEventListener('pointermove', mv);
+    document.addEventListener('pointerup', up);
+    e.preventDefault();
+  });
+}
+
+function makeResizable(panel, handle){
+  handle.addEventListener('pointerdown', function(e){
+    e.stopPropagation(); e.preventDefault();
+    bringToFront(panel);
+    var r = panel.getBoundingClientRect();
+    var sx = e.clientX, sy = e.clientY;
+    var w = r.width, h = r.height;
+    if(panel.style.right !== 'auto'){
+      panel.style.left = r.left + 'px';
+      panel.style.right = 'auto';
+    }
+    if(panel.style.bottom !== 'auto'){
+      panel.style.top = r.top + 'px';
+      panel.style.bottom = 'auto';
+    }
+    panel.style.maxWidth = 'none';
+    panel.style.maxHeight = 'none';
+    function mv(ev){
+      var nw = w + ev.clientX - sx;
+      var nh = h + ev.clientY - sy;
+      if(nw < 20) nw = 20;
+      if(nh < 20) nh = 20;
+      panel.style.width = nw + 'px';
+      panel.style.height = nh + 'px';
+      if(panel.id === 'panelMini') window.setTimeout(syncMini, 30);
+    }
+    function up(){
+      document.removeEventListener('pointermove', mv);
+      document.removeEventListener('pointerup', up);
+    }
+    document.addEventListener('pointermove', mv);
+    document.addEventListener('pointerup', up);
+  });
+}
+
+var PANELS = ['panelCtrl','panelVars','panelMem','panelArr','panelOut','panelExplain','panelMini'];
+
+PANELS.forEach(function(id){
+  var p = document.getElementById(id);
+  var head = p.querySelector('.panel-head') || p.querySelector('.ctrl-row');
+  if(head) makeDraggable(p, head);
+  var rz = p.querySelector('[data-rz]');
+  if(rz) makeResizable(p, rz);
+  p.addEventListener('pointerdown', function(){ bringToFront(p); });
+  p.addEventListener('focusin', function(){ bringToFront(p); });
+});
+
+document.querySelectorAll('.panel-close').forEach(function(btn){
+  btn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var id = btn.dataset.close || 'panelCtrl';
+    var p = document.getElementById(id);
+    if(p) p.classList.add('hidden');
+  });
+});
+
+/* ============================================================
+   6. 默认布局 / 重置布局
+   ★ 修复关键：panelMini 的默认位置不再落到屏幕外
+   ============================================================ */
+function applyLayout(){
+  var vw = window.innerWidth, vh = window.innerHeight;
+  var p;
+
+  p = document.getElementById('panelCtrl');
+  p.style.left = '24px'; p.style.top = '24px';
+  p.style.right = 'auto'; p.style.bottom = 'auto';
+  p.style.width = 'auto'; p.style.height = 'auto';
+  p.style.maxWidth = 'none'; p.style.maxHeight = 'none';
+
+  p = document.getElementById('panelVars');
+  p.style.left = '24px'; p.style.top = '190px';
+  p.style.right = 'auto'; p.style.bottom = 'auto';
+  p.style.width = Math.min(720, vw*0.38) + 'px';
+  p.style.height = Math.min(500, vh*0.5) + 'px';
+  p.style.maxWidth = 'none'; p.style.maxHeight = 'none';
+
+  p = document.getElementById('panelMem');
+  p.style.left = '24px';
+  p.style.top = Math.round(Math.min(500, vh*0.5) + 210) + 'px';
+  p.style.right = 'auto'; p.style.bottom = 'auto';
+  p.style.width = Math.min(720, vw*0.38) + 'px';
+  p.style.height = '240px';
+  p.style.maxWidth = 'none'; p.style.maxHeight = 'none';
+
+  p = document.getElementById('panelArr');
+  p.style.left = Math.round(vw*0.40) + 'px'; p.style.top = '190px';
+  p.style.right = 'auto'; p.style.bottom = 'auto';
+  p.style.width = Math.round(vw*0.24) + 'px';
+  p.style.height = Math.min(500, vh*0.5) + 'px';
+  p.style.maxWidth = 'none'; p.style.maxHeight = 'none';
+
+  p = document.getElementById('panelExplain');
+  p.style.left = Math.round(vw*0.66) + 'px'; p.style.top = '24px';
+  p.style.right = 'auto'; p.style.bottom = 'auto';
+  p.style.width = Math.round(vw*0.34 - 220) + 'px';
+  p.style.height = '360px';
+  p.style.maxWidth = 'none'; p.style.maxHeight = 'none';
+
+  p = document.getElementById('panelOut');
+  p.style.left = Math.round(vw*0.66) + 'px'; p.style.top = '400px';
+  p.style.right = 'auto'; p.style.bottom = 'auto';
+  p.style.width = Math.round(vw*0.34 - 220) + 'px';
+  p.style.height = '250px';
+  p.style.maxWidth = 'none'; p.style.maxHeight = 'none';
+
+  /* ★ 缩略图：默认靠右侧可见位置，从 top:190 开始，高度自适应 */
+  p = document.getElementById('panelMini');
+  p.style.left = (vw - 220) + 'px';
+  p.style.top = '190px';
+  p.style.right = 'auto';
+  p.style.bottom = 'auto';
+  p.style.width = '196px';
+  p.style.height = Math.min(520, Math.max(240, vh - 240)) + 'px';
+  p.style.maxWidth = 'none'; p.style.maxHeight = 'none';
+
+  var order = ['panelCtrl','panelVars','panelMem','panelArr','panelExplain','panelOut','panelMini'];
+  order.forEach(function(id, idx){
+    var el = document.getElementById(id);
+    el.style.zIndex = 200 + idx;
+    el.classList.remove('top');
+  });
+  zTop = 200 + order.length;
+  document.getElementById('panelMini').classList.add('top');
+
+  PANELS.forEach(function(id){ document.getElementById(id).classList.remove('hidden'); });
+  window.setTimeout(syncMini, 60);
+  window.setTimeout(syncMini, 260);
+}
+
+btnLayout.addEventListener('click', applyLayout);
+window.addEventListener('resize', function(){ window.setTimeout(syncMini, 60); });
+
+var allHidden = false;
+btnPanels.addEventListener('click', function(){
+  allHidden = !allHidden;
+  PANELS.forEach(function(id){
+    document.getElementById(id).classList.toggle('hidden', allHidden);
+  });
+  if(!allHidden) window.setTimeout(syncMini, 60);
+});
+btnMini.addEventListener('click', function(){
+  document.getElementById('panelMini').classList.toggle('hidden');
+  window.setTimeout(syncMini, 60);
+});
+
+document.addEventListener('keydown', function(e){
+  if(e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+  switch(e.code){
+    case 'Space':
+      e.preventDefault(); playing ? pause() : play(); break;
+    case 'ArrowRight': e.preventDefault(); nextStep(); break;
+    case 'ArrowLeft':  e.preventDefault(); prevStep(); break;
+    case 'KeyR':       e.preventDefault(); resetAll(); break;
+    case 'KeyF':
+      e.preventDefault();
+      if(!document.fullscreenElement) document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+      else document.exitFullscreen && document.exitFullscreen();
+      break;
+    case 'KeyM':
+      e.preventDefault();
+      document.getElementById('panelMini').classList.toggle('hidden');
+      window.setTimeout(syncMini, 60);
+      break;
+    case 'KeyH':
+      e.preventDefault();
+      allHidden = !allHidden;
+      PANELS.forEach(function(id){
+        document.getElementById(id).classList.toggle('hidden', allHidden);
+      });
+      if(!allHidden) window.setTimeout(syncMini, 60);
+      break;
+  }
+});
+
+buildVarsAndStart();
+
+function buildVarsAndStart(){
+  speedLabel.textContent = (speed/1000).toFixed(2) + 's';
+  render();
+  applyLayout();
+  window.setTimeout(syncMini, 120);
+  window.setTimeout(syncMini, 400);
+  window.setTimeout(syncMini, 900);
+  if(document.fonts && document.fonts.ready){
+    document.fonts.ready.then(function(){ window.setTimeout(syncMini, 80); });
+  }
+}
+
+})();
+</script>
+</body>
+</html>
