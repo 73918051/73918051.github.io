@@ -1,0 +1,2961 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>C 程序逐步执行模拟 · 希尔排序 · a[6]={3,5,10,9,7,12} · 有序区/无序区 + 机械爪后移</title>
+<style>
+/* ============ 全局变量 ============ */
+:root{
+  --code-font:    clamp(60px, 3.6vw, 96px);
+  --ln-font:      clamp(40px, 2.4vw, 64px);
+  --out-font:     clamp(56px, 3.4vw, 88px);
+  --var-font:     clamp(32px, 1.8vw, 48px);
+  --explain-font: clamp(36px, 2.2vw, 54px);
+  --btn-font:     clamp(28px, 1.6vw, 44px);
+  --title-font:   clamp(28px, 1.8vw, 44px);
+  --panel-bg:     rgba(13,17,23,.85);
+  --panel-border: rgba(56,189,248,.35);
+
+  --bar-default-1:#3b82f6;
+  --bar-default-2:#1d4ed8;
+  --bar-active-1:#fcd34d;
+  --bar-active-2:#fbbf24;
+  --bar-swap-1:#fbbf24;
+  --bar-swap-2:#f59e0b;
+  --track-color:#475569;
+
+  --sorted-green:#22c55e;
+  --sorted-green-light:#86efac;
+  --sorted-green-bg:rgba(74,222,128,.10);
+  --sorted-green-border:rgba(74,222,128,.55);
+  --unsorted-gray:#64748b;
+  --unsorted-gray-light:#94a3b8;
+  --unsorted-gray-bg:rgba(100,116,139,.07);
+  --unsorted-gray-border:rgba(100,116,139,.45);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;overflow:hidden;background:#0d1117;}
+body{
+  font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;
+  color:#e6edf3;
+  -webkit-tap-highlight-color:transparent;
+}
+
+/* ============ 全屏代码区 ============ */
+#stage{position:fixed;inset:0;background:#0d1117;z-index:0;}
+#codeScroll{
+  position:absolute;inset:0;
+  overflow:auto;
+  padding:0 0 38vh 0;
+  scrollbar-width:thin;scrollbar-color:#334155 transparent;
+}
+#codeScroll::-webkit-scrollbar{width:16px;height:16px;}
+#codeScroll::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+#codeScroll::-webkit-scrollbar-track{background:#0d1117;}
+
+.code-line{
+  display:flex;
+  align-items:flex-start;
+  white-space:pre;
+  font-family:ui-monospace,"Cascadia Mono",Consolas,"Courier New",monospace;
+  font-size:var(--code-font);
+  line-height:1.5;
+  border-left:14px solid transparent;
+  transition:background-color .25s,border-color .25s,opacity .25s;
+}
+.code-line .ln{
+  flex:0 0 auto;width:3.6ch;text-align:right;margin-right:1.6rem;
+  font-size:var(--ln-font);color:#3d4f66;user-select:none;font-variant-numeric:tabular-nums;
+}
+.code-line .src{flex:0 0 auto;padding-right:10rem;}
+
+.pp  {color:#c084fc;font-weight:600;}
+.str {color:#4ade80;}
+.cmt {color:#5b6f8c;font-style:italic;}
+.fn  {color:#38bdf8;}
+.kw  {color:#f472b6;font-weight:600;}
+.num {color:#fbbf24;}
+.op  {color:#fb923c;font-weight:700;}
+
+.code-line.active{
+  background:linear-gradient(90deg,rgba(56,189,248,.28),rgba(56,189,248,.03));
+  border-left-color:#38bdf8;
+  box-shadow:inset 0 0 0 4px rgba(56,189,248,.22);
+}
+.code-line.active .ln{color:#38bdf8;font-weight:700;}
+.code-line.active .src{color:#ffffff;}
+.code-line.skip{opacity:.22;}
+.code-line.skip .ln{color:#4d5f78;}
+
+/* ============ 悬浮面板通用 ============ */
+.panel{
+  position:fixed;
+  background:var(--panel-bg);
+  -webkit-backdrop-filter:blur(14px);
+  backdrop-filter:blur(14px);
+  border:3px solid var(--panel-border);
+  border-radius:20px;
+  box-shadow:0 16px 48px rgba(0,0,0,.7);
+  display:flex;flex-direction:column;
+  overflow:hidden;z-index:100;min-width:0;min-height:0;
+  transition:border-color .18s,box-shadow .18s,opacity .18s;
+}
+.panel:hover{background:rgba(13,17,23,.95);}
+.panel.active{
+  border-color:#38bdf8;
+  box-shadow:0 0 0 5px rgba(56,189,248,.45),0 16px 48px rgba(0,0,0,.8);
+}
+.panel.hidden{display:none !important;}
+
+.phead{
+  flex:0 0 auto;display:flex;align-items:center;gap:1rem;
+  padding:.3rem .7rem;
+  background:rgba(30,41,59,.95);
+  border-bottom:3px solid rgba(56,189,248,.25);
+  cursor:move;user-select:none;touch-action:none;
+}
+.ptitle{
+  font-size:var(--title-font);font-weight:700;color:#7dd3fc;
+  white-space:nowrap;letter-spacing:.04em;
+}
+.pspacer{flex:1 1 auto;}
+.pbtn{
+  flex:0 0 auto;font:inherit;font-size:var(--btn-font);
+  line-height:1;min-width:56px;min-height:56px;border-radius:16px;
+  border:3px solid rgba(148,163,184,.30);background:rgba(30,41,59,.8);
+  color:#cbd5e1;cursor:pointer;transition:background .15s,border-color .15s,transform .1s;
+}
+.pbtn:hover{background:rgba(56,189,248,.25);border-color:#38bdf8;color:#fff;}
+.pbtn:active{transform:translateY(2px);}
+.pclose{color:#fca5a5;border-color:rgba(248,113,113,.4);}
+.pclose:hover{background:rgba(248,113,113,.3);border-color:#f87171;color:#fff;}
+
+.pbody{
+  flex:1 1 auto;min-height:0;min-width:0;overflow:auto;
+  padding:.5rem .7rem;scrollbar-width:thin;scrollbar-color:#334155 transparent;
+}
+.pbody::-webkit-scrollbar{width:14px;height:14px;}
+.pbody::-webkit-scrollbar-thumb{background:#2c3f5e;border-radius:10px;}
+
+.presize{
+  position:absolute;right:0;bottom:0;width:48px;height:48px;
+  cursor:nwse-resize;touch-action:none;
+  background:
+    linear-gradient(135deg,transparent 38%,rgba(56,189,248,.9) 39%,rgba(56,189,248,.9) 52%,transparent 53%,
+                    transparent 60%,rgba(56,189,248,.9) 61%,rgba(56,189,248,.9) 74%,transparent 75%,
+                    transparent 80%,rgba(56,189,248,.9) 81%,rgba(56,189,248,.9) 94%,transparent 95%);
+}
+.presize:hover{background-color:rgba(56,189,248,.22);}
+.panel.collapsed .pbody{display:none;}
+
+/* ============ 顶部控制栏 ============ */
+#p-top{left:20px;top:16px;}
+#p-top .pbody{display:flex;flex-wrap:wrap;align-items:center;gap:12px;}
+.ctl{
+  font:inherit;font-size:var(--btn-font);min-height:64px;
+  padding:.3rem 1rem;border-radius:18px;
+  border:3px solid rgba(148,163,184,.30);background:rgba(30,41,59,.8);
+  color:#dbeafe;cursor:pointer;white-space:nowrap;
+  transition:background .15s,border-color .15s,transform .1s;touch-action:manipulation;
+}
+.ctl:hover{background:rgba(56,189,248,.25);border-color:#38bdf8;color:#fff;}
+.ctl:active{transform:translateY(2px);}
+.ctl:disabled{opacity:.30;cursor:not-allowed;}
+.ctl.primary{
+  background:linear-gradient(180deg,#0ea5e9,#0284c7);
+  border-color:#38bdf8;color:#04121f;font-weight:800;
+}
+.ctl.primary.playing{
+  background:linear-gradient(180deg,#f59e0b,#d97706);
+  border-color:#fbbf24;color:#1a1200;
+}
+.speedbox{
+  display:flex;align-items:center;gap:.7rem;
+  font-size:var(--btn-font);color:#94a3b8;white-space:nowrap;
+}
+.speedbox input[type=range]{
+  width:clamp(120px,10vw,240px);height:40px;accent-color:#38bdf8;cursor:pointer;
+}
+.speedbox b{color:#38bdf8;min-width:4ch;font-variant-numeric:tabular-nums;}
+
+/* ============ 变量 / 数组 / 柱状图 面板 ============ */
+#p-vars{left:20px;top:180px;}
+.arr-title{
+  font-size:var(--var-font);color:#7d93b3;margin-bottom:.4rem;white-space:normal;
+}
+.arr-title b{color:#fbbf24;}
+.arr-title i{color:#f59e0b;font-style:normal;}
+.arr-title .legend-sorted{color:#4ade80;font-weight:800;}
+.arr-title .legend-unsorted{color:#94a3b8;font-weight:800;}
+
+.hud-counter{
+  display:flex; justify-content:space-around; margin-bottom:15px;
+  background:rgba(30,41,59,.6); padding:8px; border-radius:12px;
+  border:2px solid rgba(56,189,248,.2);
+}
+.hud-item { font-size:calc(var(--var-font) * 1.0); color:#94a3b8; display:flex; align-items:center; gap:8px;}
+.hud-item b { color:#38bdf8; font-size:calc(var(--var-font) * 1.4); font-family:ui-monospace;}
+
+/* 趟指示器 */
+.pass-indicator{
+  display:flex;
+  align-items:center;
+  gap:.6rem;
+  background:rgba(30,41,59,.75);
+  border:2px solid rgba(56,189,248,.35);
+  border-radius:12px;
+  padding:.35rem .7rem;
+  font-size:calc(var(--var-font) * .88);
+  color:#c9d7ea;
+  margin-bottom:.45rem;
+  min-height:2.4em;
+  flex-wrap:wrap;
+  transition:border-color .3s,background .3s;
+}
+.pass-indicator .pi-badge{
+  background:linear-gradient(180deg,#38bdf8,#0284c7);
+  color:#04121f;
+  font-weight:900;
+  padding:2px 10px;
+  border-radius:8px;
+  font-size:.92em;
+  white-space:nowrap;
+}
+.pass-indicator .pi-badge.pass2{
+  background:linear-gradient(180deg,#4ade80,#22c55e);
+  color:#052e1a;
+}
+.pass-indicator .pi-k{
+  font-family:ui-monospace,Consolas,monospace;
+  color:#fbbf24;
+  font-weight:800;
+}
+.pass-indicator .pi-info{
+  color:#c9d7ea;
+}
+.pass-indicator .pi-prog{
+  margin-left:auto;
+  color:#5f7796;
+  font-size:.85em;
+  font-family:ui-monospace;
+}
+
+/* 分区状态横幅 */
+.zone-banner{
+  background:rgba(30,41,59,.7);
+  border:2px solid rgba(56,189,248,.32);
+  border-radius:10px;
+  padding:.3rem .6rem;
+  font-size:calc(var(--var-font) * .80);
+  color:#c9d7ea;
+  margin-bottom:.45rem;
+  min-height:2.2em;
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:.35em;
+  line-height:1.4;
+  transition:border-color .3s,background .3s;
+}
+.zone-banner b{color:#fbbf24;font-family:ui-monospace,Consolas,monospace;}
+.zone-banner .zb-sorted{color:#86efac;font-weight:800;}
+.zone-banner .zb-unsorted{color:#cbd5e1;font-weight:800;}
+.zone-banner .badge-move{
+  background:linear-gradient(180deg,#fcd34d,#f59e0b);
+  color:#1a1200;font-weight:900;
+  padding:1px 9px;border-radius:6px;
+  font-size:.92em;letter-spacing:.04em;
+  box-shadow:0 2px 10px rgba(245,158,11,.6);
+}
+.zone-banner .badge-insert{
+  background:linear-gradient(180deg,#4ade80,#22c55e);
+  color:#052e1a;font-weight:900;
+  padding:1px 9px;border-radius:6px;
+  font-size:.92em;letter-spacing:.04em;
+  box-shadow:0 2px 10px rgba(34,197,94,.6);
+}
+.zone-banner .badge-done{
+  background:linear-gradient(180deg,#38bdf8,#0284c7);
+  color:#04121f;font-weight:900;
+  padding:1px 9px;border-radius:6px;
+  font-size:.92em;letter-spacing:.04em;
+}
+.zone-banner .badge-pass{
+  background:linear-gradient(180deg,#a78bfa,#7c3aed);
+  color:#fff;font-weight:900;
+  padding:1px 9px;border-radius:6px;
+  font-size:.92em;letter-spacing:.04em;
+  box-shadow:0 2px 10px rgba(124,58,237,.6);
+}
+.zone-banner .zb-hint{color:#5f7796;font-style:italic;}
+
+/* ============ 柱状图与机械抓手 ============ */
+.chart-container{
+  position:relative;
+  height:280px;
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-around;
+  padding:64px 8px 42px 8px;
+  gap:8px;
+  margin-bottom:6px;
+}
+
+.track{
+  position:absolute;
+  top:20px; left:2%; right:2%; height:6px;
+  background:var(--track-color);
+  border-radius:3px;
+  z-index:5;
+  box-shadow:inset 0 2px 4px rgba(0,0,0,.6);
+}
+
+/* 机械抓手 */
+.gripper{
+  position:absolute;
+  top:8px; left:0;
+  width:80px; height:30px;
+  z-index:20;
+  opacity:0;
+  pointer-events:none;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  transition:
+    left .45s cubic-bezier(.4,0,.2,1),
+    width .45s cubic-bezier(.4,0,.2,1),
+    top .4s cubic-bezier(.4,0,.2,1),
+    opacity .25s ease;
+}
+.gripper.active{opacity:1;}
+
+.gripper-label{
+  position:absolute;
+  top:-38px; left:50%;
+  transform:translateX(-50%);
+  background:linear-gradient(180deg,#fcd34d,#f59e0b);
+  color:#1a1200;
+  font-weight:900;
+  font-size:calc(var(--var-font) * .85);
+  padding:2px 12px;
+  border-radius:10px;
+  white-space:nowrap;
+  box-shadow:0 4px 14px rgba(0,0,0,.65);
+  display:none;
+  z-index:30;
+  border:2px solid #fff3c4;
+}
+
+.gripper-body{
+  width:100%; height:20px;
+  background:linear-gradient(180deg,#cbd5e1 0%,#94a3b8 100%);
+  border-radius:6px;
+  position:relative;
+  box-shadow:0 4px 10px rgba(0,0,0,.55);
+  border:1px solid #64748b;
+  transition:background .3s;
+}
+.gripper-body::before,
+.gripper-body::after{
+  content:'';
+  position:absolute;
+  width:8px; height:8px;
+  background:#475569;
+  border-radius:50%;
+  top:5px;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.85);
+}
+.gripper-body::before{left:8px;}
+.gripper-body::after{right:8px;}
+
+.gripper-arm{
+  position:absolute;
+  top:18px;
+  width:8px; height:22px;
+  background:linear-gradient(180deg,#cbd5e1,#94a3b8);
+  border-radius:0 0 3px 3px;
+  transform-origin:top center;
+  transition:transform .4s cubic-bezier(.4,0,.2,1), background .3s;
+  box-shadow:0 2px 6px rgba(0,0,0,.5);
+}
+.gripper-arm.left{left:8px;}
+.gripper-arm.right{right:8px;}
+
+.gripper.grabbing .gripper-arm.left{transform:rotate(16deg) translateY(8px);}
+.gripper.grabbing .gripper-arm.right{transform:rotate(-16deg) translateY(8px);}
+.gripper.grabbing .gripper-body{background:linear-gradient(180deg,#fcd34d,#f59e0b);}
+.gripper.grabbing .gripper-arm{background:linear-gradient(180deg,#fcd34d,#f59e0b);}
+
+/* ===== 柱子 ===== */
+.bar-wrapper{
+  flex:1 1 0;
+  min-width:0;
+  height:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:flex-end;
+  position:relative;
+}
+.bar{
+  width:86%;
+  height:0%;
+  background:linear-gradient(180deg,var(--bar-default-1),var(--bar-default-2));
+  border-radius:6px 6px 0 0;
+  position:relative;
+  display:flex;
+  justify-content:center;
+  box-shadow:inset 0 -10px 20px rgba(0,0,0,.25);
+  transition:
+    height .4s cubic-bezier(.4,0,.2,1),
+    background .3s ease,
+    box-shadow .3s ease,
+    transform .45s cubic-bezier(.4,0,.2,1);
+}
+.bar-val{
+  position:absolute;
+  top:-32px;
+  font-weight:800;
+  font-size:calc(var(--var-font) * 1.15);
+  color:#e2e8f0;
+  text-shadow:0 2px 6px rgba(0,0,0,.85);
+  white-space:nowrap;
+  transition:color .3s, transform .3s;
+}
+.bar-index{
+  position:absolute;
+  bottom:-32px;
+  font-size:calc(var(--var-font) * .8);
+  color:#5f7796;
+  font-variant-numeric:tabular-nums;
+  white-space:nowrap;
+}
+
+/* 柱子所属分区：底部小色条 */
+.bar-wrapper::after{
+  content:'';
+  position:absolute;
+  left:5%; right:5%;
+  bottom:-40px;
+  height:5px;
+  border-radius:3px;
+  background:transparent;
+  transition:background .3s, box-shadow .3s;
+}
+.bar-wrapper.zone-sorted::after{
+  background:var(--sorted-green);
+  box-shadow:0 0 8px rgba(34,197,94,.55);
+}
+.bar-wrapper.zone-unsorted::after{
+  background:#475569;
+}
+
+/* 比较：黄色 */
+.bar.comparing{
+  background:linear-gradient(180deg,var(--bar-active-1),var(--bar-active-2));
+  box-shadow:0 0 24px rgba(251,191,36,.65), inset 0 -10px 20px rgba(0,0,0,.2);
+}
+.bar.comparing .bar-val{color:#ffffff;transform:scale(1.12);}
+
+/* 后移 / 插入：橙色 */
+.bar.swapping-bar{
+  background:linear-gradient(180deg,var(--bar-swap-1),var(--bar-swap-2));
+  box-shadow:0 0 30px rgba(245,158,11,.9), inset 0 -10px 20px rgba(0,0,0,.2);
+}
+.bar.swapping-bar .bar-val{color:#ffffff;transform:scale(1.15);}
+
+/* 被机械爪提起 */
+.bar.lifted{
+  transform:translateY(-32px) scale(1.05);
+  z-index:25;
+}
+
+/* ===== 数组格子 ===== */
+.arr-grid-wrap{
+  position:relative;
+  margin-bottom:.6rem;
+}
+.arr-grid{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:.35rem;
+}
+.acell{
+  position:relative;
+  text-align:center;border-radius:10px;padding:.25rem .03rem .3rem;
+  background:#0d1728;border:2px solid #1b293f;
+  transition:background .3s,border-color .3s,box-shadow .3s,transform .3s,opacity .3s;
+  overflow:hidden;
+}
+.acell .aidx{display:block;font-size:calc(var(--var-font) * .75);color:#5f7796;line-height:1.25;}
+.acell .aval{
+  display:block;font-family:ui-monospace,Consolas,monospace;font-weight:800;
+  font-size:calc(var(--var-font) * 1.15);color:#38bdf8;line-height:1.3;white-space:nowrap;
+}
+.acell.empty .aval{color:#3c5170;font-weight:500;}
+
+.acell.in-sorted{
+  background:var(--sorted-green-bg);
+  border-color:var(--sorted-green-border);
+}
+.acell.in-sorted .aidx{color:#6ee7b7;}
+.acell.in-unsorted{
+  background:var(--unsorted-gray-bg);
+  border-color:var(--unsorted-gray-border);
+}
+.acell.in-unsorted .aval{color:#94a3b8;}
+
+.acell.is-cmp{
+  border-color:#fbbf24 !important;
+  background:rgba(251,191,36,.18) !important;
+  box-shadow:0 0 0 3px rgba(251,191,36,.42);
+  transform:translateY(-3px);
+}
+.acell.is-cmp .aval{color:#ffffff;}
+
+.acell.is-swp,
+.acell.is-move-src{
+  border-color:#f59e0b !important;
+  background:rgba(245,158,11,.24) !important;
+  box-shadow:0 0 0 3px rgba(245,158,11,.52);
+  transform:translateY(-4px);
+}
+.acell.is-swp .aval,
+.acell.is-move-src .aval{color:#ffedd5;}
+
+.acell.is-move-src{
+  animation:moveSrcFloat .7s ease-in-out infinite alternate;
+  z-index:3;
+}
+@keyframes moveSrcFloat{
+  from{transform:translateY(-5px);}
+  to{transform:translateY(2px);}
+}
+.acell.is-move-src::before{
+  content:'▼';
+  position:absolute;
+  top:-4px; left:50%;
+  transform:translateX(-50%);
+  color:#fcd34d;
+  font-size:calc(var(--var-font) * .55);
+  line-height:1;
+  animation:bounceDown .5s ease-in-out infinite alternate;
+}
+@keyframes bounceDown{
+  from{top:-6px;opacity:.7;}
+  to{top:1px;opacity:1;}
+}
+
+.acell.is-move-dst{
+  border-color:#fbbf24 !important;
+  background:rgba(251,191,36,.15) !important;
+  box-shadow:inset 0 0 0 2px rgba(251,191,36,.65);
+}
+
+/* 有序区 / 无序区标签带 */
+.zone-labels{
+  display:grid;
+  grid-template-columns:repeat(6,minmax(0,1fr));
+  gap:.35rem;
+  margin-top:3px;
+  height:calc(var(--var-font) * 1.05);
+}
+.zone-lbl{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:calc(var(--var-font) * .70);
+  font-weight:800;
+  border-radius:6px;
+  opacity:0;
+  transition:background .3s,color .3s,opacity .3s,box-shadow .3s;
+  white-space:nowrap;
+  overflow:hidden;
+  letter-spacing:.04em;
+}
+.zone-lbl.sorted-zone{
+  opacity:1;
+  background:linear-gradient(180deg,rgba(74,222,128,.32),rgba(34,197,94,.20));
+  color:#86efac;
+  border:1px solid rgba(74,222,128,.55);
+  box-shadow:0 0 8px rgba(74,222,128,.25);
+}
+.zone-lbl.unsorted-zone{
+  opacity:1;
+  background:linear-gradient(180deg,rgba(100,116,139,.25),rgba(71,85,105,.15));
+  color:#94a3b8;
+  border:1px solid rgba(100,116,139,.4);
+}
+.zone-lbl.sorted-zone.zone-edge{
+  box-shadow:inset -3px 0 0 0 #22c55e;
+}
+.zone-lbl.unsorted-zone.zone-edge{
+  box-shadow:inset 3px 0 0 0 #22c55e;
+}
+
+/* 变量表 */
+.vtable{display:flex;flex-direction:column;gap:.22rem;}
+.vrow{
+  display:flex;justify-content:space-between;align-items:flex-start;gap:.7rem;
+  padding:.22rem .6rem;border-radius:12px;
+  background:#0d1728;border:2px solid #1b293f;
+  font-size:var(--var-font);transition:background .3s,border-color .3s;
+}
+.vrow.changed{border-color:rgba(56,189,248,.9);background:rgba(56,189,248,.15);}
+.vk{color:#8ba3c4;white-space:normal;flex:1 1 auto;min-width:0;}
+.vv{font-family:ui-monospace,Consolas,monospace;font-weight:800;color:#38bdf8;text-align:right;white-space:normal;flex:0 0 auto;max-width:64%;word-break:break-all;font-variant-numeric:tabular-nums;}
+.vv.dim{color:#5f7796;font-weight:500;}
+.r-ctx .vv{color:#4ade80;}
+.r-j   .vv{color:#38bdf8;}
+.r-i   .vv{color:#38bdf8;}
+.r-k   .vv{color:#fbbf24;}
+.r-t   .vv{color:#f472b6;}
+.r-n   .vv{color:#a5b4fc;}
+.r-c1  .vv{color:#2dd4bf;}
+.r-c2  .vv{color:#2dd4bf;}
+.r-ifc .vv{color:#a5b4fc;}
+.r-expr .vv{color:#a5b4fc;}
+.r-eval .vv{color:#a5b4fc;}
+.r-note .vv{color:#2dd4bf;font-size:calc(var(--var-font) * .92);}
+.r-pfn .vv{color:#fb923c;}
+.r-scn .vv{color:#fb923c;}
+.r-cmp .vv{color:#facc15;}
+.r-swp .vv{color:#f472b6;}
+.r-ret .vv{color:#fbbf24;}
+
+/* ============ 输出面板 ============ */
+#p-out{right:20px;bottom:16px;}
+.console{
+  font-family:ui-monospace,Consolas,"Courier New",monospace;
+  font-size:var(--out-font);line-height:1.55;color:#fbbf24;white-space:pre;min-height:1.2em;
+}
+.console:empty::before{content:"（等待程序输出…）";color:#3d5474;font-size:calc(var(--out-font) * .5);}
+@keyframes slideIn{from{opacity:0;transform:translateX(-1.2rem);}to{opacity:1;transform:none;}}
+.outline{animation:slideIn .35s ease-out;min-height:1.2em;}
+
+/* ============ 说明条 ============ */
+#p-explain{left:20px;bottom:16px;}
+.exhead{
+  display:inline-block;margin-right:.7rem;padding:.1rem .65rem;border-radius:.4em;
+  background:rgba(56,189,248,.22);color:#38bdf8;font-weight:800;
+  font-size:calc(var(--explain-font) * .78);vertical-align:middle;
+}
+.exhead.ans{background:rgba(251,191,36,.28);color:#fbbf24;}
+.exhead.swp{background:rgba(245,158,11,.30);color:#fbbf24;}
+.exhead.grn{background:rgba(74,222,128,.25);color:#86efac;}
+.exhead.pas{background:rgba(167,139,250,.30);color:#c4b5fd;}
+#explainBody{font-size:var(--explain-font);line-height:1.5;color:#c3d3e8;}
+#explainBody strong{color:#fff;}
+#explainBody code{font-family:ui-monospace,Consolas,monospace;background:rgba(148,163,184,.18);border-radius:.3rem;padding:0 .3rem;color:#e2e8f0;}
+#explainBody .tip{display:block;margin-top:.5rem;padding:.4rem .75rem;border-radius:.5rem;background:rgba(45,212,191,.12);border-left:8px solid #2dd4bf;color:#bff5ec;font-size:calc(var(--explain-font) * .88);}
+#explainBody .warn{display:block;margin-top:.5rem;padding:.4rem .75rem;border-radius:.5rem;background:rgba(251,191,36,.14);border-left:8px solid #fbbf24;color:#ffe6b0;font-size:calc(var(--explain-font) * .88);}
+
+/* ============ 缩略图 ============ */
+#p-mini{right:20px;top:16px;}
+#miniBody{position:relative;flex:1 1 auto;min-height:0;min-width:0;overflow:hidden;padding:0 !important;background:rgba(5,10,18,.6);}
+#miniContent{position:absolute;inset:0;}
+.mini-line{overflow:hidden;white-space:pre;font-family:ui-monospace,Consolas,monospace;color:#8ba3c4;padding-left:6px;border-left:4px solid transparent;opacity:.85;transition:background .2s,border-color .2s,opacity .2s;}
+.mini-line.skip{opacity:.26;}
+.mini-line.cur{background:rgba(56,189,248,.38);border-left-color:#38bdf8;opacity:1;}
+#miniView{position:absolute;left:0;right:0;border:4px solid #38bdf8;background:rgba(56,189,248,.15);box-shadow:0 0 18px rgba(56,189,248,.6);pointer-events:none;border-radius:6px;}
+
+/* ============ 小屏兜底 ============ */
+@media (max-width:900px){
+  :root{
+    --code-font:clamp(30px,5vw,48px);--ln-font:clamp(20px,3vw,32px);
+    --out-font:clamp(40px,6vw,64px);--var-font:clamp(20px,3vw,32px);
+    --explain-font:clamp(22px,3.5vw,32px);--btn-font:clamp(20px,3vw,28px);--title-font:clamp(18px,2.5vw,24px);
+  }
+  .chart-container{height:170px;padding:46px 4px 34px 4px;gap:4px;}
+  .bar-val{font-size:18px;top:-24px;}
+  .bar-index{font-size:11px;bottom:-24px;}
+  .bar-wrapper::after{bottom:-32px;height:3px;}
+  .track{top:12px;height:4px;}
+  .gripper{height:24px;}
+  .gripper-body{height:16px;}
+  .gripper-arm{top:14px;height:16px;width:6px;}
+  .gripper-arm.left{left:6px;}
+  .gripper-arm.right{right:6px;}
+  .bar.lifted{transform:translateY(-20px) scale(1.04);}
+  .gripper-label{top:-30px;font-size:16px;padding:1px 8px;}
+}
+</style>
+</head>
+<body>
+
+<!-- ================= 全屏代码区 ================= -->
+<div id="stage">
+  <div id="codeScroll"></div>
+</div>
+
+<!-- ================= 顶部控制栏 ================= -->
+<div class="panel" id="p-top" data-panel>
+  <div class="phead">
+    <span class="ptitle">控制台</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody">
+    <button class="ctl" id="btnReset">⟲ 重置</button>
+    <button class="ctl" id="btnPrev">◀ 上一步</button>
+    <button class="ctl primary" id="btnPlay">▶ 自动播放</button>
+    <button class="ctl" id="btnNext">下一步 ▶</button>
+    <span class="speedbox">
+      速度
+      <input type="range" id="speed" min="150" max="1800" step="50" value="650">
+      <b id="speedLabel">0.65s</b>
+    </span>
+    <button class="ctl" id="btnFull">⛶ 全屏</button>
+    <button class="ctl" id="btnPanels">▤ 面板</button>
+    <button class="ctl" id="btnMini">▥ 缩略图</button>
+    <button class="ctl" id="btnLayout">⤢ 重置布局</button>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<!-- ================= 变量 / 数组 / 柱状图 面板 ================= -->
+<div class="panel" id="p-vars" data-panel>
+  <div class="phead">
+    <span class="ptitle">数组可视化 · 希尔排序 · 有序区/无序区 · 机械爪后移</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody">
+    <div class="hud-counter">
+      <div class="hud-item">比较 <b id="hudCmp">0</b></div>
+      <div class="hud-item">后移 <b id="hudMv">0</b></div>
+      <div class="hud-item">插入 <b id="hudIns">0</b></div>
+    </div>
+
+    <!-- 趟指示器 -->
+    <div class="pass-indicator" id="passIndicator">
+      <span class="pi-badge">第 1 趟</span>
+      <span class="pi-k">k = 3</span>
+      <span class="pi-info">按步长 3 分组做插入排序</span>
+      <span class="pi-prog" id="passProgress">i = 3 / 5</span>
+    </div>
+
+    <div class="arr-title">
+      数组 a[6]　<span class="legend-sorted">绿色=有序区（已处理）</span>　<span class="legend-unsorted">灰色=无序区（未处理）</span>　比较 <b>黄色</b>　后移/插入 <i>橙色</i>
+    </div>
+
+    <!-- 分区状态横幅 -->
+    <div class="zone-banner" id="zoneBanner">
+      <span class="zb-hint">排序尚未开始，等待进入外层循环…</span>
+    </div>
+
+    <!-- 柱状图 + 导轨 + 机械抓手 -->
+    <div class="chart-container" id="barChart"></div>
+
+    <!-- 数组格子 + 有序/无序标签带 -->
+    <div class="arr-grid-wrap">
+      <div class="arr-grid" id="arrGrid"></div>
+      <div class="zone-labels" id="zoneLabels"></div>
+    </div>
+
+    <div class="vtable" id="varTable"></div>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<!-- ================= 缩略图 ================= -->
+<div class="panel" id="p-mini" data-panel>
+  <div class="phead">
+    <span class="ptitle">缩略图</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody" id="miniBody">
+    <div id="miniContent"></div>
+    <div id="miniView"></div>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<!-- ================= 程序输出 ================= -->
+<div class="panel" id="p-out" data-panel>
+  <div class="phead">
+    <span class="ptitle">程序运行结果</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody">
+    <div class="console" id="consoleBody"></div>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<!-- ================= 当前语句说明条 ================= -->
+<div class="panel" id="p-explain" data-panel>
+  <div class="phead">
+    <span class="ptitle">当前语句说明</span>
+    <span class="pspacer"></span>
+    <button class="pbtn pfold" title="折叠">—</button>
+    <button class="pbtn pclose" title="关闭">✕</button>
+  </div>
+  <div class="pbody">
+    <div id="explainBody"></div>
+  </div>
+  <div class="presize"></div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+/* =========================================================
+   1) 源代码（希尔排序，22 行）
+   ========================================================= */
+var CODE = [
+  {n:1,  html:'<span class="pp">#include</span> <span class="str">&lt;stdio.h&gt;</span>                   <span class="cmt">// 包含标准输入输出头文件</span>'},
+  {n:2,  html:'<span class="kw">int</span> <span class="fn">main</span>() {                            <span class="cmt">// 定义主函数</span>'},
+  {n:3,  html:'    <span class="kw">static</span> <span class="kw">int</span> a[<span class="num">6</span>] <span class="op">=</span> {<span class="num">3</span>,<span class="num">5</span>,<span class="num">10</span>,<span class="num">9</span>,<span class="num">7</span>,<span class="num">12</span>}; <span class="cmt">// 定义并初始化数组</span>'},
+  {n:4,  html:'    <span class="kw">int</span> i, j, k, t, n<span class="op">=</span><span class="num">6</span>;                <span class="cmt">// 定义循环变量、增量和临时变量</span>'},
+  {n:5,  html:'    k <span class="op">=</span> n <span class="op">/</span> <span class="num">2</span>;                        <span class="cmt">// 初始增量为 n/2</span>'},
+  {n:6,  html:'    <span class="kw">while</span>(k <span class="op">&gt;=</span> <span class="num">1</span>) {                  <span class="cmt">// 当增量 &gt;= 1 时循环</span>'},
+  {n:7,  html:'        <span class="kw">for</span>(i<span class="op">=</span>k; i<span class="op">&lt;</span>n; i<span class="op">++</span>) {           <span class="cmt">// 从第 k 个元素开始遍历</span>'},
+  {n:8,  html:'            t <span class="op">=</span> a[i];                   <span class="cmt">// 将当前元素暂存到 t</span>'},
+  {n:9,  html:'            j <span class="op">=</span> i <span class="op">-</span> k;                  <span class="cmt">// j 指向同组的前一个元素</span>'},
+  {n:10, html:'            <span class="kw">while</span>(j<span class="op">&gt;=</span><span class="num">0</span> <span class="op">&amp;&amp;</span> t<span class="op">&lt;</span>a[j]) {  <span class="cmt">// 当 j&gt;=0 且 t 小于 a[j] 时</span>'},
+  {n:11, html:'                a[j<span class="op">+</span>k] <span class="op">=</span> a[j];        <span class="cmt">// 将 a[j] 后移 k 位</span>'},
+  {n:12, html:'                j <span class="op">-=</span> k;                 <span class="cmt">// j 向前移动 k 步</span>'},
+  {n:13, html:'            }'},
+  {n:14, html:'            a[j<span class="op">+</span>k] <span class="op">=</span> t;              <span class="cmt">// 将 t 插入到合适位置</span>'},
+  {n:15, html:'        }'},
+  {n:16, html:'        k <span class="op">/=</span> <span class="num">2</span>;                      <span class="cmt">// 增量减半</span>'},
+  {n:17, html:'    }'},
+  {n:18, html:'    <span class="kw">for</span>(i<span class="op">=</span><span class="num">0</span>; i<span class="op">&lt;</span>n; i<span class="op">++</span>) {           <span class="cmt">// 循环输出排序后的数组</span>'},
+  {n:19, html:'        <span class="fn">printf</span>(<span class="str">"%d "</span>, a[i]);'},
+  {n:20, html:'    }'},
+  {n:21, html:'    <span class="kw">return</span> <span class="num">0</span>;                         <span class="cmt">// 返回 0，程序结束</span>'},
+  {n:22, html:'}'}
+];
+
+/* =========================================================
+   2) 逐步执行数据（希尔排序）
+   ========================================================= */
+var ARR = [3, 5, 10, 9, 7, 12];
+var N = 6;
+var STEPS = [];
+var outText = '';
+
+var track = {
+  i: '未初始化', j: '未初始化', k: '未初始化', t: '未初始化', n: '未初始化',
+  cmpN: '0', mvN: '0', insN: '0', pfnN: '0', ret: '—'
+};
+
+function pad2(v) { var s = String(v); while (s.length < 2) s += ' '; return s; }
+function snap() { return ARR.map(function (v) { return String(v); }); }
+
+/* sortedEnd: 当前趟已处理前缀最后一个元素下标（-1 表示尚未开始） */
+function push(o) {
+  var st = o.state || {};
+  if ('i' in st)    track.i = st.i;
+  if ('j' in st)    track.j = st.j;
+  if ('k' in st)    track.k = st.k;
+  if ('t' in st)    track.t = st.t;
+  if ('n' in st)    track.n = st.n;
+  if ('cmpN' in st) track.cmpN = st.cmpN;
+  if ('mvN' in st)  track.mvN = st.mvN;
+  if ('insN' in st) track.insN = st.insN;
+  if ('pfnN' in st) track.pfnN = st.pfnN;
+  if ('ret' in st)  track.ret = st.ret;
+
+  STEPS.push({
+    line: o.line,
+    ctx: o.ctx || '—',
+    i: track.i, j: track.j, k: track.k, t: track.t, n: track.n,
+    cmpN: track.cmpN, mvN: track.mvN, insN: track.insN, pfnN: track.pfnN, ret: track.ret,
+    condOuter: o.condOuter || '—',
+    condInner: o.condInner || '—',
+    condWhile: o.condWhile || '—',
+    expr: o.expr || '—',
+    exprVal: o.exprVal || '—',
+    note: o.note || '—',
+    arr: snap(),
+    cmpCells: o.cmpCells || [],
+    swpCells: o.swpCells || [],
+    out: outText,
+    skip: o.skip || [],
+    sortedEnd: (o.sortedEnd !== undefined) ? o.sortedEnd : -1,
+    passNum: (o.passNum !== undefined) ? o.passNum : 0,
+    passK:   (o.passK   !== undefined) ? o.passK   : null,
+    passInfo: o.passInfo || '',
+    passProg: o.passProg || '',
+    title: o.title,
+    desc: o.desc
+  });
+}
+
+/* ---------- 初始化阶段 ---------- */
+push({
+  line: 1, ctx: '预处理阶段 · 编译前已完成',
+  note: '预处理指令，不占运行时间',
+  title: '#include &lt;stdio.h&gt;　引入标准输入输出头文件',
+  desc: '预处理器把标准输入输出头文件 <code>stdio.h</code> 的内容引入源文件，让 <code>printf</code> 获得函数声明。这一行<b>不是 C 语句</b>，编译前就处理完了，不产生任何屏幕输出。'
+});
+push({
+  line: 2, ctx: 'main 函数入口',
+  note: '程序从 main 开始执行',
+  title: 'int main() {　程序从这里开始',
+  desc: '操作系统把控制权交给 <code>main</code>，程序正式开始。系统为 main 建立<b>栈帧</b>，变量 i、j、k、t、n 存放在这个栈帧里。'
+});
+push({
+  line: 3, state: { cmpN: '0', mvN: '0', insN: '0', pfnN: '0' },
+  ctx: 'main · static 数组声明并初始化',
+  cmpCells: [0,1,2,3,4,5],
+  note: 'a[0]~a[5] 已初始化为 3 5 10 9 7 12',
+  title: 'static int a[6] = {3,5,10,9,7,12};',
+  desc: '声明并初始化数组 <b>a</b>，长度 6，合法下标 0~5。<br>· <b>a[0]=3、a[1]=5、a[2]=10、a[3]=9、a[4]=7、a[5]=12</b>。'
+});
+push({
+  line: 4, state: { n: '6', k: '未初始化', i: '未初始化', j: '未初始化', t: '未初始化' },
+  ctx: 'main · 声明循环变量、增量、临时变量',
+  note: 'n=6；k 为增量，i、j 为循环下标，t 为临时变量',
+  title: 'int i, j, k, t, n=6;',
+  desc: '<b>n = 6</b> 是数组长度。<b>k</b> 是增量（步长），<b>i</b> 是外层 for 下标，<b>j</b> 是 while 扫描下标，<b>t</b> 保存待插入元素。<span class="tip"><b>希尔排序核心：</b>先以大增量 k 分组做插入排序（远距离调整），再逐次减半增量，最后 k=1 时做普通插入排序。这样能大幅减少总后移次数。</span>'
+});
+
+/* ---------- 第 5 行 ---------- */
+push({
+  line: 5, state: { k: '3' },
+  ctx: 'main · 计算初始增量 k',
+  expr: 'k = n / 2',
+  exprVal: 'k = 6 / 2 = 3',
+  note: '初始步长 3，数组被分成 3 组',
+  title: 'k = n / 2;   →   k = 6 / 2 = 3',
+  desc: '把初始增量设为 <b>k = 3</b>。<br>· 步长 3 意味着同组元素间隔 3 个位置；<br>· 数组被分成 3 组：<b>(a[0], a[3]) = (3, 9)</b>、<b>(a[1], a[4]) = (5, 7)</b>、<b>(a[2], a[5]) = (10, 12)</b>。'
+});
+
+/* ---------- 第 1 趟：k = 3 ---------- */
+push({
+  line: 6, state: { k: '3' },
+  ctx: 'main · while(k>=1) 第 1 趟：k = 3',
+  condOuter: 'k=3 >= 1 → 真',
+  expr: 'while(k >= 1)',
+  exprVal: '3 >= 1 → 真，进入循环体',
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 3 / 5',
+  note: '第 1 趟：k = 3，共 3 组',
+  title: 'while(k &gt;= 1)   第 1 趟：k = 3，条件为真',
+  desc: '<b>第 1 趟（k = 3）</b>开始。<br>· 数组分成 3 组，组内元素间隔 3：<br>　<b>组 0：a[0], a[3]</b><br>　<b>组 1：a[1], a[4]</b><br>　<b>组 2：a[2], a[5]</b><br>· 下面用 <code>for(i=k; i&lt;n; i++)</code> 逐组做插入排序，i 从 3 到 5。'
+});
+
+/* --- k=3 内层 for：i=3 --- */
+push({
+  line: 7, state: { i: '3' },
+  ctx: 'main · k=3 内层 for：i = 3（处理组 0）',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=3 < n=6 → 真',
+  expr: 'for(i=k; i<n; i++)',
+  exprVal: 'i=3，3<6 → 真，进入循环体',
+  sortedEnd: 2,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 3 / 5',
+  cmpCells: [0, 3],
+  note: 'i=3 → 处理组 0 的 a[3]，与同组的 a[0] 比较',
+  title: 'for(i=3; i&lt;6; i++)   第 1 次：i = 3，条件为真',
+  desc: '<b>i = 3</b>，从第 3 个元素开始遍历。<br>· 此时 <b class="legend-sorted">有序区</b>是 a[0..2]（每组第一个元素各自有序）；<br>· <b class="legend-unsorted">无序区</b>是 a[3..5]；<br>· 本轮处理 <b>组 0</b>：a[3] 要插入到 a[0] 前/后。<span class="tip"><b>为什么 i 从 k=3 开始？</b>因为同组的前一个元素是 i−k = i−3，i=0/1/2 时没有同组前驱，天然有序。</span>'
+});
+
+push({
+  line: 8, state: { t: '9' },
+  ctx: 'main · 暂存 a[3] 到 t',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  expr: 't = a[3]',
+  exprVal: 't = 9',
+  sortedEnd: 2,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 3 / 5',
+  swpCells: [3],
+  note: 't = 9，先备份，防止后移覆盖',
+  title: 't = a[3];   →   t = 9',
+  desc: '把 a[3] = 9 保存到 t 中，防止第 11 行后移时被覆盖。'
+});
+
+push({
+  line: 9, state: { j: '0' },
+  ctx: 'main · j 指向同组的前一个元素',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  expr: 'j = i - k',
+  exprVal: 'j = 3 - 3 = 0',
+  sortedEnd: 2,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 3 / 5',
+  cmpCells: [0],
+  swpCells: [3],
+  note: 'j=0，同组前一个元素 a[0]',
+  title: 'j = i - k;   →   j = 3 - 3 = 0',
+  desc: 'j = i−k = 0，指向同组紧邻的前一个元素 a[0]。'
+});
+
+push({
+  line: 10,
+  ctx: 'main · while 条件检查：j=0',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  condWhile: 'j=0 >= 0 真 && t=9 < a[0]=3 假 → 假，退出',
+  expr: 'while(j>=0 && t<a[j])',
+  exprVal: '0>=0 真，9<3 假 → 假，退出 while',
+  sortedEnd: 2,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 3 / 5',
+  cmpCells: [0],
+  skip: [11, 12],
+  note: '9 不小于 3，a[3] 原位不动',
+  title: 'while(j&gt;=0 &amp;&amp; t&lt;a[j])   →   0&gt;=0 真，但 9&lt;3 假   →   假',
+  desc: '<b>j=0 ≥ 0</b> 真，但 <b>t=9 &lt; a[0]=3</b> 假 → 整体假，<b>退出 while</b>。a[3]=9 不小于 a[0]=3，无需后移。'
+});
+
+push({
+  line: 13,
+  ctx: 'main · while 体结束（跳过）',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  skip: [11, 12],
+  sortedEnd: 2,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 3 / 5',
+  title: '}　while 体结束',
+  desc: '第 11、12 行整段跳过，控制流到达第 13 行。'
+});
+
+push({
+  line: 14, state: { insN: '1' },
+  ctx: 'main · 把 t 写回 a[0+3]',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  expr: 'a[j+k] = t  →  a[3] = 9',
+  exprVal: 'a[3] = 9（原位写回）',
+  sortedEnd: 3,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 3 / 5',
+  swpCells: [3],
+  note: '原位写回，数组不变',
+  title: 'a[j+k] = t;   →   a[0+3] = a[3] = 9（原位写回）',
+  desc: 'j 未移动，t 写回 a[3]，<b>数组不变 [3, 5, 10, 9, 7, 12]</b>。<b class="legend-sorted">有序区</b>扩展为 a[0..3]。'
+});
+
+push({
+  line: 15,
+  ctx: 'main · 内层 for 体结束',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  sortedEnd: 3,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 3 / 5',
+  title: '}　内层 for 体结束，执行 i++',
+  desc: 'i 由 3 变成 4。'
+});
+
+/* --- k=3 内层 for：i=4 --- */
+push({
+  line: 7, state: { i: '4' },
+  ctx: 'main · k=3 内层 for：i = 4（处理组 1）',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=4 < n=6 → 真',
+  expr: 'for(i=k; i<n; i++)',
+  exprVal: 'i=4，4<6 → 真',
+  sortedEnd: 3,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 4 / 5',
+  cmpCells: [1, 4],
+  note: 'i=4 → 处理组 1 的 a[4]，与同组的 a[1] 比较',
+  title: 'for(i=3; i&lt;6; i++)   第 2 次：i = 4，条件为真',
+  desc: '<b>i = 4</b>，处理组 1：a[4]=7 与 a[1]=5 比较。'
+});
+
+push({
+  line: 8, state: { t: '7' },
+  ctx: 'main · 暂存 a[4] 到 t',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  expr: 't = a[4]',
+  exprVal: 't = 7',
+  sortedEnd: 3,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 4 / 5',
+  swpCells: [4],
+  note: 't = 7',
+  title: 't = a[4];   →   t = 7',
+  desc: '备份 a[4]=7。'
+});
+
+push({
+  line: 9, state: { j: '1' },
+  ctx: 'main · j 指向同组前一个元素',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  expr: 'j = i - k',
+  exprVal: 'j = 4 - 3 = 1',
+  sortedEnd: 3,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 4 / 5',
+  cmpCells: [1],
+  swpCells: [4],
+  note: 'j=1，同组前一个元素 a[1]',
+  title: 'j = i - k;   →   j = 4 - 3 = 1',
+  desc: 'j = 1，指向 a[1]。'
+});
+
+push({
+  line: 10,
+  ctx: 'main · while 条件检查：j=1',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  condWhile: 'j=1 >= 0 真 && t=7 < a[1]=5 假 → 假，退出',
+  expr: 'while(j>=0 && t<a[j])',
+  exprVal: '1>=0 真，7<5 假 → 假，退出',
+  sortedEnd: 3,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 4 / 5',
+  cmpCells: [1],
+  skip: [11, 12],
+  note: '7 不小于 5，a[4] 原位不动',
+  title: 'while(j&gt;=0 &amp;&amp; t&lt;a[j])   →   1&gt;=0 真，7&lt;5 假   →   假',
+  desc: '<b>t=7 &lt; a[1]=5</b> 为假 → 退出 while，无需后移。'
+});
+
+push({
+  line: 13,
+  ctx: 'main · while 体结束（跳过）',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  skip: [11, 12],
+  sortedEnd: 3,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 4 / 5',
+  title: '}　while 体结束',
+  desc: '跳过第 11、12 行。'
+});
+
+push({
+  line: 14, state: { insN: '2' },
+  ctx: 'main · 把 t 写回 a[1+3]',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  expr: 'a[j+k] = t  →  a[4] = 7',
+  exprVal: 'a[4] = 7（原位写回）',
+  sortedEnd: 4,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 4 / 5',
+  swpCells: [4],
+  note: '数组不变',
+  title: 'a[j+k] = t;   →   a[1+3] = a[4] = 7（原位写回）',
+  desc: '数组不变 <b>[3, 5, 10, 9, 7, 12]</b>。有序区扩展为 a[0..4]。'
+});
+
+push({
+  line: 15,
+  ctx: 'main · 内层 for 体结束',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  sortedEnd: 4,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 4 / 5',
+  title: '}　内层 for 体结束，执行 i++',
+  desc: 'i 由 4 变成 5。'
+});
+
+/* --- k=3 内层 for：i=5 --- */
+push({
+  line: 7, state: { i: '5' },
+  ctx: 'main · k=3 内层 for：i = 5（处理组 2）',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=5 < n=6 → 真',
+  expr: 'for(i=k; i<n; i++)',
+  exprVal: 'i=5，5<6 → 真',
+  sortedEnd: 4,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 5 / 5',
+  cmpCells: [2, 5],
+  note: 'i=5 → 处理组 2 的 a[5]，与同组的 a[2] 比较',
+  title: 'for(i=3; i&lt;6; i++)   第 3 次：i = 5，条件为真',
+  desc: '<b>i = 5</b>，处理组 2：a[5]=12 与 a[2]=10 比较。'
+});
+
+push({
+  line: 8, state: { t: '12' },
+  ctx: 'main · 暂存 a[5] 到 t',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=5 < 6 → 真',
+  expr: 't = a[5]',
+  exprVal: 't = 12',
+  sortedEnd: 4,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 5 / 5',
+  swpCells: [5],
+  note: 't = 12',
+  title: 't = a[5];   →   t = 12',
+  desc: '备份 a[5]=12。'
+});
+
+push({
+  line: 9, state: { j: '2' },
+  ctx: 'main · j 指向同组前一个元素',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=5 < 6 → 真',
+  expr: 'j = i - k',
+  exprVal: 'j = 5 - 3 = 2',
+  sortedEnd: 4,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 5 / 5',
+  cmpCells: [2],
+  swpCells: [5],
+  note: 'j=2，同组前一个元素 a[2]',
+  title: 'j = i - k;   →   j = 5 - 3 = 2',
+  desc: 'j = 2，指向 a[2]。'
+});
+
+push({
+  line: 10,
+  ctx: 'main · while 条件检查：j=2',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=5 < 6 → 真',
+  condWhile: 'j=2 >= 0 真 && t=12 < a[2]=10 假 → 假，退出',
+  expr: 'while(j>=0 && t<a[j])',
+  exprVal: '2>=0 真，12<10 假 → 假，退出',
+  sortedEnd: 4,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 5 / 5',
+  cmpCells: [2],
+  skip: [11, 12],
+  note: '12 不小于 10，a[5] 原位不动',
+  title: 'while(j&gt;=0 &amp;&amp; t&lt;a[j])   →   2&gt;=0 真，12&lt;10 假   →   假',
+  desc: '<b>t=12 &lt; a[2]=10</b> 为假 → 退出 while。'
+});
+
+push({
+  line: 13,
+  ctx: 'main · while 体结束（跳过）',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=5 < 6 → 真',
+  skip: [11, 12],
+  sortedEnd: 4,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 5 / 5',
+  title: '}　while 体结束',
+  desc: '跳过第 11、12 行。'
+});
+
+push({
+  line: 14, state: { insN: '3' },
+  ctx: 'main · 把 t 写回 a[2+3]',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=5 < 6 → 真',
+  expr: 'a[j+k] = t  →  a[5] = 12',
+  exprVal: 'a[5] = 12（原位写回）',
+  sortedEnd: 5,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 5 / 5',
+  swpCells: [5],
+  note: '数组不变',
+  title: 'a[j+k] = t;   →   a[2+3] = a[5] = 12（原位写回）',
+  desc: '数组不变 <b>[3, 5, 10, 9, 7, 12]</b>。第 1 趟结束。'
+});
+
+push({
+  line: 15,
+  ctx: 'main · 内层 for 体结束',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=5 < 6 → 真',
+  sortedEnd: 5,
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 5 / 5',
+  title: '}　内层 for 体结束，执行 i++',
+  desc: 'i 由 5 变成 6。'
+});
+
+push({
+  line: 7, state: { i: '6' },
+  ctx: 'main · k=3 内层 for 判断失败，i=6',
+  condOuter: 'k=3 >= 1 → 真',
+  condInner: 'i=6 < n=6 → 假',
+  expr: 'for(i=k; i<n; i++)',
+  exprVal: 'i=6，6<6 → 假，退出内层 for',
+  sortedEnd: 5,
+  skip: [8, 9, 10, 11, 12, 13, 14],
+  passNum: 1, passK: 3,
+  passInfo: '按步长 3 分组做插入排序',
+  passProg: 'i = 6（退出）',
+  note: '第 1 趟 k=3 完成',
+  title: 'for(i=3; i&lt;6; i++)   i = 6，6 &lt; 6 为假 → 退出内层 for',
+  desc: '第 1 趟（k=3）内层 for 全部走完。<span class="warn"><b>注意：</b>这一趟数组没有变化 —— 因为每组内 (3,9)、(5,7)、(10,12) 本身就有序，不需要插入。</span>'
+});
+
+/* ---------- 第 16 行：k /= 2 → 1 ---------- */
+push({
+  line: 16, state: { k: '1' },
+  ctx: 'main · 增量减半：k = 3 / 2',
+  condOuter: 'k=3 >= 1 → 真（第 1 趟结束）',
+  expr: 'k /= 2',
+  exprVal: 'k = 3 / 2 = 1',
+  passNum: 1, passK: 3,
+  passInfo: '第 1 趟完成，准备进入下一趟',
+  note: 'k 从 3 减半到 1（整数除法）',
+  title: 'k /= 2;   →   k = 3 / 2 = 1（增量减半）',
+  desc: 'k 从 3 减半到 <b>1</b>。<span class="warn"><b>整数除法：</b>3/2 = 1，不是 1.5。</span>'
+});
+
+push({
+  line: 17,
+  ctx: 'main · 第 1 趟 while 体结束',
+  condOuter: 'k=3 >= 1 → 真（k 已变为 1）',
+  passNum: 1, passK: 3,
+  passInfo: '第 1 趟完成',
+  title: '}　第 1 趟 while 体结束',
+  desc: '第 1 趟结束，控制流回到第 6 行重新判断。'
+});
+
+/* ---------- 第 2 趟：k = 1 ---------- */
+push({
+  line: 6, state: { k: '1' },
+  ctx: 'main · while(k>=1) 第 2 趟：k = 1',
+  condOuter: 'k=1 >= 1 → 真',
+  expr: 'while(k >= 1)',
+  exprVal: '1 >= 1 → 真，进入循环体',
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 1 / 5',
+  note: '第 2 趟：k = 1，整组做插入排序',
+  title: 'while(k &gt;= 1)   第 2 趟：k = 1，条件为真',
+  desc: '<b>第 2 趟（k = 1）</b>开始。<br>· k=1 意味着<b>每一组就是整个数组</b>，等价于普通插入排序。<br>· 好消息：前面 k=3 已经让数组变得"基本有序"，这一趟只需<b>很少的后移</b>。'
+});
+
+/* --- k=1 内层 for：i=1（无需插入） --- */
+push({
+  line: 7, state: { i: '1' },
+  ctx: 'main · k=1 内层 for：i = 1',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=1 < n=6 → 真',
+  expr: 'for(i=k; i<n; i++)',
+  exprVal: 'i=1，1<6 → 真',
+  sortedEnd: 0,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 1 / 5',
+  cmpCells: [0, 1],
+  note: 'i=1，a[1]=5 与 a[0]=3 比较',
+  title: 'for(i=1; i&lt;6; i++)   第 1 次：i = 1，条件为真',
+  desc: '<b>i = 1</b>。<b class="legend-sorted">有序区</b>=a[0]（单元素），<b class="legend-unsorted">无序区</b>=a[1..5]。本轮把 a[1]=5 插入有序区。'
+});
+
+push({
+  line: 8, state: { t: '5' },
+  ctx: 'main · 暂存 a[1] 到 t',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=1 < 6 → 真',
+  expr: 't = a[1]',
+  exprVal: 't = 5',
+  sortedEnd: 0,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 1 / 5',
+  swpCells: [1],
+  note: 't = 5',
+  title: 't = a[1];   →   t = 5',
+  desc: '备份 a[1]=5。'
+});
+
+push({
+  line: 9, state: { j: '0' },
+  ctx: 'main · j = i - k',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=1 < 6 → 真',
+  expr: 'j = i - k',
+  exprVal: 'j = 1 - 1 = 0',
+  sortedEnd: 0,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 1 / 5',
+  cmpCells: [0],
+  swpCells: [1],
+  note: 'j=0',
+  title: 'j = i - k;   →   j = 1 - 1 = 0',
+  desc: 'j = 0，指向 a[0]。'
+});
+
+push({
+  line: 10,
+  ctx: 'main · while 条件检查：j=0',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=1 < 6 → 真',
+  condWhile: 'j=0 >= 0 真 && t=5 < a[0]=3 假 → 假，退出',
+  expr: 'while(j>=0 && t<a[j])',
+  exprVal: '0>=0 真，5<3 假 → 假，退出',
+  sortedEnd: 0,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 1 / 5',
+  cmpCells: [0],
+  skip: [11, 12],
+  note: '5 不小于 3，a[1] 原位不动',
+  title: 'while(j&gt;=0 &amp;&amp; t&lt;a[j])   →   0&gt;=0 真，5&lt;3 假   →   假',
+  desc: 't=5 不小于 a[0]=3 → 退出 while，无需后移。'
+});
+
+push({
+  line: 13,
+  ctx: 'main · while 体结束（跳过）',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=1 < 6 → 真',
+  skip: [11, 12],
+  sortedEnd: 0,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 1 / 5',
+  title: '}　while 体结束',
+  desc: '跳过第 11、12 行。'
+});
+
+push({
+  line: 14, state: { insN: '4' },
+  ctx: 'main · 把 t 写回 a[0+1]',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=1 < 6 → 真',
+  expr: 'a[j+k] = t  →  a[1] = 5',
+  exprVal: 'a[1] = 5（原位写回）',
+  sortedEnd: 1,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 1 / 5',
+  swpCells: [1],
+  note: '数组不变',
+  title: 'a[j+k] = t;   →   a[1] = 5（原位写回）',
+  desc: '数组不变 <b>[3, 5, 10, 9, 7, 12]</b>。'
+});
+
+push({
+  line: 15,
+  ctx: 'main · 内层 for 体结束',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=1 < 6 → 真',
+  sortedEnd: 1,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 1 / 5',
+  title: '}　内层 for 体结束，执行 i++',
+  desc: 'i 由 1 变成 2。'
+});
+
+/* --- k=1 内层 for：i=2（无需插入） --- */
+push({
+  line: 7, state: { i: '2' },
+  ctx: 'main · k=1 内层 for：i = 2',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=2 < n=6 → 真',
+  expr: 'for(i=k; i<n; i++)',
+  exprVal: 'i=2，2<6 → 真',
+  sortedEnd: 1,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 2 / 5',
+  cmpCells: [1, 2],
+  note: 'i=2，a[2]=10 与 a[1]=5 比较',
+  title: 'for(i=1; i&lt;6; i++)   第 2 次：i = 2，条件为真',
+  desc: '<b>i = 2</b>，把 a[2]=10 插入有序区 a[0..1]=[3,5]。'
+});
+
+push({
+  line: 8, state: { t: '10' },
+  ctx: 'main · 暂存 a[2] 到 t',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=2 < 6 → 真',
+  expr: 't = a[2]',
+  exprVal: 't = 10',
+  sortedEnd: 1,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 2 / 5',
+  swpCells: [2],
+  note: 't = 10',
+  title: 't = a[2];   →   t = 10',
+  desc: '备份 a[2]=10。'
+});
+
+push({
+  line: 9, state: { j: '1' },
+  ctx: 'main · j = i - k',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=2 < 6 → 真',
+  expr: 'j = i - k',
+  exprVal: 'j = 2 - 1 = 1',
+  sortedEnd: 1,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 2 / 5',
+  cmpCells: [1],
+  swpCells: [2],
+  note: 'j=1',
+  title: 'j = i - k;   →   j = 2 - 1 = 1',
+  desc: 'j = 1。'
+});
+
+push({
+  line: 10,
+  ctx: 'main · while 条件检查：j=1',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=2 < 6 → 真',
+  condWhile: 'j=1 >= 0 真 && t=10 < a[1]=5 假 → 假，退出',
+  expr: 'while(j>=0 && t<a[j])',
+  exprVal: '1>=0 真，10<5 假 → 假，退出',
+  sortedEnd: 1,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 2 / 5',
+  cmpCells: [1],
+  skip: [11, 12],
+  note: '10 不小于 5，a[2] 原位不动',
+  title: 'while(j&gt;=0 &amp;&amp; t&lt;a[j])   →   1&gt;=0 真，10&lt;5 假   →   假',
+  desc: 't=10 不小于 a[1]=5 → 退出 while。'
+});
+
+push({
+  line: 13,
+  ctx: 'main · while 体结束（跳过）',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=2 < 6 → 真',
+  skip: [11, 12],
+  sortedEnd: 1,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 2 / 5',
+  title: '}　while 体结束',
+  desc: '跳过第 11、12 行。'
+});
+
+push({
+  line: 14, state: { insN: '5' },
+  ctx: 'main · 把 t 写回 a[1+1]',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=2 < 6 → 真',
+  expr: 'a[j+k] = t  →  a[2] = 10',
+  exprVal: 'a[2] = 10（原位写回）',
+  sortedEnd: 2,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 2 / 5',
+  swpCells: [2],
+  note: '数组不变',
+  title: 'a[j+k] = t;   →   a[2] = 10（原位写回）',
+  desc: '数组不变。'
+});
+
+push({
+  line: 15,
+  ctx: 'main · 内层 for 体结束',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=2 < 6 → 真',
+  sortedEnd: 2,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 2 / 5',
+  title: '}　内层 for 体结束，执行 i++',
+  desc: 'i 由 2 变成 3。'
+});
+
+/* --- k=1 内层 for：i=3（真正后移） --- */
+push({
+  line: 7, state: { i: '3' },
+  ctx: 'main · k=1 内层 for：i = 3',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=3 < n=6 → 真',
+  expr: 'for(i=k; i<n; i++)',
+  exprVal: 'i=3，3<6 → 真',
+  sortedEnd: 2,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 3 / 5',
+  cmpCells: [2, 3],
+  note: 'i=3，a[3]=9 要插入到 [3,5,10] 中',
+  title: 'for(i=1; i&lt;6; i++)   第 3 次：i = 3，条件为真',
+  desc: '<b>i = 3</b>，a[3]=9 要插入到 a[0..2]=[3,5,10]，正确位置在 5 和 10 之间。'
+});
+
+push({
+  line: 8, state: { t: '9' },
+  ctx: 'main · 暂存 a[3] 到 t',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  expr: 't = a[3]',
+  exprVal: 't = 9',
+  sortedEnd: 2,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 3 / 5',
+  swpCells: [3],
+  note: 't = 9',
+  title: 't = a[3];   →   t = 9',
+  desc: '备份 a[3]=9。'
+});
+
+push({
+  line: 9, state: { j: '2' },
+  ctx: 'main · j = i - k',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  expr: 'j = i - k',
+  exprVal: 'j = 3 - 1 = 2',
+  sortedEnd: 2,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 3 / 5',
+  cmpCells: [2],
+  swpCells: [3],
+  note: 'j=2',
+  title: 'j = i - k;   →   j = 3 - 1 = 2',
+  desc: 'j = 2，从 a[2] 开始往前扫描。'
+});
+
+push({
+  line: 10,
+  ctx: 'main · while 条件检查：j=2',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  condWhile: 'j=2 >= 0 真 && t=9 < a[2]=10 真 → 真，进入循环体',
+  expr: 'while(j>=0 && t<a[j])',
+  exprVal: '2>=0 真，9<10 真 → 真',
+  sortedEnd: 2,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 3 / 5',
+  cmpCells: [2],
+  note: '9 比 10 小，a[2] 需要后移',
+  title: 'while(j&gt;=0 &amp;&amp; t&lt;a[j])   →   2&gt;=0 真，9&lt;10 真   →   真',
+  desc: '<b>t=9 &lt; a[2]=10</b> 为真 → 进入 while 循环体，开始后移。'
+});
+
+ARR[3] = ARR[2];
+push({
+  line: 11, state: { mvN: '1' },
+  ctx: 'main · 后移：a[2+1] = a[2]',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  condWhile: '真',
+  expr: 'a[j+k] = a[j]  →  a[3] = a[2]',
+  exprVal: 'a[3] = 10（a[2] 后移 1 位）',
+  sortedEnd: 2,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 3 / 5',
+  swpCells: [2, 3],
+  note: '数组变为 [3,5,10,10,7,12]；后移 1 次',
+  title: 'a[j+k] = a[j];   →   a[3] = a[2] = 10（后移 1 位）',
+  desc: '把<b class="legend-sorted">有序区</b>的 a[2]=10 后移到 a[3]：<br>· 数组变成 <b>[3, 5, 10, 10, 7, 12]</b>；<br>· a[2] 空出位置，等待 t 或继续后移。'
+});
+
+push({
+  line: 12, state: { j: '1' },
+  ctx: 'main · j 向前移动 k=1 步',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  expr: 'j -= k',
+  exprVal: 'j = 2 - 1 = 1',
+  sortedEnd: 2,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 3 / 5',
+  cmpCells: [1],
+  note: 'j 变为 1',
+  title: 'j -= k;   →   j = 2 - 1 = 1',
+  desc: 'j 由 2 变为 1。'
+});
+
+push({
+  line: 13,
+  ctx: 'main · while 体结束',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  sortedEnd: 2,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 3 / 5',
+  title: '}　while 体结束，回到第 10 行重新判断',
+  desc: '回到第 10 行重新判断 while 条件。'
+});
+
+push({
+  line: 10,
+  ctx: 'main · while 条件检查：j=1',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  condWhile: 'j=1 >= 0 真 && t=9 < a[1]=5 假 → 假，退出',
+  expr: 'while(j>=0 && t<a[j])',
+  exprVal: '1>=0 真，9<5 假 → 假，退出',
+  sortedEnd: 2,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 3 / 5',
+  cmpCells: [1],
+  skip: [11, 12],
+  note: '9 不小于 5，位置找到',
+  title: 'while(j&gt;=0 &amp;&amp; t&lt;a[j])   →   1&gt;=0 真，9&lt;5 假   →   假',
+  desc: 't=9 不小于 a[1]=5 → 退出 while。<b>j=1，t 应插在 a[2]</b>。'
+});
+
+push({
+  line: 13,
+  ctx: 'main · while 体结束',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  sortedEnd: 2,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 3 / 5',
+  title: '}　while 体结束',
+  desc: 'while 结束。'
+});
+
+ARR[2] = 9;
+push({
+  line: 14, state: { insN: '6' },
+  ctx: 'main · 插入 a[j+k] = a[2] = 9',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  expr: 'a[j+k] = t  →  a[1+1] = a[2] = 9',
+  exprVal: 'a[2] = 9（插入完成）',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 3 / 5',
+  swpCells: [2],
+  note: '数组变为 [3,5,9,10,7,12]',
+  title: 'a[j+k] = t;   →   a[2] = 9（插入完成）',
+  desc: '把 t=9 写回 a[2]：<br>· 数组变成 <b>[3, 5, 9, 10, 7, 12]</b>；<br>· 有序区扩展为 a[0..3]。'
+});
+
+push({
+  line: 15,
+  ctx: 'main · 内层 for 体结束',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=3 < 6 → 真',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 3 / 5',
+  title: '}　内层 for 体结束，执行 i++',
+  desc: 'i 由 3 变成 4。'
+});
+
+/* --- k=1 内层 for：i=4 --- */
+push({
+  line: 7, state: { i: '4' },
+  ctx: 'main · k=1 内层 for：i = 4',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < n=6 → 真',
+  expr: 'for(i=k; i<n; i++)',
+  exprVal: 'i=4，4<6 → 真',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  cmpCells: [3, 4],
+  note: 'i=4，a[4]=7 要插入到 [3,5,9,10] 中',
+  title: 'for(i=1; i&lt;6; i++)   第 4 次：i = 4，条件为真',
+  desc: '<b>i = 4</b>，a[4]=7 要插入到 a[0..3]=[3,5,9,10]，正确位置在 5 和 9 之间。'
+});
+
+push({
+  line: 8, state: { t: '7' },
+  ctx: 'main · 暂存 a[4] 到 t',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  expr: 't = a[4]',
+  exprVal: 't = 7',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  swpCells: [4],
+  note: 't = 7',
+  title: 't = a[4];   →   t = 7',
+  desc: '备份 a[4]=7。'
+});
+
+push({
+  line: 9, state: { j: '3' },
+  ctx: 'main · j = i - k',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  expr: 'j = i - k',
+  exprVal: 'j = 4 - 1 = 3',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  cmpCells: [3],
+  swpCells: [4],
+  note: 'j=3',
+  title: 'j = i - k;   →   j = 4 - 1 = 3',
+  desc: 'j = 3，从 a[3] 开始往前扫描。'
+});
+
+push({
+  line: 10,
+  ctx: 'main · while 条件检查：j=3',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  condWhile: 'j=3 >= 0 真 && t=7 < a[3]=10 真 → 真',
+  expr: 'while(j>=0 && t<a[j])',
+  exprVal: '3>=0 真，7<10 真 → 真',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  cmpCells: [3],
+  note: '7 比 10 小，a[3] 需要后移',
+  title: 'while(j&gt;=0 &amp;&amp; t&lt;a[j])   →   3&gt;=0 真，7&lt;10 真   →   真',
+  desc: '<b>t=7 &lt; a[3]=10</b> → 进入循环体。'
+});
+
+ARR[4] = ARR[3];
+push({
+  line: 11, state: { mvN: '2' },
+  ctx: 'main · 后移：a[3+1] = a[3]',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  condWhile: '真',
+  expr: 'a[j+k] = a[j]  →  a[4] = a[3]',
+  exprVal: 'a[4] = 10（a[3] 后移 1 位）',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  swpCells: [3, 4],
+  note: '数组变为 [3,5,9,10,10,12]；后移 2 次',
+  title: 'a[j+k] = a[j];   →   a[4] = a[3] = 10（后移 1 位）',
+  desc: 'a[3]=10 后移到 a[4]，数组变成 <b>[3, 5, 9, 10, 10, 12]</b>。'
+});
+
+push({
+  line: 12, state: { j: '2' },
+  ctx: 'main · j 向前移动 k=1 步',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  expr: 'j -= k',
+  exprVal: 'j = 3 - 1 = 2',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  cmpCells: [2],
+  note: 'j=2',
+  title: 'j -= k;   →   j = 3 - 1 = 2',
+  desc: 'j 由 3 变为 2。'
+});
+
+push({
+  line: 13,
+  ctx: 'main · while 体结束',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  title: '}　while 体结束，回到第 10 行',
+  desc: '回到第 10 行重新判断。'
+});
+
+push({
+  line: 10,
+  ctx: 'main · while 条件检查：j=2',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  condWhile: 'j=2 >= 0 真 && t=7 < a[2]=9 真 → 真',
+  expr: 'while(j>=0 && t<a[j])',
+  exprVal: '2>=0 真，7<9 真 → 真',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  cmpCells: [2],
+  note: '7 比 9 小，a[2] 还要后移',
+  title: 'while(j&gt;=0 &amp;&amp; t&lt;a[j])   →   2&gt;=0 真，7&lt;9 真   →   真',
+  desc: '<b>t=7 &lt; a[2]=9</b> → 继续后移。'
+});
+
+ARR[3] = ARR[2];
+push({
+  line: 11, state: { mvN: '3' },
+  ctx: 'main · 后移：a[2+1] = a[2]',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  condWhile: '真',
+  expr: 'a[j+k] = a[j]  →  a[3] = a[2]',
+  exprVal: 'a[3] = 9（a[2] 后移 1 位）',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  swpCells: [2, 3],
+  note: '数组变为 [3,5,9,9,10,12]；后移 3 次',
+  title: 'a[j+k] = a[j];   →   a[3] = a[2] = 9（后移 1 位）',
+  desc: 'a[2]=9 后移到 a[3]，数组变成 <b>[3, 5, 9, 9, 10, 12]</b>。'
+});
+
+push({
+  line: 12, state: { j: '1' },
+  ctx: 'main · j 向前移动 k=1 步',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  expr: 'j -= k',
+  exprVal: 'j = 2 - 1 = 1',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  cmpCells: [1],
+  note: 'j=1',
+  title: 'j -= k;   →   j = 2 - 1 = 1',
+  desc: 'j 由 2 变为 1。'
+});
+
+push({
+  line: 13,
+  ctx: 'main · while 体结束',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  title: '}　while 体结束，回到第 10 行',
+  desc: '回到第 10 行重新判断。'
+});
+
+push({
+  line: 10,
+  ctx: 'main · while 条件检查：j=1',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  condWhile: 'j=1 >= 0 真 && t=7 < a[1]=5 假 → 假，退出',
+  expr: 'while(j>=0 && t<a[j])',
+  exprVal: '1>=0 真，7<5 假 → 假，退出',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  cmpCells: [1],
+  skip: [11, 12],
+  note: '7 不小于 5，位置找到：a[2]',
+  title: 'while(j&gt;=0 &amp;&amp; t&lt;a[j])   →   1&gt;=0 真，7&lt;5 假   →   假',
+  desc: 't=7 不小于 a[1]=5 → 退出 while。<b>j=1，t 应插在 a[2]</b>。'
+});
+
+push({
+  line: 13,
+  ctx: 'main · while 体结束',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  sortedEnd: 3,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  title: '}　while 体结束',
+  desc: 'while 结束。'
+});
+
+ARR[2] = 7;
+push({
+  line: 14, state: { insN: '7' },
+  ctx: 'main · 插入 a[j+k] = a[2] = 7',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  expr: 'a[j+k] = t  →  a[1+1] = a[2] = 7',
+  exprVal: 'a[2] = 7（插入完成）',
+  sortedEnd: 4,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  swpCells: [2],
+  note: '数组变为 [3,5,7,9,10,12]',
+  title: 'a[j+k] = t;   →   a[2] = 7（插入完成）',
+  desc: '把 t=7 写回 a[2]：<br>· 数组变成 <b>[3, 5, 7, 9, 10, 12]</b>；<br>· 有序区扩展为 a[0..4]。'
+});
+
+push({
+  line: 15,
+  ctx: 'main · 内层 for 体结束',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=4 < 6 → 真',
+  sortedEnd: 4,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 4 / 5',
+  title: '}　内层 for 体结束，执行 i++',
+  desc: 'i 由 4 变成 5。'
+});
+
+/* --- k=1 内层 for：i=5（无需插入） --- */
+push({
+  line: 7, state: { i: '5' },
+  ctx: 'main · k=1 内层 for：i = 5',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=5 < n=6 → 真',
+  expr: 'for(i=k; i<n; i++)',
+  exprVal: 'i=5，5<6 → 真',
+  sortedEnd: 4,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 5 / 5',
+  cmpCells: [4, 5],
+  note: 'i=5，a[5]=12 与 a[4]=10 比较',
+  title: 'for(i=1; i&lt;6; i++)   第 5 次：i = 5，条件为真',
+  desc: '<b>i = 5</b>，a[5]=12 与 a[4]=10 比较。'
+});
+
+push({
+  line: 8, state: { t: '12' },
+  ctx: 'main · 暂存 a[5] 到 t',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=5 < 6 → 真',
+  expr: 't = a[5]',
+  exprVal: 't = 12',
+  sortedEnd: 4,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 5 / 5',
+  swpCells: [5],
+  note: 't = 12',
+  title: 't = a[5];   →   t = 12',
+  desc: '备份 a[5]=12。'
+});
+
+push({
+  line: 9, state: { j: '4' },
+  ctx: 'main · j = i - k',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=5 < 6 → 真',
+  expr: 'j = i - k',
+  exprVal: 'j = 5 - 1 = 4',
+  sortedEnd: 4,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 5 / 5',
+  cmpCells: [4],
+  swpCells: [5],
+  note: 'j=4',
+  title: 'j = i - k;   →   j = 5 - 1 = 4',
+  desc: 'j = 4。'
+});
+
+push({
+  line: 10,
+  ctx: 'main · while 条件检查：j=4',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=5 < 6 → 真',
+  condWhile: 'j=4 >= 0 真 && t=12 < a[4]=10 假 → 假，退出',
+  expr: 'while(j>=0 && t<a[j])',
+  exprVal: '4>=0 真，12<10 假 → 假，退出',
+  sortedEnd: 4,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 5 / 5',
+  cmpCells: [4],
+  skip: [11, 12],
+  note: '12 不小于 10，a[5] 原位不动',
+  title: 'while(j&gt;=0 &amp;&amp; t&lt;a[j])   →   4&gt;=0 真，12&lt;10 假   →   假',
+  desc: 't=12 不小于 a[4]=10 → 退出 while。'
+});
+
+push({
+  line: 13,
+  ctx: 'main · while 体结束（跳过）',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=5 < 6 → 真',
+  skip: [11, 12],
+  sortedEnd: 4,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 5 / 5',
+  title: '}　while 体结束',
+  desc: '跳过第 11、12 行。'
+});
+
+push({
+  line: 14, state: { insN: '8' },
+  ctx: 'main · 把 t 原位写回 a[5]',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=5 < 6 → 真',
+  expr: 'a[j+k] = t  →  a[5] = 12',
+  exprVal: 'a[5] = 12（原位写回）',
+  sortedEnd: 5,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 5 / 5',
+  swpCells: [5],
+  note: '数组最终 [3,5,7,9,10,12]',
+  title: 'a[j+k] = t;   →   a[5] = 12（原位写回）',
+  desc: '数组最终为 <b>[3, 5, 7, 9, 10, 12]</b>，排序完成。'
+});
+
+push({
+  line: 15,
+  ctx: 'main · 内层 for 体结束',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=5 < 6 → 真',
+  sortedEnd: 5,
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 5 / 5',
+  title: '}　内层 for 体结束，执行 i++',
+  desc: 'i 由 5 变成 6。'
+});
+
+push({
+  line: 7, state: { i: '6' },
+  ctx: 'main · k=1 内层 for 判断失败，i=6',
+  condOuter: 'k=1 >= 1 → 真',
+  condInner: 'i=6 < n=6 → 假',
+  expr: 'for(i=k; i<n; i++)',
+  exprVal: 'i=6，6<6 → 假，退出内层 for',
+  sortedEnd: 5,
+  skip: [8, 9, 10, 11, 12, 13, 14],
+  passNum: 2, passK: 1,
+  passInfo: '步长 1（普通插入排序）',
+  passProg: 'i = 6（退出）',
+  note: '第 2 趟 k=1 完成',
+  title: 'for(i=1; i&lt;6; i++)   i = 6，6 &lt; 6 为假 → 退出内层 for',
+  desc: '第 2 趟（k=1）内层 for 完成。<b>数组现在完全有序：[3, 5, 7, 9, 10, 12]</b>。'
+});
+
+/* ---------- 第 16 行：k /= 2 → 0 ---------- */
+push({
+  line: 16, state: { k: '0' },
+  ctx: 'main · 增量减半：k = 1 / 2',
+  condOuter: 'k=1 >= 1 → 真（第 2 趟结束）',
+  expr: 'k /= 2',
+  exprVal: 'k = 1 / 2 = 0',
+  passNum: 2, passK: 1,
+  passInfo: '第 2 趟完成，准备退出',
+  note: 'k = 1/2 = 0（整数除法）',
+  title: 'k /= 2;   →   k = 1 / 2 = 0',
+  desc: 'k 从 1 减半到 <b>0</b>（整数除法 1/2 = 0）。'
+});
+
+push({
+  line: 17,
+  ctx: 'main · 第 2 趟 while 体结束',
+  condOuter: 'k=1 >= 1 → 真（k 已变为 0）',
+  passNum: 2, passK: 1,
+  passInfo: '第 2 趟完成',
+  title: '}　第 2 趟 while 体结束',
+  desc: '第 2 趟结束，回到第 6 行重新判断。'
+});
+
+/* ---------- 第 6 行：while 退出 ---------- */
+push({
+  line: 6, state: { k: '0' },
+  ctx: 'main · while(k>=1) 判断失败，k=0',
+  condOuter: 'k=0 >= 1 → 假',
+  expr: 'while(k >= 1)',
+  exprVal: '0 >= 1 → 假，退出外层 while',
+  sortedEnd: 5,
+  skip: [7, 8, 9, 10, 11, 12, 13, 14, 15, 16],
+  passNum: 2, passK: 1,
+  passInfo: '外层 while 全部退出',
+  note: '希尔排序完成，数组升序',
+  title: 'while(k &gt;= 1)   k = 0，0 &gt;= 1 为假 → 退出外层循环',
+  desc: 'k=0，while 退出。<b>希尔排序全部完成，数组为 [3, 5, 7, 9, 10, 12]</b>。<span class="tip"><b>希尔排序关键数据：</b><br>· 比较次数：0+0+0（k=3）+ 0+0+1+1+0（k=1，外层 if 判断）——共约 <b>2 次</b>真正进入 while 内部的比较（k=1 时 i=3 和 i=4）；<br>· 后移次数：<b>3 次</b>；<br>· 插入次数：k=3 时 3 次 + k=1 时 5 次 = <b>8 次</b>。<br>相比直接插入排序，希尔排序通过 k=3 一趟让远处的逆序对快速靠近，减少后续后移。</span>'
+});
+
+/* ---------- 输出循环 ---------- */
+var finalVals = [3, 5, 7, 9, 10, 12];
+for (var oi = 0; oi < N; oi++) {
+  push({
+    line: 18, state: { i: String(oi) },
+    ctx: 'main · 输出循环 i = ' + oi,
+    condOuter: 'k=0 >= 1 → 假（while 已退出）',
+    condInner: 'i=' + oi + ' < n=6 → 真',
+    expr: 'for(i=0; i<n; i++)',
+    exprVal: (oi === 0)
+      ? 'i=0，0<6 真 → 进入循环体'
+      : 'i=' + oi + '，' + oi + '<6 真',
+    sortedEnd: 5,
+    cmpCells: [oi],
+    note: '输出 a[' + oi + '] = ' + finalVals[oi],
+    title: 'for(i=0; i&lt;n; i++)   第 ' + (oi + 1) + ' 次：i = ' + oi + '，条件为真',
+    desc: '当前 i = <b>' + oi + '</b>，输出 a[' + oi + '] = ' + finalVals[oi] + '。'
+  });
+  outText += finalVals[oi] + ' ';
+  push({
+    line: 19, state: { pfnN: String(oi + 1) },
+    ctx: 'main · printf 输出 a[' + oi + ']',
+    condOuter: 'k=0 >= 1 → 假',
+    condInner: 'i=' + oi + ' < n=6 → 真',
+    expr: 'printf("%d ", a[' + oi + '])',
+    exprVal: '输出 ' + finalVals[oi] + ' 后跟一个空格',
+    sortedEnd: 5,
+    cmpCells: [oi],
+    note: 'printf 累计 ' + (oi + 1) + ' 次',
+    title: 'printf("%d ", a[' + oi + ']);   →   输出 "' + finalVals[oi] + ' "',
+    desc: '<code>%d </code> 输出数字后跟一个空格，不换行。'
+  });
+  push({
+    line: 20,
+    ctx: 'main · 输出循环体结束',
+    condOuter: 'k=0 >= 1 → 假',
+    condInner: 'i=' + oi + ' < n=6 → 真',
+    sortedEnd: 5,
+    title: '}　输出循环体结束，执行 i++',
+    desc: 'i 由 ' + oi + ' 变成 ' + (oi + 1) + '。'
+  });
+}
+
+push({
+  line: 18, state: { i: '6' },
+  ctx: 'main · 输出循环判断失败，i=6',
+  condOuter: 'k=0 >= 1 → 假',
+  condInner: 'i=6 < n=6 → 假',
+  expr: 'for(i=0; i<n; i++)',
+  exprVal: 'i=6，6<6 → 假，退出',
+  sortedEnd: 5,
+  skip: [19, 20],
+  note: '6 个元素全部打印',
+  title: 'for(i=0; i&lt;n; i++)   i=6，6 &lt; 6 为假 → 退出输出循环',
+  desc: '屏幕最终输出：<b>' + outText + '</b>（末尾有空格）。'
+});
+
+push({
+  line: 21, state: { ret: '0' },
+  ctx: 'main · return 返回',
+  expr: 'return 0;',
+  exprVal: '返回 0，程序正常结束',
+  sortedEnd: 5,
+  title: 'return 0;',
+  desc: '返回 0，程序正常结束。'
+});
+
+push({
+  line: 22,
+  ctx: '程序结束',
+  sortedEnd: 5,
+  note: '栈帧销毁，程序退出',
+  title: '}　main 函数体结束',
+  desc: '程序共调用 <b>printf 6 次</b>、<b>scanf 0 次</b>，后移 <b>3 次</b>，插入 <b>8 次</b>，返回值 0。<br><b>输出：' + outText + '</b>'
+});
+
+/* =========================================================
+   3) DOM 构建
+   ========================================================= */
+var codeScroll  = document.getElementById('codeScroll');
+var arrGrid     = document.getElementById('arrGrid');
+var zoneLabels  = document.getElementById('zoneLabels');
+var zoneBanner  = document.getElementById('zoneBanner');
+var passIndicator = document.getElementById('passIndicator');
+var passProgress  = document.getElementById('passProgress');
+var barChart    = document.getElementById('barChart');
+var hudCmp      = document.getElementById('hudCmp');
+var hudMv       = document.getElementById('hudMv');
+var hudIns      = document.getElementById('hudIns');
+var varTable    = document.getElementById('varTable');
+var consoleBody = document.getElementById('consoleBody');
+var explainBody = document.getElementById('explainBody');
+var miniBody    = document.getElementById('miniBody');
+var miniContent = document.getElementById('miniContent');
+var miniView    = document.getElementById('miniView');
+var btnPlay     = document.getElementById('btnPlay');
+var btnPrev     = document.getElementById('btnPrev');
+var btnNext     = document.getElementById('btnNext');
+var btnReset    = document.getElementById('btnReset');
+var btnFull     = document.getElementById('btnFull');
+var btnPanels   = document.getElementById('btnPanels');
+var btnMini     = document.getElementById('btnMini');
+var btnLayout   = document.getElementById('btnLayout');
+var speedInput  = document.getElementById('speed');
+var speedLabel  = document.getElementById('speedLabel');
+
+codeScroll.innerHTML = CODE.map(function (c) {
+  return '<div class="code-line" data-line="' + c.n + '"><span class="ln">' + c.n + '</span><span class="src">' + c.html + '</span></div>';
+}).join('');
+var codeLines = Array.prototype.slice.call(codeScroll.querySelectorAll('.code-line'));
+
+miniContent.innerHTML = CODE.map(function (c) {
+  return '<div class="mini-line" data-line="' + c.n + '">' + c.html + '</div>';
+}).join('');
+var miniLines = Array.prototype.slice.call(miniContent.querySelectorAll('.mini-line'));
+
+(function buildArr() {
+  var html = '', barHtml = '', zoneHtml = '';
+  for (var n = 0; n < 6; n++) {
+    html += '<div class="acell empty" data-idx="' + n + '">' +
+              '<span class="aidx">a[' + n + ']</span>' +
+              '<span class="aval">?</span>' +
+            '</div>';
+    barHtml += '<div class="bar-wrapper" data-idx="' + n + '">' +
+                 '<div class="bar"><span class="bar-val">?</span></div>' +
+                 '<span class="bar-index">a[' + n + ']</span>' +
+               '</div>';
+    zoneHtml += '<div class="zone-lbl" data-idx="' + n + '"></div>';
+  }
+  arrGrid.innerHTML = html;
+  zoneLabels.innerHTML = zoneHtml;
+
+  barChart.innerHTML =
+    '<div class="track"></div>' +
+    '<div class="gripper" id="claw">' +
+      '<div class="gripper-label" id="clawLabel">t = ?</div>' +
+      '<div class="gripper-body"></div>' +
+      '<div class="gripper-arm left"></div>' +
+      '<div class="gripper-arm right"></div>' +
+    '</div>' +
+    barHtml;
+})();
+
+var arrCells  = Array.prototype.slice.call(arrGrid.querySelectorAll('.acell'));
+var zoneLbls  = Array.prototype.slice.call(zoneLabels.querySelectorAll('.zone-lbl'));
+var barCols   = Array.prototype.slice.call(barChart.querySelectorAll('.bar-wrapper'));
+var claw      = document.getElementById('claw');
+var clawLabel = document.getElementById('clawLabel');
+
+var VAR_ROWS = [
+  {k:'ctx',       label:'当前执行位置',                         cls:'r-ctx'},
+  {k:'k',         label:'k   (int)  增量 / 步长',                cls:'r-k'},
+  {k:'i',         label:'i   (int)  外层 for / 待插入下标',       cls:'r-i'},
+  {k:'j',         label:'j   (int)  while 扫描下标',             cls:'r-j'},
+  {k:'t',         label:'t   (int)  待插入值备份',               cls:'r-t'},
+  {k:'n',         label:'n   (int)  数组长度',                   cls:'r-n'},
+  {k:'condOuter', label:'外层 while 条件  k >= 1',              cls:'r-c1'},
+  {k:'condInner', label:'内层 for 条件  i < n',                 cls:'r-c2'},
+  {k:'condWhile', label:'while 条件  j>=0 && t<a[j]',          cls:'r-c2'},
+  {k:'expr',      label:'正在求值的表达式',                      cls:'r-expr'},
+  {k:'exprVal',   label:'表达式结果',                           cls:'r-eval'},
+  {k:'note',      label:'关键规则提示',                          cls:'r-note'},
+  {k:'ret',       label:'main 返回值',                          cls:'r-ret'}
+];
+varTable.innerHTML = VAR_ROWS.map(function (r) {
+  return '<div class="vrow ' + r.cls + '" data-key="' + r.k + '"><span class="vk">' + r.label + '</span><span class="vv dim">—</span></div>';
+}).join('');
+
+/* =========================================================
+   4) 状态与渲染
+   ========================================================= */
+var current = -1;
+var playing = false;
+var timer   = null;
+var speed   = Number(speedInput.value);
+var lastOut = null;
+
+var MAX_VAL = 12;
+
+function getFullLineHeight() {
+  if (codeLines.length > 1) {
+    var d = codeLines[1].offsetTop - codeLines[0].offsetTop;
+    if (d > 0) return d;
+  }
+  return (codeLines[0] && codeLines[0].offsetHeight) || 1;
+}
+
+function renderCode(step) {
+  var activeLine = step ? step.line : -1;
+  var skipLines  = step ? step.skip : [];
+  codeLines.forEach(function (el) {
+    var n = Number(el.dataset.line);
+    el.classList.toggle('active', n === activeLine);
+    el.classList.toggle('skip',   skipLines.indexOf(n) !== -1);
+  });
+}
+
+function centerActiveLine() {
+  var el = codeScroll.querySelector('.code-line.active');
+  if (!el) return;
+  var lh = getFullLineHeight();
+  var maxScroll = codeScroll.scrollHeight - codeScroll.clientHeight;
+  if (maxScroll <= 0) return;
+  var target = el.offsetTop - (codeScroll.clientHeight - lh) / 2;
+  target = Math.max(0, Math.min(maxScroll, target));
+  if (Math.abs(target - codeScroll.scrollTop) < 4) return;
+  codeScroll.scrollTo({ top: target, behavior: 'smooth' });
+}
+
+function renderVars(step) {
+  VAR_ROWS.forEach(function (r) {
+    var row = varTable.querySelector('.vrow[data-key="' + r.k + '"]');
+    if (!row) return;
+    var el = row.querySelector('.vv');
+    var v = step ? step[r.k] : '—';
+    var val = String(v === undefined || v === null ? '—' : v);
+    if (el.textContent !== val) {
+      el.textContent = val;
+      el.classList.toggle('dim', val === '—');
+      el.classList.remove('flash');
+      void el.offsetWidth;
+      el.classList.add('flash');
+    }
+  });
+}
+
+/* ---------- 趟指示器 ---------- */
+function renderPassIndicator(step) {
+  if (!step || !step.passNum) {
+    passIndicator.innerHTML =
+      '<span class="pi-badge">准备中</span>' +
+      '<span class="pi-info">等待进入 while(k>=1) 循环…</span>';
+    return;
+  }
+  var badgeCls = step.passNum === 2 ? 'pi-badge pass2' : 'pi-badge';
+  passIndicator.innerHTML =
+    '<span class="' + badgeCls + '">第 ' + step.passNum + ' 趟</span>' +
+    '<span class="pi-k">k = ' + step.passK + '</span>' +
+    '<span class="pi-info">' + step.passInfo + '</span>' +
+    '<span class="pi-prog">' + step.passProg + '</span>';
+}
+
+/* ---------- 有序区 / 无序区 ---------- */
+function renderZones(step) {
+  var se = step ? step.sortedEnd : -1;
+
+  arrCells.forEach(function (cell, idx) {
+    cell.classList.toggle('in-sorted',   se >= 0 && idx <= se);
+    cell.classList.toggle('in-unsorted', se >= 0 && idx >  se);
+  });
+
+  barCols.forEach(function (col, idx) {
+    col.classList.toggle('zone-sorted',   se >= 0 && idx <= se);
+    col.classList.toggle('zone-unsorted', se >= 0 && idx >  se);
+  });
+
+  zoneLbls.forEach(function (lbl, idx) {
+    if (se < 0) {
+      lbl.className = 'zone-lbl';
+      lbl.textContent = '';
+      return;
+    }
+    var isSorted = idx <= se;
+    var isEdge   = (idx === se) || (idx === se + 1);
+    lbl.className = 'zone-lbl ' +
+      (isSorted ? 'sorted-zone' : 'unsorted-zone') +
+      (isEdge ? ' zone-edge' : '');
+    lbl.textContent = isSorted ? '有序' : '无序';
+  });
+}
+
+/* ---------- 分区状态横幅 ---------- */
+function renderZoneBanner(step) {
+  if (!step || step.sortedEnd < 0) {
+    zoneBanner.innerHTML = '<span class="zb-hint">排序尚未开始，等待进入外层循环…</span>';
+    zoneBanner.style.borderColor = 'rgba(56,189,248,.32)';
+    return;
+  }
+
+  var se = step.sortedEnd;
+  var html = '';
+  var i  = parseInt(step.i);
+  var j  = parseInt(step.j);
+
+  var sortedTxt = (se >= 0) ? ('a[0..' + se + '] = [' + step.arr.slice(0, se + 1).join(', ') + ']') : '空';
+  var unsortedTxt = (se < 5) ? ('a[' + (se + 1) + '..5] = [' + step.arr.slice(se + 1).join(', ') + ']') : '空';
+
+  if (step.line === 11 && step.swpCells.length === 2) {
+    var srcIdx = step.swpCells[0];
+    var dstIdx = step.swpCells[1];
+    var srcVal = step.arr[srcIdx];
+    html =
+      '<span class="badge-move">后移</span>' +
+      '有序区里的 <b>a[' + srcIdx + '] = ' + srcVal + '</b> 后移到 <b>a[' + dstIdx + ']</b>' +
+      '<span class="zb-sorted" style="margin-left:.5em">有序区 ' + sortedTxt + '</span>';
+    zoneBanner.style.borderColor = 'rgba(245,158,11,.75)';
+  } else if (step.line === 14) {
+    html =
+      '<span class="badge-insert">插入完成</span>' +
+      '有序区扩大为 <b>a[0..' + se + '] = [' + step.arr.slice(0, se + 1).join(', ') + ']</b>' +
+      (se < 5 ? '　<span class="zb-unsorted">无序区 ' + unsortedTxt + '</span>' : '');
+    zoneBanner.style.borderColor = 'rgba(74,222,128,.85)';
+  } else if (se >= 5) {
+    html =
+      '<span class="badge-done">排序完成</span>' +
+      '<span class="zb-sorted">整个数组 a[0..5] 都是有序区</span>';
+    zoneBanner.style.borderColor = 'rgba(56,189,248,.75)';
+  } else if (step.line === 10 && step.condWhile.indexOf('假') !== -1) {
+    html =
+      '<span class="zb-sorted">有序区 ' + sortedTxt + '</span>' +
+      '<span style="color:#5f7796">|</span>' +
+      '<span class="zb-unsorted">无序区 ' + unsortedTxt + '</span>' +
+      '<span style="color:#fbbf24;margin-left:.4em">位置已找到，准备写回 a[' + (j + parseInt(step.k)) + ']</span>';
+    zoneBanner.style.borderColor = 'rgba(56,189,248,.32)';
+  } else if (step.line === 8) {
+    html =
+      '<span class="badge-move" style="background:linear-gradient(180deg,#fbcfe8,#f472b6);color:#3a0a22">备份</span>' +
+      '把 <b>a[' + i + '] = ' + step.arr[i] + '</b> 暂存到 <b>t</b>' +
+      '<span class="zb-sorted" style="margin-left:.5em">有序区 ' + sortedTxt + '</span>';
+    zoneBanner.style.borderColor = 'rgba(244,114,182,.65)';
+  } else if (step.line === 6) {
+    html =
+      '<span class="badge-pass">新一趟开始</span>' +
+      '第 ' + step.passNum + ' 趟（k = ' + step.passK + '），重新开始划分有序/无序';
+    zoneBanner.style.borderColor = 'rgba(167,139,250,.75)';
+  } else {
+    html =
+      '<span class="zb-sorted">有序区 ' + sortedTxt + '</span>' +
+      '<span style="color:#5f7796">|</span>' +
+      '<span class="zb-unsorted">无序区 ' + unsortedTxt + '</span>';
+    zoneBanner.style.borderColor = 'rgba(56,189,248,.32)';
+  }
+
+  zoneBanner.innerHTML = html;
+}
+
+/* ---------- 核心：数组格子 + 柱状图 + 机械爪 ---------- */
+function renderArr(step) {
+  var vals = step ? step.arr : null;
+  var cmp  = (step && step.cmpCells) || [];
+  var swp  = (step && step.swpCells) || [];
+  var isMoveStep = !!(step && step.line === 11 && swp.length === 2);
+
+  arrCells.forEach(function (cell, idx) {
+    var valEl = cell.querySelector('.aval');
+    var v = vals ? vals[idx] : '?';
+    var empty = (v === '?');
+    if (valEl.textContent !== v) {
+      valEl.textContent = v;
+      valEl.classList.remove('flash');
+      void valEl.offsetWidth;
+      if (!empty) valEl.classList.add('flash');
+    }
+    cell.classList.toggle('empty', empty);
+    cell.classList.toggle('is-cmp', cmp.indexOf(idx) !== -1 && swp.indexOf(idx) === -1);
+    cell.classList.toggle('is-swp', swp.indexOf(idx) !== -1);
+    cell.classList.toggle('is-move-src', isMoveStep && idx === swp[0]);
+    cell.classList.toggle('is-move-dst', isMoveStep && idx === swp[1]);
+  });
+
+  barCols.forEach(function (col, idx) {
+    var bar    = col.querySelector('.bar');
+    var barVal = col.querySelector('.bar-val');
+    var v      = vals ? Number(vals[idx]) : 0;
+    var h      = vals ? Math.max(6, Math.min(100, v / MAX_VAL * 100)) : 0;
+
+    bar.style.height = h + '%';
+    var txt = vals ? String(v) : '?';
+    if (barVal.textContent !== txt) barVal.textContent = txt;
+
+    var isCmp = cmp.indexOf(idx) !== -1;
+    var isSwp = swp.indexOf(idx) !== -1;
+
+    bar.classList.toggle('comparing',    isCmp && !isSwp);
+    bar.classList.toggle('swapping-bar', isSwp);
+    bar.classList.toggle('lifted',       isSwp);
+  });
+
+  /* 机械爪定位：支持非相邻目标（k>1 时源目标可能间隔 k 格） */
+  var idxs = null, grabbing = false;
+
+  if (step && step.line >= 18) {
+    idxs = null;
+  } else if (swp.length > 0 && swp.length <= 2) {
+    idxs = swp.slice().sort(function (a, b) { return a - b; });
+    grabbing = true;
+  } else if (cmp.length > 0 && cmp.length <= 2) {
+    idxs = cmp.slice().sort(function (a, b) { return a - b; });
+    grabbing = false;
+  }
+
+  if (idxs && idxs.length >= 1) {
+    var first = idxs[0];
+    var last  = idxs[idxs.length - 1];
+    var c1 = barCols[first];
+    var c2 = barCols[last];
+    if (c1 && c2) {
+      var cr = barChart.getBoundingClientRect();
+      var r1 = c1.getBoundingClientRect();
+      var r2 = c2.getBoundingClientRect();
+      var pad = 8;
+
+      claw.style.left  = (r1.left - cr.left - pad) + 'px';
+      claw.style.width = (r2.right - r1.left + pad * 2) + 'px';
+      claw.classList.add('active');
+      claw.classList.toggle('grabbing', grabbing);
+      claw.style.top = grabbing ? '26px' : '8px';
+
+      var tv = step ? String(step.t) : '';
+      var kk = step ? String(step.k) : '';
+      var showT = step && step.line >= 7 && step.line <= 14 && /^-?\d+$/.test(tv);
+      if (showT) {
+        clawLabel.textContent = 't = ' + tv + (kk && parseInt(kk) > 0 ? '  (k=' + kk + ')' : '');
+        clawLabel.style.display = 'block';
+      } else {
+        clawLabel.style.display = 'none';
+      }
+    }
+  } else {
+    claw.classList.remove('active', 'grabbing');
+    claw.style.top = '8px';
+    clawLabel.style.display = 'none';
+  }
+
+  if (step) {
+    hudCmp.textContent = step.cmpN;
+    hudMv.textContent  = step.mvN;
+    hudIns.textContent = step.insN;
+  } else {
+    hudCmp.textContent = '0';
+    hudMv.textContent  = '0';
+    hudIns.textContent = '0';
+  }
+}
+
+function renderOut(text) {
+  if (text === lastOut) return;
+  lastOut = text;
+  consoleBody.innerHTML = '';
+  if (!text) return;
+  var div = document.createElement('div');
+  div.className = 'outline';
+  div.textContent = text;
+  consoleBody.appendChild(div);
+  consoleBody.scrollTop = consoleBody.scrollHeight;
+}
+
+function renderExplain(step) {
+  if (!step) {
+    explainBody.innerHTML =
+      '<span class="exhead">准备就绪</span>' +
+      '<strong>点击「自动播放」或「下一步」，开始逐条执行程序。</strong><br>' +
+      '本程序用<b>希尔排序</b>把数组 <code>{3, 5, 10, 9, 7, 12}</code> 排成升序：<br>' +
+      '· <b>初始增量</b> <code>k = n/2 = 3</code>，逐趟减半 3 → 1 → 0；<br>' +
+      '· <b>绿色底 = 有序区</b>（已处理元素），<b>灰色底 = 无序区</b>（未处理元素）；<br>' +
+      '· <b>外层 while</b> <code>while(k&gt;=1)</code> 控制趟数；<br>' +
+      '· <b>内层 for</b> <code>for(i=k; i&lt;n; i++)</code> 逐组做插入排序；<br>' +
+      '· <code>t = a[i]; j = i-k;</code> 备份当前元素、定位同组前一个；<br>' +
+      '· <b>while</b> <code>while(j&gt;=0 &amp;&amp; t&lt;a[j])</code> 把大的元素往后挪 k 位；<br>' +
+      '· <code>a[j+k] = t;</code> 把 t 插入到最终位置。<br>' +
+      '<b>程序输出：3 5 7 9 10 12 （每个数字后跟一个空格，不换行）</b>';
+    return;
+  }
+  var isMv  = (step.line === 11);
+  var isIns = (step.line === 14);
+  var isAns = (step.line === 19);
+  var isPass = (step.line === 6);
+  var cls = isMv ? ' swp' : (isIns ? ' grn' : (isAns ? ' ans' : (isPass ? ' pas' : '')));
+  explainBody.innerHTML =
+    '<span class="exhead' + cls + '">第 ' + step.line + ' 行</span>' +
+    '<strong>' + step.title + '</strong><br>' + step.desc;
+}
+
+function syncMini() {
+  var H = miniBody.clientHeight;
+  if (H <= 0) return;
+  var miniLineH = H / 22;
+  for (var n = 0; n < miniLines.length; n++) {
+    var l = miniLines[n];
+    l.style.height = miniLineH + 'px';
+    l.style.lineHeight = miniLineH + 'px';
+    l.style.fontSize = Math.max(4, Math.round(miniLineH * 0.62)) + 'px';
+  }
+  var fullLineH = getFullLineHeight();
+  if (fullLineH <= 0) return;
+  var visRows = codeScroll.clientHeight / fullLineH;
+  var boxH = Math.min(H, visRows * miniLineH);
+  var boxTop = (codeScroll.scrollTop / fullLineH) * miniLineH;
+  boxTop = Math.max(0, Math.min(H - boxH, boxTop));
+  miniView.style.top = boxTop + 'px';
+  miniView.style.height = boxH + 'px';
+}
+
+function markMiniCurrent(step) {
+  var line = step ? step.line : -1;
+  var skipLines = step ? step.skip : [];
+  miniLines.forEach(function (l) {
+    var n = Number(l.dataset.line);
+    l.classList.toggle('cur',  n === line);
+    l.classList.toggle('skip', skipLines.indexOf(n) !== -1);
+  });
+}
+
+function render() {
+  var step = current >= 0 ? STEPS[current] : null;
+  renderCode(step);
+  renderPassIndicator(step);
+  renderVars(step);
+  renderZones(step);
+  renderZoneBanner(step);
+  renderArr(step);
+  renderOut(step ? step.out : '');
+  renderExplain(step);
+  markMiniCurrent(step);
+  syncMini();
+  centerActiveLine();
+  btnPrev.disabled = current < 0;
+  btnNext.disabled = current >= STEPS.length - 1;
+}
+
+/* =========================================================
+   5) 播放控制
+   ========================================================= */
+function updatePlayBtn() {
+  btnPlay.textContent = playing ? '⏸ 暂停' : '▶ 自动播放';
+  btnPlay.classList.toggle('playing', playing);
+}
+function tick() {
+  if (current >= STEPS.length - 1) { pause(); return; }
+  current += 1;
+  render();
+  if (current >= STEPS.length - 1) pause();
+}
+function play() {
+  if (playing) return;
+  if (current >= STEPS.length - 1) { current = -1; lastOut = null; render(); }
+  playing = true;
+  updatePlayBtn();
+  window.clearInterval(timer);
+  timer = window.setInterval(tick, speed);
+  tick();
+}
+function pause() {
+  playing = false;
+  window.clearInterval(timer);
+  timer = null;
+  updatePlayBtn();
+}
+function nextStep() {
+  pause();
+  if (current < STEPS.length - 1) { current += 1; render(); }
+}
+function prevStep() {
+  pause();
+  if (current > -1) { current -= 1; render(); }
+}
+function resetAll() {
+  pause(); current = -1; lastOut = null;
+  consoleBody.innerHTML = ''; codeScroll.scrollTop = 0; render();
+}
+
+btnPlay.addEventListener('click', function () { playing ? pause() : play(); });
+btnNext.addEventListener('click', nextStep);
+btnPrev.addEventListener('click', prevStep);
+btnReset.addEventListener('click', resetAll);
+
+speedInput.addEventListener('input', function () {
+  speed = Number(speedInput.value);
+  speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+  if (playing) {
+    window.clearInterval(timer);
+    timer = window.setInterval(tick, speed);
+  }
+});
+
+/* =========================================================
+   6) 面板：拖动 / 缩放 / 置顶 / 关闭 / 折叠
+   ========================================================= */
+var zTop = 100;
+var panelEls = Array.prototype.slice.call(document.querySelectorAll('.panel'));
+
+function bringToFront(el) {
+  zTop += 1;
+  el.style.zIndex = zTop;
+  panelEls.forEach(function (p) { p.classList.remove('active'); });
+  el.classList.add('active');
+}
+
+panelEls.forEach(function (panel) {
+  var head     = panel.querySelector('.phead');
+  var handle   = panel.querySelector('.presize');
+  var closeBtn = panel.querySelector('.pclose');
+  var foldBtn  = panel.querySelector('.pfold');
+
+  panel.addEventListener('pointerdown', function () { bringToFront(panel); }, true);
+
+  head.addEventListener('pointerdown', function (e) {
+    if (e.target.closest('button')) return;
+    e.preventDefault();
+    bringToFront(panel);
+    var r = panel.getBoundingClientRect();
+    var ox = e.clientX - r.left, oy = e.clientY - r.top;
+
+    function mv(ev) {
+      panel.style.left = (ev.clientX - ox) + 'px';
+      panel.style.top  = (ev.clientY - oy) + 'px';
+      panel.style.right = 'auto'; panel.style.bottom = 'auto';
+    }
+    function up() {
+      document.removeEventListener('pointermove', mv);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+      if (panel.id === 'p-vars') requestAnimationFrame(render);
+    }
+    document.addEventListener('pointermove', mv);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+  });
+
+  handle.addEventListener('pointerdown', function (e) {
+    e.preventDefault(); e.stopPropagation(); bringToFront(panel);
+    var r = panel.getBoundingClientRect();
+    var sx = e.clientX, sy = e.clientY, sw = r.width, sh = r.height;
+
+    function mv(ev) {
+      var w = sw + (ev.clientX - sx), h = sh + (ev.clientY - sy);
+      panel.style.width  = Math.max(0, w) + 'px';
+      panel.style.height = Math.max(0, h) + 'px';
+      panel.style.right  = 'auto'; panel.style.bottom = 'auto';
+    }
+    function up() {
+      document.removeEventListener('pointermove', mv);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+      syncMini();
+      if (panel.id === 'p-vars') requestAnimationFrame(render);
+    }
+    document.addEventListener('pointermove', mv);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+  });
+
+  closeBtn.addEventListener('click', function (e) {
+    e.stopPropagation(); panel.classList.add('hidden');
+  });
+
+  foldBtn.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (panel.classList.contains('collapsed')) {
+      panel.classList.remove('collapsed');
+      if (panel.dataset.savedH) panel.style.height = panel.dataset.savedH;
+      foldBtn.textContent = '—';
+    } else {
+      panel.dataset.savedH = panel.style.height || (panel.getBoundingClientRect().height + 'px');
+      panel.classList.add('collapsed');
+      panel.style.height = 'auto'; foldBtn.textContent = '＋';
+    }
+    syncMini();
+  });
+});
+
+function resetLayout() {
+  var W = window.innerWidth, H = window.innerHeight;
+  function place(id, l, t, w, h) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.classList.remove('hidden');
+    el.style.left   = Math.round(l * W) + 'px';
+    el.style.top    = Math.round(t * H) + 'px';
+    el.style.width  = Math.round(w * W) + 'px';
+    el.style.height = Math.round(h * H) + 'px';
+    el.style.right  = 'auto'; el.style.bottom = 'auto'; el.style.zIndex = 100;
+  }
+  place('p-top',     0.010, 0.014, 0.62, 0.120);
+  place('p-vars',    0.010, 0.145, 0.42, 0.640);
+  place('p-explain', 0.010, 0.800, 0.60, 0.185);
+  place('p-out',     0.635, 0.800, 0.255, 0.185);
+  place('p-mini',    0.905, 0.014, 0.085, 0.76);
+  zTop = 100;
+  panelEls.forEach(function (p) { p.classList.remove('active'); });
+  requestAnimationFrame(function () { syncMini(); render(); });
+}
+btnLayout.addEventListener('click', resetLayout);
+
+btnFull.addEventListener('click', function () {
+  if (!document.fullscreenElement) {
+    (document.documentElement.requestFullscreen || function () {}).call(document.documentElement);
+  } else {
+    (document.exitFullscreen || function () {}).call(document);
+  }
+});
+
+btnPanels.addEventListener('click', function () {
+  var anyVisible = panelEls.some(function (p) { return !p.classList.contains('hidden'); });
+  panelEls.forEach(function (p) { p.classList.toggle('hidden', anyVisible); });
+  if (!anyVisible) requestAnimationFrame(function () { syncMini(); render(); });
+});
+
+function toggleMini() {
+  var el = document.getElementById('p-mini');
+  el.classList.toggle('hidden');
+  if (!el.classList.contains('hidden')) {
+    bringToFront(el);
+    requestAnimationFrame(syncMini);
+  }
+}
+btnMini.addEventListener('click', toggleMini);
+
+/* =========================================================
+   7) 缩略图点击跳转 + 滚动同步
+   ========================================================= */
+miniBody.addEventListener('pointerdown', function (e) {
+  bringToFront(document.getElementById('p-mini'));
+  var r = miniBody.getBoundingClientRect();
+  var miniLineH = miniBody.clientHeight / 22;
+  if (miniLineH <= 0) return;
+  var idx = Math.floor((e.clientY - r.top) / miniLineH);
+  idx = Math.max(0, Math.min(21, idx));
+  var fullLineH = getFullLineHeight();
+  var maxScroll = codeScroll.scrollHeight - codeScroll.clientHeight;
+  var target = idx * fullLineH - (codeScroll.clientHeight - fullLineH) / 2;
+  target = Math.max(0, Math.min(maxScroll, target));
+  codeScroll.scrollTo({ top: target, behavior: 'smooth' });
+});
+
+var rafPending = false;
+function scheduleSync() {
+  if (rafPending) return;
+  rafPending = true;
+  requestAnimationFrame(function () { rafPending = false; syncMini(); });
+}
+codeScroll.addEventListener('scroll', scheduleSync, { passive: true });
+window.addEventListener('resize', function () {
+  scheduleSync();
+  centerActiveLine();
+  requestAnimationFrame(render);
+});
+if (document.fonts && document.fonts.ready) {
+  document.fonts.ready.then(function () { scheduleSync(); });
+}
+
+/* =========================================================
+   8) 全局快捷键
+   ========================================================= */
+document.addEventListener('keydown', function (e) {
+  var t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
+  if (e.code === 'Space')            { e.preventDefault(); playing ? pause() : play(); }
+  else if (e.code === 'ArrowRight')  { e.preventDefault(); nextStep(); }
+  else if (e.code === 'ArrowLeft')   { e.preventDefault(); prevStep(); }
+  else if (e.code === 'KeyR')        { resetAll(); }
+  else if (e.code === 'KeyF')        { btnFull.click(); }
+  else if (e.code === 'KeyM')        { toggleMini(); }
+  else if (e.code === 'KeyH')        { btnPanels.click(); }
+});
+
+/* =========================================================
+   9) 启动
+   ========================================================= */
+speedLabel.textContent = (speed / 1000).toFixed(2) + 's';
+resetLayout();
+render();
+setTimeout(scheduleSync, 120);
+setTimeout(function () { scheduleSync(); render(); }, 500);
+
+})();
+</script>
+</body>
+</html>
